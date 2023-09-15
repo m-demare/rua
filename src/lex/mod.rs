@@ -2,18 +2,19 @@ mod chars;
 mod utils;
 pub mod tokens;
 
+use std::iter::Peekable;
+use std::str::Chars;
+
 use crate::lex::tokens::{Token, TokenType, lookup_char, lookup_comparison, lookup_ident};
-use crate::lex::chars::{is_alphabetic, is_hex, is_numeric, is_numeric_base, is_space};
-use self::utils::{read_while, to_float, to_int};
+use crate::lex::{chars::{is_alphabetic, is_hex, is_numeric, is_numeric_base, is_space}, utils::eat_while_peeking};
+use self::utils::{take_while_peeking, to_float, to_int};
 
 pub fn tokenize(input: &str) -> Vec<Token> {
-    let bytes = input.as_bytes();
-    let length = bytes.len();
-    let mut read_pos = 0;
     let mut tokens = Vec::with_capacity(100);
 
-    while read_pos < length {
-        let token = get_token(bytes, &mut read_pos);
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        let token = get_token(ch, chars.by_ref());
         if let Some(t) = token {
             tokens.push(t);
         }
@@ -24,114 +25,97 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     tokens
 }
 
-fn get_token(bytes: &[u8], read_pos: &mut usize) -> Option<Token> {
-    let ch = bytes[*read_pos];
+fn get_token(ch: char, chars: &mut Peekable<Chars>) -> Option<Token> {
     match ch {
-        b'+' | b'*' | b'/' | b'%' | b'^' | b'#' |
-        b'(' | b')' | b'{' | b'}' | b'[' | b']' | b';' | b':' | b',' => Some(single_char_token(ch, read_pos)),
-        b'=' | b'<' | b'>' | b'~' => Some(read_comparison(bytes, read_pos)),
-        b'-' => read_minus(bytes, read_pos),
-        b'.' => Some(read_dot(bytes, read_pos)),
-        a if is_alphabetic(a) => Some(read_identifier(bytes, read_pos)),
-        n if is_numeric(n) => Some(read_number(bytes, read_pos)),
-        s if is_space(s) => { eat_spaces(bytes, read_pos); None },
-        _ => Some(single_char_token(ch, read_pos)),
+        '=' | '<' | '>' | '~' => Some(read_comparison(ch, chars)),
+        '-' => read_minus(ch, chars),
+        '.' => Some(read_dot(chars)),
+        a if is_alphabetic(&a) => Some(read_identifier(ch, chars)),
+        n if is_numeric(&n) => Some(read_number(ch, chars)),
+        s if is_space(&s) => { eat_spaces(chars); None },
+        _ => Some(single_char_token(ch)),
     }
 }
 
 #[inline]
-fn single_char_token(ch: u8, read_pos: &mut usize) -> Token {
-    *read_pos += 1;
+fn single_char_token(ch: char) -> Token {
     Token { ttype: lookup_char(ch) }
 }
 
-fn read_comparison(bytes: &[u8], read_pos: &mut usize) -> Token {
-    let ch = bytes[*read_pos];
-    if *read_pos+1 < bytes.len() && bytes[*read_pos+1] == b'=' {
-        *read_pos += 2;
+fn read_comparison(ch: char, chars: &mut Peekable<Chars>) -> Token {
+    if chars.peek() == Some(&'='){
+        chars.next();
         return Token { ttype: lookup_comparison(ch, true) };
     }
-    *read_pos += 1;
     Token { ttype: lookup_comparison(ch, false) }
 }
 
-fn read_dot(bytes: &[u8], read_pos: &mut usize) -> Token {
-    *read_pos+=1;
-    if *read_pos < bytes.len() && bytes[*read_pos] == b'.' {
-        *read_pos+=1;
-        if *read_pos < bytes.len() && bytes[*read_pos] == b'.' {
-            *read_pos+=1;
+fn read_dot(chars: &mut Peekable<Chars>) -> Token {
+    if chars.peek() == Some(&'.') {
+        chars.next();
+        if chars.peek() == Some(&'.') {
+            chars.next();
             return Token { ttype: TokenType::DOTDOTDOT}
         }
         return Token { ttype: TokenType::DOTDOT}
     }
-    Token { ttype: TokenType::DOT}
+
+    match chars.peek() {
+        Some(n) if is_numeric(n) => {
+            let float = take_while_peeking(chars, &|ch| is_hex(ch) || *ch == '.');
+            match to_float(&("0.".to_owned() + &float)) {
+                Some(n) => Token { ttype: TokenType::FLOAT(n) },
+                None => Token { ttype: TokenType::ILLEGAL(float) },
+            }
+        },
+        _ => Token { ttype: TokenType::DOT},
+    }
 }
 
-fn read_identifier(bytes: &[u8], read_pos: &mut usize) -> Token {
-    debug_assert!(is_alphabetic(bytes[*read_pos]));
+fn read_identifier(ch: char, chars: &mut Peekable<Chars>) -> Token {
+    debug_assert!(is_alphabetic(&ch));
 
-    // let length = bytes.len();
-    let pos = *read_pos;
+    let identifier = take_while_peeking(chars, &|ch| is_alphabetic(ch) || is_numeric(ch));
 
-    read_while(bytes, read_pos, &|ch| is_alphabetic(ch) || is_numeric(ch));
-    // *read_pos += 1;
-    // let mut ch = char::from(bytes[*read_pos]);
-
-    // while *read_pos < length && (is_alphabetic(ch) || is_numeric(ch)){
-    //     *read_pos += 1;
-    //     ch = char::from(bytes[*read_pos]);
-    // }
-
-    // let identifier = &bytes[pos..*read_pos];
-
-    // *read_pos -= 1;
-
-    let identifier = &bytes[pos..*read_pos];
-    let literal = String::from_utf8(identifier.to_vec()).expect("Identifier should contain only [A-Za-z0-9_]");
-    Token { ttype: lookup_ident(&literal) }
+    Token {
+        ttype: lookup_ident((ch.to_string() + &identifier).as_str())
+    }
 }
 
-fn read_number(bytes: &[u8], read_pos: &mut usize) -> Token {
-    debug_assert!(is_numeric(bytes[*read_pos]));
-    let pos = *read_pos;
+fn read_number(ch: char, chars: &mut Peekable<Chars>) -> Token {
+    debug_assert!(is_numeric(&ch));
 
-    read_while(bytes, read_pos, &|ch| is_hex(ch) || is_numeric_base(ch));
+    let int = ch.to_string() + &take_while_peeking(chars, &|ch| is_hex(ch) || is_numeric_base(ch));
+    if chars.peek() == Some(&'.') {
+        let float_part = take_while_peeking(chars, &|ch| is_hex(ch) || *ch == '.');
 
-    if *read_pos < bytes.len() && bytes[*read_pos] == b'.' {
-        // Read float
-        read_while(bytes, read_pos, &is_hex);
-        let number_bytes = &bytes[pos..*read_pos];
-        return match to_float(number_bytes) {
+        let s = int + &float_part;
+        return match to_float(&s) {
             Some(n) => Token { ttype: TokenType::FLOAT(n) },
-            None => Token { ttype: TokenType::ILLEGAL(number_bytes.into()) },
+            None => Token { ttype: TokenType::ILLEGAL(s) },
         }
     }
 
-    let number_bytes = &bytes[pos..*read_pos];
-    match to_int(number_bytes) {
+    match to_int(&int) {
         Some(n) => Token { ttype: TokenType::INT(n) },
-        None => Token { ttype: TokenType::ILLEGAL(number_bytes.into()) },
+        None => Token { ttype: TokenType::ILLEGAL(int) },
     }
 }
 
-fn read_minus(bytes: &[u8], read_pos: &mut usize) -> Option<Token> {
-    debug_assert_eq!(bytes[*read_pos], b'-');
+fn read_minus(ch: char, chars: &mut Peekable<Chars>) -> Option<Token> {
+    debug_assert_eq!(ch, '-');
 
-    if *read_pos+1 > bytes.len() || bytes[*read_pos+1] != b'-' {
-        *read_pos += 1;
+    if chars.peek() != Some(&'-') {
         return Some(Token { ttype: TokenType::MINUS })
     }
 
     // If -- is found, discard til next \n
-    read_while(bytes, read_pos, &|ch| ch != b'\n');
+    eat_while_peeking(chars, &|ch| *ch != '\n');
     None
 }
 
 #[inline]
-fn eat_spaces(bytes: &[u8], read_pos: &mut usize) {
-    debug_assert!(is_space(bytes[*read_pos]));
-
-    read_while(bytes, read_pos, &is_space);
+fn eat_spaces(chars: &mut Peekable<Chars>) {
+    eat_while_peeking(chars, &is_space);
 }
 

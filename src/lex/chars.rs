@@ -1,25 +1,27 @@
+#![allow(clippy::trivially_copy_pass_by_ref)]
+
 #[inline]
-pub const fn is_numeric(ch: u8) -> bool{
+pub const fn is_numeric(ch: &char) -> bool {
     ch.is_ascii_digit()
 }
 
 #[inline]
-pub const fn is_alphabetic(ch: u8) -> bool{
-    matches!(ch, b'A'..=b'Z' | b'a'..=b'z' | b'_')
+pub const fn is_alphabetic(ch: &char) -> bool {
+    matches!(ch, 'A'..='Z' | 'a'..='z' | '_')
 }
 
 #[inline]
-pub const fn is_space(ch: u8) -> bool{
-    matches!(ch, b' ' | b'\n' | b'\t' | b'\r')
+pub const fn is_space(ch: &char) -> bool {
+    matches!(ch, ' ' | '\n' | '\t' | '\r')
 }
 
 #[inline]
-pub const fn is_numeric_base(ch: u8) -> bool{
-    matches!(ch, b'x' | b'b')
+pub const fn is_numeric_base(ch: &char) -> bool {
+    matches!(ch, 'x' | 'b')
 }
 
 #[inline]
-pub const fn is_hex(ch: u8) -> bool{
+pub const fn is_hex(ch: &char) -> bool {
     ch.is_ascii_hexdigit()
 }
 

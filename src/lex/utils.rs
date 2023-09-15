@@ -1,3 +1,6 @@
+use std::iter::Peekable;
+use std::str::Chars;
+
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
 pub fn parse_float_radix(s: &str, radix: u32) -> Option<f32> {
     let s2 = s.replace('.', "");
@@ -12,30 +15,35 @@ pub fn parse_float_radix(s: &str, radix: u32) -> Option<f32> {
     Some(f as f32)
 }
 
-pub fn to_int(bytes: &[u8]) -> Option<i32> {
-    match bytes {
-        [b'0', b'x', num @ ..] => i32::from_str_radix(&String::from_utf8(num.to_vec()).ok()?, 16).ok(),
-        [b'0', b'b', num @ ..] => i32::from_str_radix(&String::from_utf8(num.to_vec()).ok()?, 2).ok(),
-        num => String::from_utf8(num.to_vec()).ok()?.parse::<i32>().ok(),
+pub fn to_int(s: &String) -> Option<i32> {
+    match s {
+        num if num.starts_with("0x") => i32::from_str_radix(num.split_at(2).1, 16).ok(),
+        num if num.starts_with("0b") => i32::from_str_radix(num.split_at(2).1, 2).ok(),
+        num => num.parse::<i32>().ok(),
     }
 }
 
-pub fn to_float(bytes: &[u8]) -> Option<f32> {
-    match bytes {
-        [b'0', b'x', num @ ..] => parse_float_radix(&String::from_utf8(num.to_vec()).ok()?, 16),
-        [b'0', b'b', num @ ..] => parse_float_radix(&String::from_utf8(num.to_vec()).ok()?, 2),
-        num => String::from_utf8(num.to_vec()).ok()?.parse::<f32>().ok(),
+pub fn to_float(s: &String) -> Option<f32> {
+    match s {
+        num if num.starts_with("0x") => parse_float_radix(num.split_at(2).1, 16),
+        num if num.starts_with("0b") => parse_float_radix(num.split_at(2).1, 2),
+        num => num.parse::<f32>().ok(),
     }
 }
 
 #[inline]
-pub fn read_while(bytes: &[u8], read_pos: &mut usize, pred: &dyn Fn(u8) -> bool) {
-    let length = bytes.len();
+pub fn take_while_peeking(chars: &mut Peekable<Chars>, pred: &dyn Fn(&char) -> bool) -> String {
+    let mut i = 0;
+    let mut clone_it = chars.clone();
 
-    *read_pos += 1; // We assume the first char is valid, so don't check pred()
-
-    while *read_pos < length && pred(bytes[*read_pos]){
-        *read_pos += 1;
+    while clone_it.next_if(pred).is_some() {
+        i += 1;
     }
+    chars.take(i).collect()
+}
+
+#[inline]
+pub fn eat_while_peeking(chars: &mut Peekable<Chars>, pred: &dyn Fn(&char) -> bool) {
+    while chars.next_if(pred).is_some() { }
 }
 

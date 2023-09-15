@@ -1,12 +1,12 @@
 #[derive(Debug, PartialEq)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum TokenType {
-    ILLEGAL(Box<[u8]>),
+    ILLEGAL(String),
     EOF,
 
     INT(i32),
     FLOAT(f32),
-    IDENTIFIER(Box<[u8]>),
+    IDENTIFIER(String),
 
     // Arithmetic operators
     PLUS,
@@ -71,9 +71,9 @@ pub struct Token{
     pub ttype: TokenType,
 }
 
-pub(super) fn lookup_ident(identifier: &String) -> TokenType {
+pub(super) fn lookup_ident(identifier: &str) -> TokenType {
     use TokenType::{IDENTIFIER, AND, BREAK, DO, ELSE, ELSEIF, END, FALSE, FOR, FUNCTION, IF, IN, LOCAL, NIL, NOT, OR, REPEAT, RETURN, THEN, TRUE, UNTIL, WHILE};
-    match identifier.as_str() {
+    match identifier {
         "and" => AND,
         "break" => BREAK,
         "do" => DO,
@@ -95,56 +95,56 @@ pub(super) fn lookup_ident(identifier: &String) -> TokenType {
         "true" => TRUE,
         "until" => UNTIL,
         "while" => WHILE,
-        _ => IDENTIFIER(identifier.as_bytes().into()),
+        _ => IDENTIFIER(identifier.to_owned()),
     }
 }
 
 #[inline]
-pub(super) fn lookup_char(ch: u8) -> TokenType {
+pub(super) fn lookup_char(ch: char) -> TokenType {
     use TokenType::{ILLEGAL, PLUS, MINUS, TIMES, DIV, MOD, EXP, ASSIGN, LEN, COMMA, SEMICOLON, COLON, LPAREN, RPAREN, LBRACE, RBRACE, LBRACK, RBRACK};
     match ch {
-        b'+' => PLUS,
-        b'-' => MINUS,
-        b'*' => TIMES,
-        b'/' => DIV,
-        b'%' => MOD,
-        b'^' => EXP,
-        b'#' => LEN,
+        '+' => PLUS,
+        '-' => MINUS,
+        '*' => TIMES,
+        '/' => DIV,
+        '%' => MOD,
+        '^' => EXP,
+        '#' => LEN,
 
-        b'=' => ASSIGN,
-        b'(' => LPAREN,
-        b')' => RPAREN,
-        b'{' => LBRACE,
-        b'}' => RBRACE,
-        b'[' => LBRACK,
-        b']' => RBRACK,
-        b';' => SEMICOLON,
-        b':' => COLON,
-        b',' => COMMA,
+        '=' => ASSIGN,
+        '(' => LPAREN,
+        ')' => RPAREN,
+        '{' => LBRACE,
+        '}' => RBRACE,
+        '[' => LBRACK,
+        ']' => RBRACK,
+        ';' => SEMICOLON,
+        ':' => COLON,
+        ',' => COMMA,
 
-        _ => ILLEGAL([ch].into()),
+        _ => ILLEGAL(ch.to_string()),
     }
 }
 
 #[inline]
-pub(super) fn lookup_comparison(ch: u8, has_eq: bool) -> TokenType {
+pub(super) fn lookup_comparison(ch: char, has_eq: bool) -> TokenType {
     use TokenType::{ILLEGAL, EQ, NEQ, LE, GE, LT, GT, ASSIGN};
-    debug_assert!(matches!(ch, b'<' | b'>' | b'=' | b'~'));
+    debug_assert!(matches!(ch, '<' | '>' | '=' | '~'));
 
     if has_eq {
         match ch {
-            b'<' => LE,
-            b'>' => GE,
-            b'=' => EQ,
-            b'~' => NEQ,
-            _ => ILLEGAL([ch, b'='].into()),
+            '<' => LE,
+            '>' => GE,
+            '=' => EQ,
+            '~' => NEQ,
+            _ => ILLEGAL(ch.to_string() + "="),
         }
     } else {
         match ch {
-            b'<' => LT,
-            b'>' => GT,
-            b'=' => ASSIGN,
-            _ => ILLEGAL([ch].into()),
+            '<' => LT,
+            '>' => GT,
+            '=' => ASSIGN,
+            _ => ILLEGAL(ch.to_string()),
         }
     }
 }
