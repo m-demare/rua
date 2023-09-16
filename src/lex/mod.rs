@@ -5,7 +5,7 @@ pub mod tokens;
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::lex::tokens::{Token, TokenType, lookup_char, lookup_comparison, lookup_ident};
+use crate::lex::tokens::{Token, TokenType, lookup_char, lookup_comparison, lookup_ident, BinaryOp};
 use crate::lex::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
 use self::utils::take_while_peeking;
 
@@ -58,7 +58,7 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
             chars.next();
             return Token { ttype: TokenType::DOTDOTDOT}
         }
-        return Token { ttype: TokenType::DOTDOT}
+        return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT) }
     }
 
     match chars.peek() {

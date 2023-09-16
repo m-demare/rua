@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum TokenType {
     ILLEGAL(String),
@@ -7,26 +7,14 @@ pub enum TokenType {
     NUMBER(f64),
     IDENTIFIER(String), // TODO Stop storing the String for every identifier
 
-    // Arithmetic operators
-    PLUS,
+    BINARY_OP(BinaryOp),
+    UNARY_OP(UnaryOp),
     MINUS,
-    TIMES,
-    DIV,
-    MOD,
-    EXP,
-    // Logic operators
-    EQ,
-    NEQ,
-    LE,
-    GE,
-    LT,
-    GT,
+
 
     ASSIGN,
-    LEN,
 
     DOT,
-    DOTDOT,
     DOTDOTDOT,
 
     // Delimiters
@@ -42,7 +30,6 @@ pub enum TokenType {
     RBRACK,
 
     // Keywords
-    AND,
     BREAK,
     DO,
     ELSE,
@@ -55,8 +42,6 @@ pub enum TokenType {
     IN,
     LOCAL,
     NIL,
-    NOT,
-    OR,
     REPEAT,
     RETURN,
     THEN,
@@ -65,85 +50,117 @@ pub enum TokenType {
     WHILE,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[allow(clippy::upper_case_acronyms, non_camel_case_types)]
+pub enum BinaryOp {
+    // Arithmetic operators
+    PLUS,
+    TIMES,
+    DIV,
+    MOD,
+    EXP,
+
+    // Comparison operators
+    EQ,
+    NEQ,
+    LE,
+    GE,
+    LT,
+    GT,
+
+    // Logic operators
+    AND,
+    OR,
+
+    DOTDOT,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[allow(clippy::upper_case_acronyms, non_camel_case_types)]
+pub enum UnaryOp {
+    NOT,
+    LEN,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token{
     pub ttype: TokenType,
 }
 
 pub(super) fn lookup_ident(identifier: String) -> TokenType {
-    use TokenType::{IDENTIFIER, AND, BREAK, DO, ELSE, ELSEIF, END, FALSE, FOR, FUNCTION, IF, IN, LOCAL, NIL, NOT, OR, REPEAT, RETURN, THEN, TRUE, UNTIL, WHILE};
+    use TokenType as T;
     match identifier.as_str() {
-        "and" => AND,
-        "break" => BREAK,
-        "do" => DO,
-        "else" => ELSE,
-        "elseif" => ELSEIF,
-        "end" => END,
-        "false" => FALSE,
-        "for" => FOR,
-        "function" => FUNCTION,
-        "if" => IF,
-        "in" => IN,
-        "local" => LOCAL,
-        "nil" => NIL,
-        "not" => NOT,
-        "or" => OR,
-        "repeat" => REPEAT,
-        "return" => RETURN,
-        "then" => THEN,
-        "true" => TRUE,
-        "until" => UNTIL,
-        "while" => WHILE,
-        _ => IDENTIFIER(identifier),
+        "and" => T::BINARY_OP(BinaryOp::AND),
+        "break" => T::BREAK,
+        "do" => T::DO,
+        "else" => T::ELSE,
+        "elseif" => T::ELSEIF,
+        "end" => T::END,
+        "false" => T::FALSE,
+        "for" => T::FOR,
+        "function" => T::FUNCTION,
+        "if" => T::IF,
+        "in" => T::IN,
+        "local" => T::LOCAL,
+        "nil" => T::NIL,
+        "not" => T::UNARY_OP(UnaryOp::NOT),
+        "or" => T::BINARY_OP(BinaryOp::OR),
+        "repeat" => T::REPEAT,
+        "return" => T::RETURN,
+        "then" => T::THEN,
+        "true" => T::TRUE,
+        "until" => T::UNTIL,
+        "while" => T::WHILE,
+        _ => T::IDENTIFIER(identifier),
     }
 }
 
 #[inline]
 pub(super) fn lookup_char(ch: char) -> TokenType {
-    use TokenType::{ILLEGAL, PLUS, MINUS, TIMES, DIV, MOD, EXP, ASSIGN, LEN, COMMA, SEMICOLON, COLON, LPAREN, RPAREN, LBRACE, RBRACE, LBRACK, RBRACK};
+    use TokenType as T;
     match ch {
-        '+' => PLUS,
-        '-' => MINUS,
-        '*' => TIMES,
-        '/' => DIV,
-        '%' => MOD,
-        '^' => EXP,
-        '#' => LEN,
+        '+' => T::BINARY_OP(BinaryOp::PLUS),
+        '-' => T::MINUS, // TODO volar
+        '*' => T::BINARY_OP(BinaryOp::TIMES),
+        '/' => T::BINARY_OP(BinaryOp::DIV),
+        '%' => T::BINARY_OP(BinaryOp::MOD),
+        '^' => T::BINARY_OP(BinaryOp::EXP),
+        '#' => T::UNARY_OP(UnaryOp::LEN),
 
-        '=' => ASSIGN,
-        '(' => LPAREN,
-        ')' => RPAREN,
-        '{' => LBRACE,
-        '}' => RBRACE,
-        '[' => LBRACK,
-        ']' => RBRACK,
-        ';' => SEMICOLON,
-        ':' => COLON,
-        ',' => COMMA,
+        '=' => T::ASSIGN,
+        '(' => T::LPAREN,
+        ')' => T::RPAREN,
+        '{' => T::LBRACE,
+        '}' => T::RBRACE,
+        '[' => T::LBRACK,
+        ']' => T::RBRACK,
+        ';' => T::SEMICOLON,
+        ':' => T::COLON,
+        ',' => T::COMMA,
 
-        _ => ILLEGAL(ch.to_string()),
+        _ => T::ILLEGAL(ch.to_string()),
     }
 }
 
 #[inline]
 pub(super) fn lookup_comparison(ch: char, has_eq: bool) -> TokenType {
-    use TokenType::{ILLEGAL, EQ, NEQ, LE, GE, LT, GT, ASSIGN};
+    use TokenType as T;
     debug_assert!(matches!(ch, '<' | '>' | '=' | '~'));
 
     if has_eq {
         match ch {
-            '<' => LE,
-            '>' => GE,
-            '=' => EQ,
-            '~' => NEQ,
-            _ => ILLEGAL(ch.to_string() + "="),
+            '<' => T::BINARY_OP(BinaryOp::LE),
+            '>' => T::BINARY_OP(BinaryOp::GE),
+            '=' => T::BINARY_OP(BinaryOp::EQ),
+            '~' => T::BINARY_OP(BinaryOp::NEQ),
+            _ => T::ILLEGAL(ch.to_string() + "="),
         }
     } else {
         match ch {
-            '<' => LT,
-            '>' => GT,
-            '=' => ASSIGN,
-            _ => ILLEGAL(ch.to_string()),
+            '<' => T::BINARY_OP(BinaryOp::LT),
+            '>' => T::BINARY_OP(BinaryOp::GT),
+            '=' => T::ASSIGN,
+            _ => T::ILLEGAL(ch.to_string()),
         }
     }
 }

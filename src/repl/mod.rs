@@ -1,6 +1,8 @@
 use std::io::{self, Write};
 
-use rua::lex::tokenize;
+use crate::lex::tokenize;
+
+use crate::parser::parse;
 
 pub fn run() -> io::Result<()>{
     println!("Welcome to Rua");
@@ -12,7 +14,12 @@ pub fn run() -> io::Result<()>{
         stdin.read_line(&mut input)?;
 
         let tokens = tokenize(&input);
-        println!("{tokens:?}");
+        println!("Tokens: {tokens:?}");
+        let ast = parse(&tokens);
+        match ast {
+            Ok(tree) => {println!("AST: {tree:?}")},
+            Err(err) => {println!("AST: {err}")},
+        }
     }
 }
 
