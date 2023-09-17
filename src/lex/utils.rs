@@ -1,35 +1,8 @@
+#![allow(clippy::unused_peekable)]
+
 use std::iter::Peekable;
 use std::str::Chars;
-
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-pub fn parse_float_radix(s: &str, radix: u32) -> Option<f32> {
-    let s2 = s.replace('.', "");
-    let i = i64::from_str_radix(&s2, radix).ok()?;
-    let split = s.split('.');
-    let fraction_len: usize = match split.clone().count() {
-        1 => 0,
-        2 => split.last().expect("Split should have 2 items, wth").len(),
-        _ => return None,
-    };
-    let f = (i as f64) / f64::from(radix).powi(fraction_len as i32);
-    Some(f as f32)
-}
-
-pub fn to_int(s: &String) -> Option<i32> {
-    match s {
-        num if num.starts_with("0x") => i32::from_str_radix(num.split_at(2).1, 16).ok(),
-        num if num.starts_with("0b") => i32::from_str_radix(num.split_at(2).1, 2).ok(),
-        num => num.parse::<i32>().ok(),
-    }
-}
-
-pub fn to_float(s: &String) -> Option<f32> {
-    match s {
-        num if num.starts_with("0x") => parse_float_radix(num.split_at(2).1, 16),
-        num if num.starts_with("0b") => parse_float_radix(num.split_at(2).1, 2),
-        num => num.parse::<f32>().ok(),
-    }
-}
+use super::chars::{is_numeric, is_hex};
 
 #[inline]
 pub fn take_while_peeking(chars: &mut Peekable<Chars>, pred: &dyn Fn(&char) -> bool) -> String {
@@ -45,5 +18,52 @@ pub fn take_while_peeking(chars: &mut Peekable<Chars>, pred: &dyn Fn(&char) -> b
 #[inline]
 pub fn eat_while_peeking(chars: &mut Peekable<Chars>, pred: &dyn Fn(&char) -> bool) {
     while chars.next_if(pred).is_some() { }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+pub fn read_decimals(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, String>{
+    let clone_it = chars.clone();
+    let mut i = 0;
+
+    let mut res = 0f64;
+    let mut multiplier = 1f64;
+    while let Some(&ch) = chars.peek() {
+        i += 1;
+        if !(is_numeric(&ch) || radix == 16 && is_hex(&ch)) { break; }
+        chars.next();
+        multiplier /= f64::from(radix);
+        res += match ch.to_digit(radix) {
+            Some(n) => f64::from(n),
+            None => return Err(clone_it.take(i).collect()),
+        } * multiplier;
+    }
+    let precision = f64::from(radix.pow(i as u32));
+    res = (res * precision).round() / precision;
+    Ok(res)
+}
+
+pub fn read_number(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, String>{
+    let clone_it = chars.clone();
+    let mut i = 0;
+
+    let mut res = 0f64;
+    while let Some(&ch) = chars.peek() {
+        i += 1;
+        if !(is_numeric(&ch) || radix == 16 && is_hex(&ch)) { break; }
+        chars.next();
+        res *= f64::from(radix);
+        res += match ch.to_digit(radix) {
+            Some(n) => f64::from(n),
+            None => return Err(clone_it.take(i).collect()),
+        };
+    }
+    if Some(&'.') == chars.peek() {
+        chars.next();
+        if radix == 2 {
+            return Err(clone_it.take(i).collect())
+        }
+        res += read_decimals(chars, radix)?;
+    }
+    Ok(res)
 }
 

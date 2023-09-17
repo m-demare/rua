@@ -4,9 +4,8 @@ pub enum TokenType {
     ILLEGAL(String),
     EOF,
 
-    INT(i32),
-    FLOAT(f32),
-    IDENTIFIER(String),
+    NUMBER(f64),
+    IDENTIFIER(String), // TODO Stop storing the String for every identifier
 
     // Arithmetic operators
     PLUS,

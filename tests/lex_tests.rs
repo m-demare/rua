@@ -22,11 +22,12 @@ fn test_ints() {
         "58
         0x2A
         0b1001
-        0b58", [
-        Token { ttype: INT(58) },
-        Token { ttype: INT(0x2A) },
-        Token { ttype: INT(0b1001) },
-        Token { ttype: ILLEGAL("0b58".to_owned()) },
+        0b158", [
+        Token { ttype: NUMBER(58.0) },
+        Token { ttype: NUMBER(42.0) },
+        Token { ttype: NUMBER(9.0) },
+        Token { ttype: ILLEGAL("0b15".to_owned()) },
+        Token { ttype: NUMBER(8.0) },
         Token { ttype: EOF },
     ].into());
 }
@@ -36,12 +37,14 @@ fn test_floats() {
     test_lex(
         "0.58
         0x0.2A
-        0b0.1001
+        0b0.1
         0b0.23", [
-        Token { ttype: FLOAT(0.58) },
-        Token { ttype: FLOAT(0.1640625) },
-        Token { ttype: FLOAT(0.5625) },
-        Token { ttype: ILLEGAL("0b0.23".to_owned()) },
+        Token { ttype: NUMBER(0.58) },
+        Token { ttype: NUMBER(0.1640625) },
+        Token { ttype: ILLEGAL("0b0.".to_owned()) },
+        Token { ttype: NUMBER(1.0) },
+        Token { ttype: ILLEGAL("0b0.".to_owned()) },
+        Token { ttype: NUMBER(23.0) },
         Token { ttype: EOF },
     ].into());
 }
@@ -94,15 +97,15 @@ fn test_dots() {
         Token { ttype: DOT },
         Token { ttype: DOTDOT },
         Token { ttype: DOTDOTDOT },
-        Token { ttype: FLOAT(0.123) },
+        Token { ttype: NUMBER(0.123) },
         Token { ttype: EOF },
     ].into());
 }
 
 #[test]
 fn test_illegals() {
-    test_lex("0b210 ! @ ~", [
-        Token { ttype: ILLEGAL("0b210".to_owned()) },
+    test_lex("0b2 ! @ ~", [
+        Token { ttype: ILLEGAL("0b2".to_owned()) },
         Token { ttype: ILLEGAL("!".to_owned()) },
         Token { ttype: ILLEGAL("@".to_owned()) },
         Token { ttype: ILLEGAL("~".to_owned()) },

@@ -16,11 +16,6 @@ pub const fn is_space(ch: &char) -> bool {
 }
 
 #[inline]
-pub const fn is_numeric_base(ch: &char) -> bool {
-    matches!(ch, 'x' | 'b')
-}
-
-#[inline]
 pub const fn is_hex(ch: &char) -> bool {
     ch.is_ascii_hexdigit()
 }

@@ -6,8 +6,8 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 use crate::lex::tokens::{Token, TokenType, lookup_char, lookup_comparison, lookup_ident};
-use crate::lex::{chars::{is_alphabetic, is_hex, is_numeric, is_numeric_base, is_space}, utils::eat_while_peeking};
-use self::utils::{take_while_peeking, to_float, to_int};
+use crate::lex::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
+use self::utils::take_while_peeking;
 
 pub fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens = Vec::with_capacity(100);
@@ -63,10 +63,10 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
 
     match chars.peek() {
         Some(n) if is_numeric(n) => {
-            let float = take_while_peeking(chars, &|ch| is_hex(ch) || *ch == '.');
-            match to_float(&("0.".to_owned() + &float)) {
-                Some(n) => Token { ttype: TokenType::FLOAT(n) },
-                None => Token { ttype: TokenType::ILLEGAL(float) },
+            let float = read_decimals(chars, 10);
+            match float {
+                Ok(n) => Token { ttype: TokenType::NUMBER(n) },
+                Err(s) => Token { ttype: TokenType::ILLEGAL(s) },
             }
         },
         _ => Token { ttype: TokenType::DOT},
@@ -82,20 +82,20 @@ fn read_identifier(chars: &mut Peekable<Chars>) -> Token {
 }
 
 fn read_number(chars: &mut Peekable<Chars>) -> Token {
-    let int = take_while_peeking(chars, &|ch| is_hex(ch) || is_numeric_base(ch));
-    if chars.peek() == Some(&'.') {
-        let float_part = take_while_peeking(chars, &|ch| is_hex(ch) || *ch == '.');
-
-        let s = int + &float_part;
-        return match to_float(&s) {
-            Some(n) => Token { ttype: TokenType::FLOAT(n) },
-            None => Token { ttype: TokenType::ILLEGAL(s) },
+    let mut radix = 10;
+    if chars.peek() == Some(&'0') {
+        chars.next();
+        if let Some(ch) = chars.peek() {
+            radix = match ch {
+                'x' => { chars.next(); 16 },
+                'b' => { chars.next(); 2 },
+                _ => 10,
+            }
         }
     }
-
-    match to_int(&int) {
-        Some(n) => Token { ttype: TokenType::INT(n) },
-        None => Token { ttype: TokenType::ILLEGAL(int) },
+    match utils::read_number(chars, radix) {
+        Ok(n) => Token { ttype: TokenType::NUMBER(n) },
+        Err(s) => Token { ttype: TokenType::ILLEGAL(format!("{}{}", if radix == 2 {"0b"} else {"0x"}, s))},
     }
 }
 
