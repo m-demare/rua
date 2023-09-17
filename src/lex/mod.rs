@@ -13,8 +13,16 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens = Vec::with_capacity(100);
 
     let mut chars = input.chars().peekable();
-    while let Some(ch) = chars.next() {
-        let token = get_token(ch, chars.by_ref());
+    while let Some(ch) = chars.peek() {
+        let token = match ch {
+            '=' | '<' | '>' | '~' => Some(read_comparison(chars.by_ref())),
+            '-' => read_minus(chars.by_ref()),
+            '.' => Some(read_dot(chars.by_ref())),
+            a if is_alphabetic(a) => Some(read_identifier(chars.by_ref())),
+            n if is_numeric(n) => Some(read_number(chars.by_ref())),
+            s if is_space(s) => { eat_spaces(chars.by_ref()); None },
+            _ => Some(single_char_token(chars.by_ref())),
+        };
         if let Some(t) = token {
             tokens.push(t);
         }
@@ -25,24 +33,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     tokens
 }
 
-fn get_token(ch: char, chars: &mut Peekable<Chars>) -> Option<Token> {
-    match ch {
-        '=' | '<' | '>' | '~' => Some(read_comparison(ch, chars)),
-        '-' => read_minus(ch, chars),
-        '.' => Some(read_dot(chars)),
-        a if is_alphabetic(&a) => Some(read_identifier(ch, chars)),
-        n if is_numeric(&n) => Some(read_number(ch, chars)),
-        s if is_space(&s) => { eat_spaces(chars); None },
-        _ => Some(single_char_token(ch)),
-    }
-}
-
 #[inline]
-fn single_char_token(ch: char) -> Token {
-    Token { ttype: lookup_char(ch) }
+fn single_char_token(chars: &mut Peekable<Chars>) -> Token {
+    Token { ttype: lookup_char(chars.next().expect("Chars cannot be empty here")) }
 }
 
-fn read_comparison(ch: char, chars: &mut Peekable<Chars>) -> Token {
+fn read_comparison(chars: &mut Peekable<Chars>) -> Token {
+    let ch = chars.next().expect("Chars cannot be empty here");
     if chars.peek() == Some(&'='){
         chars.next();
         return Token { ttype: lookup_comparison(ch, true) };
@@ -51,6 +48,10 @@ fn read_comparison(ch: char, chars: &mut Peekable<Chars>) -> Token {
 }
 
 fn read_dot(chars: &mut Peekable<Chars>) -> Token {
+    let ch = chars.next();
+
+    debug_assert_eq!(ch, Some('.'));
+
     if chars.peek() == Some(&'.') {
         chars.next();
         if chars.peek() == Some(&'.') {
@@ -72,20 +73,16 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
     }
 }
 
-fn read_identifier(ch: char, chars: &mut Peekable<Chars>) -> Token {
-    debug_assert!(is_alphabetic(&ch));
-
+fn read_identifier(chars: &mut Peekable<Chars>) -> Token {
     let identifier = take_while_peeking(chars, &|ch| is_alphabetic(ch) || is_numeric(ch));
 
     Token {
-        ttype: lookup_ident((ch.to_string() + &identifier).as_str())
+        ttype: lookup_ident(identifier),
     }
 }
 
-fn read_number(ch: char, chars: &mut Peekable<Chars>) -> Token {
-    debug_assert!(is_numeric(&ch));
-
-    let int = ch.to_string() + &take_while_peeking(chars, &|ch| is_hex(ch) || is_numeric_base(ch));
+fn read_number(chars: &mut Peekable<Chars>) -> Token {
+    let int = take_while_peeking(chars, &|ch| is_hex(ch) || is_numeric_base(ch));
     if chars.peek() == Some(&'.') {
         let float_part = take_while_peeking(chars, &|ch| is_hex(ch) || *ch == '.');
 
@@ -102,20 +99,25 @@ fn read_number(ch: char, chars: &mut Peekable<Chars>) -> Token {
     }
 }
 
-fn read_minus(ch: char, chars: &mut Peekable<Chars>) -> Option<Token> {
-    debug_assert_eq!(ch, '-');
+fn read_minus(chars: &mut Peekable<Chars>) -> Option<Token> {
+    let ch = chars.next();
+
+    debug_assert_eq!(ch, Some('-'));
 
     if chars.peek() != Some(&'-') {
         return Some(Token { ttype: TokenType::MINUS })
     }
 
     // If -- is found, discard til next \n
+    chars.next();
     eat_while_peeking(chars, &|ch| *ch != '\n');
     None
 }
 
 #[inline]
 fn eat_spaces(chars: &mut Peekable<Chars>) {
+    chars.next();
+    
     eat_while_peeking(chars, &is_space);
 }
 

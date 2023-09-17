@@ -71,9 +71,9 @@ pub struct Token{
     pub ttype: TokenType,
 }
 
-pub(super) fn lookup_ident(identifier: &str) -> TokenType {
+pub(super) fn lookup_ident(identifier: String) -> TokenType {
     use TokenType::{IDENTIFIER, AND, BREAK, DO, ELSE, ELSEIF, END, FALSE, FOR, FUNCTION, IF, IN, LOCAL, NIL, NOT, OR, REPEAT, RETURN, THEN, TRUE, UNTIL, WHILE};
-    match identifier {
+    match identifier.as_str() {
         "and" => AND,
         "break" => BREAK,
         "do" => DO,
@@ -95,7 +95,7 @@ pub(super) fn lookup_ident(identifier: &str) -> TokenType {
         "true" => TRUE,
         "until" => UNTIL,
         "while" => WHILE,
-        _ => IDENTIFIER(identifier.to_owned()),
+        _ => IDENTIFIER(identifier),
     }
 }
 
