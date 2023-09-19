@@ -5,10 +5,23 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
 [dependencies]
 
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[profile.dev]
+opt-level = 3
+
+[profile.bench]
+debug = true
+
+[[bench]]
+name = "lex_bench"
+harness = false
 

@@ -74,7 +74,7 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
 }
 
 fn read_identifier(chars: &mut Peekable<Chars>) -> Token {
-    let identifier = take_while_peeking(chars, &|ch| is_alphabetic(ch) || is_numeric(ch));
+    let identifier = take_while_peeking(chars, &|ch: &char| is_alphabetic(ch) || is_numeric(ch));
 
     Token {
         ttype: lookup_ident(identifier),
@@ -110,7 +110,8 @@ fn read_minus(chars: &mut Peekable<Chars>) -> Option<Token> {
 
     // If -- is found, discard til next \n
     chars.next();
-    eat_while_peeking(chars, &|ch| *ch != '\n');
+    eat_while_peeking(chars, &|ch: &char| *ch != '\n');
+    chars.next();
     None
 }
 
