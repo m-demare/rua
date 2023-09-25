@@ -5,17 +5,6 @@ use std::str::Chars;
 use super::chars::{is_numeric, is_hex};
 
 #[inline]
-pub fn take_while_peeking(chars: &mut Peekable<Chars>, pred: &impl Fn(&char)->bool) -> String {
-    let mut i = 0;
-    let mut clone_it = chars.clone();
-
-    while clone_it.next_if(pred).is_some() {
-        i += 1;
-    }
-    chars.take(i).collect()
-}
-
-#[inline]
 pub fn eat_while_peeking(chars: &mut Peekable<Chars>, pred: &impl Fn(&char)->bool) {
     while chars.next_if(pred).is_some() { }
 }

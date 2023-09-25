@@ -1,10 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::{lex::tokenize, parser::parse};
+use rua::{lex::tokenize, parser::parse, identifiers::Trie};
 
 fn parse_assignments(c: &mut Criterion) {
     let input = "local aaaaaa = 123".to_owned() + &"\naaaaaa = aaaaaa+123".repeat(500000);
-    let tokens = tokenize(&input);
+    let mut identifiers = Trie::new();
+    let tokens = tokenize(&input, &mut identifiers);
 
     c.bench_function("parse_assignments", |b| b.iter(|| parse(black_box(&tokens))));
 }
@@ -18,14 +19,16 @@ fn parse_fibonacci(c: &mut Criterion) {
     end
 end
 ".repeat(50000);
-    let tokens = tokenize(&input);
+    let mut identifiers = Trie::new();
+    let tokens = tokenize(&input, &mut identifiers);
 
     c.bench_function("parse_fibonacci", |b| b.iter(|| parse(black_box(&tokens))));
 }
 
 fn parse_huge_expr(c: &mut Criterion) {
     let input = "return ".to_owned() + &"1 + 5 * 3 - (2^4 * -8) * ".repeat(30000) + "1";
-    let tokens = tokenize(&input);
+    let mut identifiers = Trie::new();
+    let tokens = tokenize(&input, &mut identifiers);
 
     c.bench_function("parse_huge_expr", |b| b.iter(|| parse(black_box(&tokens))));
 }

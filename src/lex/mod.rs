@@ -5,11 +5,11 @@ pub mod tokens;
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::lex::tokens::{Token, TokenType, lookup_char, lookup_comparison, lookup_ident, BinaryOp};
-use crate::lex::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
-use self::utils::take_while_peeking;
+use self::tokens::{Token, TokenType, lookup_char, lookup_comparison, BinaryOp};
+use self::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
+use crate::identifiers::{TrieWalker, Trie};
 
-pub fn tokenize(input: &str) -> Vec<Token> {
+pub fn tokenize(input: &str, identifiers: &mut Trie) -> Vec<Token> {
     let mut tokens = Vec::with_capacity(100);
 
     let mut chars = input.chars().peekable();
@@ -18,7 +18,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             '=' | '<' | '>' | '~' => Some(read_comparison(chars.by_ref())),
             '-' => read_minus(chars.by_ref()),
             '.' => Some(read_dot(chars.by_ref())),
-            a if is_alphabetic(a) => Some(read_identifier(chars.by_ref())),
+            a if is_alphabetic(a) => Some(read_identifier(chars.by_ref(), identifiers)),
             n if is_numeric(n) => Some(read_number(chars.by_ref())),
             s if is_space(s) => { eat_spaces(chars.by_ref()); None },
             _ => Some(single_char_token(chars.by_ref())),
@@ -73,11 +73,21 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
     }
 }
 
-fn read_identifier(chars: &mut Peekable<Chars>) -> Token {
-    let identifier = take_while_peeking(chars, &|ch: &char| is_alphabetic(ch) || is_numeric(ch));
+fn read_identifier(chars: &mut Peekable<Chars>, identifiers: &mut Trie) -> Token {
+    #![allow(clippy::unused_peekable)]
+    let mut i = 0;
+    let clone_it = chars.clone();
 
-    Token {
-        ttype: lookup_ident(identifier),
+    let mut trie_walker = TrieWalker::new(identifiers);
+
+    while let Some(ch) = chars.next_if(|ch: &char| is_alphabetic(ch) || is_numeric(ch)) {
+        i += 1;
+        trie_walker.walk(ch);
+    }
+    let identifier = trie_walker.get_res();
+    match identifier {
+        Some(id) => Token { ttype: id },
+        None => Token { ttype: identifiers.add_or_get(&clone_it.take(i).collect::<String>()) },
     }
 }
 

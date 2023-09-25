@@ -1,7 +1,7 @@
 use std::{error::Error, fmt};
 
-use crate::lex::tokens::{Token, TokenType};
-use super::ast::{BlockType, Identifier};
+use crate::{lex::tokens::{Token, TokenType}, identifiers::Identifier};
+use super::ast::BlockType;
 
 macro_rules! peek_token_is {
     ($tokens_it: expr, $($args: pat),+) => {

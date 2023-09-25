@@ -1,3 +1,5 @@
+use crate::identifiers::Identifier;
+
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum TokenType {
@@ -5,7 +7,7 @@ pub enum TokenType {
     EOF,
 
     NUMBER(f64),
-    IDENTIFIER(String), // TODO Stop storing the String for every identifier
+    IDENTIFIER(Identifier),
 
     BINARY_OP(BinaryOp),
     UNARY_OP(UnaryOp),
@@ -87,9 +89,9 @@ pub struct Token{
     pub ttype: TokenType,
 }
 
-pub(super) fn lookup_ident(identifier: String) -> TokenType {
+pub fn lookup_keyword(identifier: &str) -> Option<TokenType> {
     use TokenType as T;
-    match identifier.as_str() {
+    Some(match identifier {
         "and" => T::BINARY_OP(BinaryOp::AND),
         "break" => T::BREAK,
         "do" => T::DO,
@@ -111,8 +113,8 @@ pub(super) fn lookup_ident(identifier: String) -> TokenType {
         "true" => T::TRUE,
         "until" => T::UNTIL,
         "while" => T::WHILE,
-        _ => T::IDENTIFIER(identifier),
-    }
+        _ => return None,
+    })
 }
 
 #[inline]

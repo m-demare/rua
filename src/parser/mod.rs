@@ -3,9 +3,9 @@ mod utils;
 
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lex::tokens::{Token, TokenType, UnaryOp, BinaryOp};
+use crate::{lex::tokens::{Token, TokenType, UnaryOp, BinaryOp}, identifiers::Identifier};
 use ast::Program;
-use self::{ast::{Statement, Expression, Precedence, precedence_of_binary, BlockType, FunctionArg, Identifier, ExpressionContext}, utils::{peek_token_is, ParseError}};
+use self::{ast::{Statement, Expression, Precedence, precedence_of_binary, BlockType, FunctionArg, ExpressionContext}, utils::{peek_token_is, ParseError}};
 
 // https://www.lua.org/manual/5.1/manual.html#8
 
@@ -72,7 +72,7 @@ fn handle_identifier_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<St
             Some(Token { ttype: TokenType::ASSIGN, ..}) => {
                 tokens_it.next();
                 tokens_it.next();
-                parse_assign_st(tokens_it, id.to_string()) },
+                parse_assign_st(tokens_it, id.clone()) },
             Some(Token { ttype: TokenType::LPAREN, ..}) => { let prefix = parse_prefix_exp(tokens_it)?; parse_call_st(tokens_it, prefix) },
             Some(t) => Err(ParseError::UnexpectedToken(Box::new((*t).clone()), Box::new([TokenType::ASSIGN]))),
             None => unreachable!("Should have found EOF before end"),
@@ -86,7 +86,7 @@ fn parse_prefix_exp(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expres
     match tokens_it.next() {
         Some(Token{ ttype: TokenType::IDENTIFIER(id), .. }) => parse_var(tokens_it, id.clone()),
         Some(Token{ ttype: TokenType::LPAREN, .. }) =>  parse_group_expr(tokens_it),
-        Some(t) => Err(ParseError::UnexpectedToken(Box::new((*t).clone()), [TokenType::IDENTIFIER(String::new()), TokenType::LPAREN].into())),
+        Some(t) => Err(ParseError::UnexpectedToken(Box::new((*t).clone()), [TokenType::IDENTIFIER(Identifier::default()), TokenType::LPAREN].into())),
         None => unreachable!("Should have found EOF before end"),
     }
 }
@@ -156,7 +156,7 @@ fn parse_local_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statemen
 fn parse_identifier(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Identifier> {
     Ok(match tokens_it.next() {
         Some(Token { ttype: TokenType::IDENTIFIER(s) }) => s.clone(),
-        Some(t) => return Err(ParseError::UnexpectedToken(Box::new(t.clone()), [TokenType::IDENTIFIER(String::new())].into())),
+        Some(t) => return Err(ParseError::UnexpectedToken(Box::new(t.clone()), [TokenType::IDENTIFIER(Identifier::default())].into())),
         None => unreachable!("Should have found EOF before end"),
     })
 }
@@ -259,7 +259,7 @@ fn parse_function_expr(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<(Ex
                 }
             }
             Some(Token{ttype: TokenType::RPAREN}) => {tokens_it.next(); break;}
-            Some(t) => return Err(ParseError::UnexpectedToken(Box::new((*t).clone()), Box::new([TokenType::RPAREN, TokenType::IDENTIFIER(String::new())]))),
+            Some(t) => return Err(ParseError::UnexpectedToken(Box::new((*t).clone()), Box::new([TokenType::RPAREN, TokenType::IDENTIFIER(Identifier::default())]))),
             None => unreachable!("Should have found EOF before end"),
         }
     }

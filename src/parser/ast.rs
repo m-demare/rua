@@ -1,11 +1,9 @@
-use crate::lex::tokens::BinaryOp;
+use crate::{lex::tokens::BinaryOp, identifiers::Identifier};
 
 #[derive(PartialEq, Debug)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }
-
-pub type Identifier = String;
 
 #[derive(PartialEq, Debug)]
 pub enum Expression {
