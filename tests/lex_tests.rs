@@ -36,7 +36,7 @@ fn test_ints() {
         Token { ttype: T::NUMBER(58.0) },
         Token { ttype: T::NUMBER(42.0) },
         Token { ttype: T::NUMBER(9.0) },
-        Token { ttype: T::ILLEGAL("0b15".to_owned()) },
+        Token { ttype: T::ILLEGAL("0b15".into()) },
         Token { ttype: T::NUMBER(8.0) },
         Token { ttype: T::EOF },
     ]);
@@ -51,9 +51,9 @@ fn test_floats() {
         0b0.23", vec![
         Token { ttype: T::NUMBER(0.58) },
         Token { ttype: T::NUMBER(0.1640625) },
-        Token { ttype: T::ILLEGAL("0b0.".to_owned()) },
+        Token { ttype: T::ILLEGAL("0b0.".into()) },
         Token { ttype: T::NUMBER(1.0) },
-        Token { ttype: T::ILLEGAL("0b0.".to_owned()) },
+        Token { ttype: T::ILLEGAL("0b0.".into()) },
         Token { ttype: T::NUMBER(23.0) },
         Token { ttype: T::EOF },
     ]);
@@ -115,10 +115,10 @@ fn test_dots() {
 #[test]
 fn test_illegals() {
     test_lex!("0b2 ! @ ~", vec![
-        Token { ttype: T::ILLEGAL("0b2".to_owned()) },
-        Token { ttype: T::ILLEGAL("!".to_owned()) },
-        Token { ttype: T::ILLEGAL("@".to_owned()) },
-        Token { ttype: T::ILLEGAL("~".to_owned()) },
+        Token { ttype: T::ILLEGAL("0b2".into()) },
+        Token { ttype: T::ILLEGAL("!".into()) },
+        Token { ttype: T::ILLEGAL("@".into()) },
+        Token { ttype: T::ILLEGAL("~".into()) },
         Token { ttype: T::EOF },
     ]);
 }

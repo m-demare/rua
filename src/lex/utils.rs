@@ -2,7 +2,7 @@
 
 use std::iter::Peekable;
 use std::str::Chars;
-use super::chars::{is_numeric, is_hex};
+use super::chars::{is_numeric, is_alphabetic};
 
 #[inline]
 pub fn eat_while_peeking(chars: &mut Peekable<Chars>, pred: &impl Fn(&char)->bool) {
@@ -18,7 +18,7 @@ pub fn read_decimals(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, Str
     let mut multiplier = 1f64;
     while let Some(&ch) = chars.peek() {
         i += 1;
-        if !(is_numeric(&ch) || radix == 16 && is_hex(&ch)) { break; }
+        if !(is_numeric(ch) || is_alphabetic(ch)) { break; }
         chars.next();
         multiplier /= f64::from(radix);
         res += match ch.to_digit(radix) {
@@ -38,7 +38,7 @@ pub fn read_number(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, Strin
     let mut res = 0f64;
     while let Some(&ch) = chars.peek() {
         i += 1;
-        if !(is_numeric(&ch) || radix == 16 && is_hex(&ch)) { break; }
+        if !(is_numeric(ch) || is_alphabetic(ch)) { break; }
         chars.next();
         res *= f64::from(radix);
         res += match ch.to_digit(radix) {

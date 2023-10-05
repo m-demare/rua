@@ -3,7 +3,7 @@ use crate::identifiers::Identifier;
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum TokenType {
-    ILLEGAL(String),
+    ILLEGAL(Box<str>),
     EOF,
 
     NUMBER(f64),
@@ -140,7 +140,7 @@ pub(super) fn lookup_char(ch: char) -> TokenType {
         ':' => T::COLON,
         ',' => T::COMMA,
 
-        _ => T::ILLEGAL(ch.to_string()),
+        _ => T::ILLEGAL(ch.to_string().into_boxed_str()),
     }
 }
 
@@ -155,14 +155,14 @@ pub(super) fn lookup_comparison(ch: char, has_eq: bool) -> TokenType {
             '>' => T::BINARY_OP(BinaryOp::GE),
             '=' => T::BINARY_OP(BinaryOp::EQ),
             '~' => T::BINARY_OP(BinaryOp::NEQ),
-            _ => T::ILLEGAL(ch.to_string() + "="),
+            _ => T::ILLEGAL((ch.to_string() + "=").into_boxed_str()),
         }
     } else {
         match ch {
             '<' => T::BINARY_OP(BinaryOp::LT),
             '>' => T::BINARY_OP(BinaryOp::GT),
             '=' => T::ASSIGN,
-            _ => T::ILLEGAL(ch.to_string()),
+            _ => T::ILLEGAL(ch.to_string().into_boxed_str()),
         }
     }
 }

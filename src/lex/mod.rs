@@ -18,9 +18,9 @@ pub fn tokenize(input: &str, identifiers: &mut Trie) -> Vec<Token> {
             '=' | '<' | '>' | '~' => Some(read_comparison(chars.by_ref())),
             '-' => read_minus(chars.by_ref()),
             '.' => Some(read_dot(chars.by_ref())),
-            a if is_alphabetic(a) => Some(read_identifier(chars.by_ref(), identifiers)),
-            n if is_numeric(n) => Some(read_number(chars.by_ref())),
-            s if is_space(s) => { eat_spaces(chars.by_ref()); None },
+            a if is_alphabetic(*a) => Some(read_identifier(chars.by_ref(), identifiers)),
+            n if is_numeric(*n) => Some(read_number(chars.by_ref())),
+            s if is_space(*s) => { eat_spaces(chars.by_ref()); None },
             _ => Some(single_char_token(chars.by_ref())),
         };
         if let Some(t) = token {
@@ -62,11 +62,11 @@ fn read_dot(chars: &mut Peekable<Chars>) -> Token {
     }
 
     match chars.peek() {
-        Some(n) if is_numeric(n) => {
+        Some(n) if is_numeric(*n) => {
             let float = read_decimals(chars, 10);
             match float {
                 Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-                Err(s) => Token { ttype: TokenType::ILLEGAL(s) },
+                Err(s) => Token { ttype: TokenType::ILLEGAL(s.into_boxed_str()) },
             }
         },
         _ => Token { ttype: TokenType::DOT},
@@ -80,7 +80,7 @@ fn read_identifier(chars: &mut Peekable<Chars>, identifiers: &mut Trie) -> Token
 
     let mut trie_walker = TrieWalker::new(identifiers);
 
-    while let Some(ch) = chars.next_if(|ch: &char| is_alphabetic(ch) || is_numeric(ch)) {
+    while let Some(ch) = chars.next_if(|ch: &char| is_alphabetic(*ch) || is_numeric(*ch)) {
         i += 1;
         trie_walker.walk(ch);
     }
@@ -105,7 +105,7 @@ fn read_number(chars: &mut Peekable<Chars>) -> Token {
     }
     match utils::read_number(chars, radix) {
         Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-        Err(s) => Token { ttype: TokenType::ILLEGAL(format!("{}{}", if radix == 2 {"0b"} else {"0x"}, s))},
+        Err(s) => Token { ttype: TokenType::ILLEGAL(format!("{}{}", if radix == 2 {"0b"} else {"0x"}, s).into_boxed_str())},
     }
 }
 
@@ -129,6 +129,6 @@ fn read_minus(chars: &mut Peekable<Chars>) -> Option<Token> {
 fn eat_spaces(chars: &mut Peekable<Chars>) {
     chars.next();
     
-    eat_while_peeking(chars, &is_space);
+    eat_while_peeking(chars, &|ch| is_space(*ch));
 }
 

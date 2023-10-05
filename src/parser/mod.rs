@@ -41,7 +41,7 @@ fn parse_block(tokens_it: &mut Peekable<Iter<Token>>, block_type: BlockType) -> 
             },
             TT::IDENTIFIER(_) => { handle_identifier_st(tokens_it) },
             TT::LPAREN => { let prefix = parse_prefix_exp(tokens_it)?; parse_call_st(tokens_it, prefix) },
-            TT::ILLEGAL(s) => return Err(ParseError::IllegalToken(s.clone().into_boxed_str())),
+            TT::ILLEGAL(s) => return Err(ParseError::IllegalToken(s.clone())),
             TT::IF => parse_if(tokens_it),
             TT::WHILE => parse_while(tokens_it),
             _ => return Err(ParseError::UnexpectedToken(Box::new((*token).clone()), Box::new([TT::LOCAL, TT::RETURN, TT::SEMICOLON, TT::EOF, TT::END, TT::ELSE, TT::ELSEIF]))),
@@ -91,7 +91,7 @@ fn parse_prefix_exp(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expres
     }
 }
 
-fn parse_var(tokens_it: &mut Peekable<Iter< Token>>, id: Identifier) -> ParseResult<Expression> {
+fn parse_var(tokens_it: &mut Peekable<Iter<Token>>, id: Identifier) -> ParseResult<Expression> {
     // TODO var ::=  Name | prefixexp `[´ exp `]´ | prefixexp `.´ Name 
     Ok(Expression::Identifier(id))
 }
@@ -103,7 +103,7 @@ fn parse_assign_st(tokens_it: &mut Peekable<Iter<Token>>, id: Identifier) -> Par
 
 fn parse_call_st(tokens_it: &mut Peekable<Iter<Token>>, lhs: Expression) -> ParseResult<Statement> {
     let lparen = tokens_it.next();
-    assert_eq!(lparen.expect("Ain't None").ttype, TokenType::LPAREN);
+    debug_assert_eq!(lparen.expect("Ain't None").ttype, TokenType::LPAREN);
 
     let mut args = Vec::new();
     loop {
