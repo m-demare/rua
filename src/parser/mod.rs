@@ -5,7 +5,7 @@ use std::{iter::Peekable, slice::Iter};
 
 use crate::{lex::tokens::{Token, TokenType, UnaryOp, BinaryOp}, identifiers::Identifier};
 use ast::Program;
-use self::{ast::{Statement, Expression, Precedence, precedence_of_binary, BlockType, FunctionArg, ExpressionContext}, utils::{peek_token_is, ParseError}};
+use self::{ast::{Statement, Expression, Precedence, precedence_of_binary, BlockType, FunctionArg, ExpressionContext, ParseError}, utils::peek_token_is};
 
 // https://www.lua.org/manual/5.1/manual.html#8
 
@@ -40,15 +40,24 @@ fn parse_block(tokens_it: &mut Peekable<Iter<Token>>, block_type: BlockType) -> 
                 }
             },
             TT::IDENTIFIER(_) => { handle_identifier_st(tokens_it) },
-            TT::LPAREN => { let prefix = parse_prefix_exp(tokens_it)?; parse_call_st(tokens_it, prefix) },
+            TT::LPAREN => { handle_lparen_st(tokens_it) },
             TT::ILLEGAL(s) => return Err(ParseError::IllegalToken(s.clone())),
             TT::IF => parse_if(tokens_it),
-            TT::WHILE => parse_while(tokens_it),
+            TT::WHILE => parse_while_st(tokens_it),
+            TT::NUMBER(_) | TT::BINARY_OP(_) | TT::LBRACE |
+                TT::NIL | TT::TRUE | TT::FALSE => Err(ParseError::UnexpectedExpression),
             _ => return Err(ParseError::UnexpectedToken(Box::new((*token).clone()), Box::new([TT::LOCAL, TT::RETURN, TT::SEMICOLON, TT::EOF, TT::END, TT::ELSE, TT::ELSEIF]))),
         }?;
         statements.push(statement);
     }
     unreachable!("Should have found EOF before end");
+}
+
+fn handle_lparen_st(tokens_it: &mut Peekable<Iter<Token>>) -> Result<Statement, ParseError> {
+    match parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Group)? {
+        Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
+        _ => Err(ParseError::UnexpectedExpression),
+    }
 }
 
 fn parse_return_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statement> {
@@ -66,14 +75,17 @@ fn parse_return_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Stateme
 }
 
 fn handle_identifier_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statement> {
-    let mut cloned_it = tokens_it.clone();
-    if let Some(Token { ttype: TokenType::IDENTIFIER(id), ..}) = cloned_it.next() {
-        match cloned_it.peek() {
+    if let Some(Token { ttype: TokenType::IDENTIFIER(id), ..}) = tokens_it.next() {
+        match tokens_it.peek() {
             Some(Token { ttype: TokenType::ASSIGN, ..}) => {
                 tokens_it.next();
-                tokens_it.next();
                 parse_assign_st(tokens_it, id.clone()) },
-            Some(Token { ttype: TokenType::LPAREN, ..}) => { let prefix = parse_prefix_exp(tokens_it)?; parse_call_st(tokens_it, prefix) },
+            Some(Token { ttype: TokenType::LPAREN | TokenType::DOT, ..}) => {
+                match parse_infix_exp(tokens_it, Expression::Identifier(id.clone()), &Precedence::Lowest, &ExpressionContext::Group)? {
+                    Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
+                    t => {println!("{t:?}"); Err(ParseError::UnexpectedExpression) },
+                }
+            },
             Some(t) => Err(ParseError::UnexpectedToken(Box::new((*t).clone()), Box::new([TokenType::ASSIGN]))),
             None => unreachable!("Should have found EOF before end"),
         }
@@ -82,45 +94,9 @@ fn handle_identifier_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<St
     }
 }
 
-fn parse_prefix_exp(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expression> {
-    match tokens_it.next() {
-        Some(Token{ ttype: TokenType::IDENTIFIER(id), .. }) => parse_var(tokens_it, id.clone()),
-        Some(Token{ ttype: TokenType::LPAREN, .. }) =>  parse_group_expr(tokens_it),
-        Some(t) => Err(ParseError::UnexpectedToken(Box::new((*t).clone()), [TokenType::IDENTIFIER(Identifier::default()), TokenType::LPAREN].into())),
-        None => unreachable!("Should have found EOF before end"),
-    }
-}
-
-fn parse_var(tokens_it: &mut Peekable<Iter<Token>>, id: Identifier) -> ParseResult<Expression> {
-    // TODO var ::=  Name | prefixexp `[´ exp `]´ | prefixexp `.´ Name 
-    Ok(Expression::Identifier(id))
-}
-
 fn parse_assign_st(tokens_it: &mut Peekable<Iter<Token>>, id: Identifier) -> ParseResult<Statement> {
     let rhs = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Assign)?;
     Ok(Statement::Assign(id, Box::new(rhs)))
-}
-
-fn parse_call_st(tokens_it: &mut Peekable<Iter<Token>>, lhs: Expression) -> ParseResult<Statement> {
-    let lparen = tokens_it.next();
-    debug_assert_eq!(lparen.expect("Ain't None").ttype, TokenType::LPAREN);
-
-    let mut args = Vec::new();
-    loop {
-        match tokens_it.peek() {
-            Some(Token{ ttype: TokenType::RPAREN, .. }) => {tokens_it.next(); break;},
-            Some(_) => {
-                args.push(parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Call)?);
-                if peek_token_is!(tokens_it, TokenType::COMMA) { tokens_it.next(); }
-            },
-            None => unreachable!("Should have found EOF before end"),
-        }
-    }
-    if let Some(Token {ttype: TokenType::LPAREN, ..}) = tokens_it.peek() {
-        parse_call_st(tokens_it, Expression::Call(Box::new(lhs), args))
-    } else {
-        Ok(Statement::Call(Box::new(lhs), args))
-    }
 }
 
 fn parse_function_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statement> {
@@ -161,53 +137,10 @@ fn parse_identifier(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Identi
     })
 }
 
-fn parse_expression(tokens_it: &mut Peekable<Iter<Token>>, precedence: &Precedence, context: &ExpressionContext) -> ParseResult<Expression> {
-    let token = tokens_it.next();
+pub fn parse_expression(tokens_it: &mut Peekable<Iter<Token>>, precedence: &Precedence, context: &ExpressionContext) -> ParseResult<Expression> {
+    let expr = parse_prefix_exp(tokens_it, context)?;
 
-    // Prefix tokens
-    let mut expr = match token {
-        Some(Token { ttype: TokenType::UNARY_OP(ref op), .. }) => parse_unary_op(op, tokens_it, context)?,
-        Some(Token { ttype: TokenType::MINUS, .. }) => Expression::Neg(Box::new(parse_expression(tokens_it, &Precedence::Prefix, context)?)),
-        Some(Token { ttype: TokenType::IDENTIFIER(ref s), .. }) => parse_var(tokens_it, s.clone())?,
-        Some(Token { ttype: TokenType::NUMBER(n), .. }) => Expression::NumberLiteral(*n),
-        Some(Token { ttype: TokenType::TRUE, .. }) => Expression::BooleanLiteral(true),
-        Some(Token { ttype: TokenType::FALSE, .. }) => Expression::BooleanLiteral(false),
-        Some(Token { ttype: TokenType::LPAREN, .. }) => parse_group_expr(tokens_it)?,
-        Some(Token { ttype: TokenType::FUNCTION, .. }) => match parse_function_expr(tokens_it)? {
-            (exp, None) => exp,
-            (_, Some(id)) => return Err(ParseError::NamedFunctionExpr(id)),
-        },
-        Some(t) => return Err(ParseError::UnexpectedTokenWithErrorMsg(Box::new(t.clone()), "an expression".into())),
-        None => unreachable!("Should have found EOF before end"),
-    };
-
-    // Infix tokens
-    loop {
-        match tokens_it.peek() {
-            Some(Token { ttype: TokenType::BINARY_OP(op), .. }) => 
-                if precedence < &precedence_of_binary(op) {
-                    expr = parse_binary_op(expr, op, tokens_it, context)?;
-                } else {
-                    break Ok(expr)
-                },
-            Some(Token { ttype: TokenType::MINUS, .. }) =>
-                if precedence < &Precedence::Sum {
-                    tokens_it.next();
-                    let rhs = parse_expression(tokens_it, &Precedence::Sum, context)?;
-                    expr = Expression::Minus(Box::new((expr, rhs)));
-                } else {
-                    break Ok(expr)
-                },
-            Some(Token { ttype: TokenType::LPAREN, .. }) =>
-                if precedence < &Precedence::Call {
-                    expr = parse_call_expr(expr, tokens_it)?;
-                } else {
-                    break Ok(expr)
-                },
-                // TODO DOT, LBRACK
-            _ => break Ok(expr),
-        }
-    }
+    parse_infix_exp(tokens_it, expr, precedence, context)
 
     // TODO terminators (depending on ExpressionContext)
     // if peek_token_is(tokens_it, &TokenType::SEMICOLON) {
@@ -216,11 +149,83 @@ fn parse_expression(tokens_it: &mut Peekable<Iter<Token>>, precedence: &Preceden
     // Ok(expr)
 }
 
-fn parse_call_expr(expr: Expression, tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expression> {
-    match parse_call_st(tokens_it, expr)? {
-        Statement::Call(lhs, args) => Ok(Expression::Call(lhs, args)),
-        _ => unreachable!("parse_call_st returned a non-call statement")
+fn parse_infix_exp(tokens_it: &mut Peekable<Iter<Token>>, mut lhs: Expression,precedence: &Precedence, context: &ExpressionContext) -> Result<Expression, ParseError> {
+    loop {
+        match tokens_it.peek() {
+            Some(Token { ttype: TokenType::BINARY_OP(op), .. }) => 
+                if precedence < &precedence_of_binary(op) {
+                    lhs = parse_binary_op(lhs, op, tokens_it, context)?;
+                } else {
+                    break Ok(lhs)
+                },
+            Some(Token { ttype: TokenType::MINUS, .. }) =>
+                if precedence < &Precedence::Sum {
+                    tokens_it.next();
+                    let rhs = parse_expression(tokens_it, &Precedence::Sum, context)?;
+                    lhs = Expression::Minus(Box::new((lhs, rhs)));
+                } else {
+                    break Ok(lhs)
+                },
+            Some(Token { ttype: TokenType::LPAREN, .. }) =>
+                if precedence < &Precedence::Call {
+                    lhs = parse_call_expr(lhs, tokens_it)?;
+                } else {
+                    break Ok(lhs)
+                },
+            Some(Token { ttype: TokenType::DOT, .. }) =>
+                if precedence < &Precedence::FieldAccess {
+                    tokens_it.next();
+                    match tokens_it.next() {
+                        Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => {
+                            lhs = Expression::FieldAccess(Box::new(lhs), id.clone());
+                        }
+                        Some(t) => return Err(ParseError::UnexpectedToken(Box::new(t.clone()), [TokenType::IDENTIFIER(Identifier::default())].into())),
+                        None => unreachable!("Should have found EOF before end"),
+                    }
+                } else {
+                    break Ok(lhs)
+                },
+            // TODO LBRACK
+            _ => break Ok(lhs),
+        }
     }
+}
+
+fn parse_prefix_exp(tokens_it: &mut Peekable<Iter<Token>>, context: &ExpressionContext) -> Result<Expression, ParseError> {
+    Ok(match tokens_it.next() {
+        Some(Token { ttype: TokenType::UNARY_OP(ref op), .. }) => parse_unary_op(op, tokens_it, context)?,
+        Some(Token { ttype: TokenType::MINUS, .. }) => Expression::Neg(Box::new(parse_expression(tokens_it, &Precedence::Prefix, context)?)),
+        Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => Expression::Identifier(id.clone()),
+        Some(Token { ttype: TokenType::NUMBER(n), .. }) => Expression::NumberLiteral(*n),
+        Some(Token { ttype: TokenType::TRUE, .. }) => Expression::BooleanLiteral(true),
+        Some(Token { ttype: TokenType::FALSE, .. }) => Expression::BooleanLiteral(false),
+        Some(Token { ttype: TokenType::LPAREN, .. }) => parse_group_expr(tokens_it)?,
+        Some(Token { ttype: TokenType::NIL, .. }) => Expression::Nil,
+        Some(Token { ttype: TokenType::FUNCTION, .. }) => match parse_function_expr(tokens_it)? {
+            (exp, None) => exp,
+            (_, Some(id)) => return Err(ParseError::NamedFunctionExpr(id)),
+        },
+        Some(t) => return Err(ParseError::UnexpectedTokenWithErrorMsg(Box::new(t.clone()), "an expression".into())),
+        None => unreachable!("Should have found EOF before end"),
+    })
+}
+
+fn parse_call_expr(lhs: Expression, tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expression> {
+    let lparen = tokens_it.next();
+    debug_assert_eq!(lparen.expect("Ain't None").ttype, TokenType::LPAREN);
+
+    let mut args = Vec::new();
+    loop {
+        match tokens_it.peek() {
+            Some(Token{ ttype: TokenType::RPAREN, .. }) => {tokens_it.next(); break;},
+            Some(_) => {
+                args.push(parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Call)?);
+                if peek_token_is!(tokens_it, TokenType::COMMA) { tokens_it.next(); }
+            },
+            None => unreachable!("Should have found EOF before end"),
+        }
+    }
+    Ok(Expression::Call(Box::new(lhs), args))
 }
 
 fn parse_group_expr(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Expression> {
@@ -358,7 +363,7 @@ fn parse_if_elseif(tokens_it: &mut Peekable<Iter<Token>>, if_cond: Expression, i
     }
 }
 
-fn parse_while(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statement> {
+fn parse_while_st(tokens_it: &mut Peekable<Iter<Token>>) -> ParseResult<Statement> {
     let keyword = tokens_it.next();
     debug_assert!(keyword.is_some() && keyword.expect("Ain't None").ttype == TokenType::WHILE);
     let cond = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Condition)?;

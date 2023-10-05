@@ -286,6 +286,7 @@ fn test_call_statement() {
         bar(1, 2+3)
         a(true)(false);
         (1+2)(false)
+        a.b(true)
 ", Ok(Program{
         statements: [
                 S::Call(b!(E::Identifier(id!("foo"))), [].into()),
@@ -293,6 +294,7 @@ fn test_call_statement() {
                 S::Call(b!(E::Call(b!(E::Identifier(id!("a"))), [E::BooleanLiteral(true)].into())),
                     [E::BooleanLiteral(false)].into()),
                 S::Call(b!(E::Plus(b!((n!(1.0), n!(2.0))))), [E::BooleanLiteral(false)].into()),
+                S::Call(b!(E::FieldAccess(b!(E::Identifier(id!("a"))), id!("b"))), [E::BooleanLiteral(true)].into()),
             ].into()
         }));
 }
@@ -304,7 +306,7 @@ fn test_call_exp() {
         return 1 + foo(true)(false)
 ", Ok(Program{
         statements: [
-                S::Local(id!("a"), Some(Box::new(E::Call(Box::new(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())))),
+                S::Local(id!("a"), Some(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())))),
                 S::Return(Some(b!(E::Plus(b!((n!(1.0), E::Call(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())),
                 [E::BooleanLiteral(false)].into()))))))),
             ].into()
@@ -324,3 +326,13 @@ fn test_while_statement() {
         }));
 }
 
+#[test]
+fn test_field_access_exp() {
+    test_parse!("
+        local a = foo.bar.baz()
+", Ok(Program{
+        statements: [
+                S::Local(id!("a"), Some(b!(E::Call(b!(E::FieldAccess(b!(E::FieldAccess(b!(E::Identifier(id!("foo"))), id!("bar"))), id!("baz"))), [].into())))),
+            ].into()
+        }));
+}

@@ -122,7 +122,7 @@ pub(super) fn lookup_char(ch: char) -> TokenType {
     use TokenType as T;
     match ch {
         '+' => T::BINARY_OP(BinaryOp::PLUS),
-        '-' => T::MINUS, // TODO volar
+        '-' => T::MINUS,
         '*' => T::BINARY_OP(BinaryOp::TIMES),
         '/' => T::BINARY_OP(BinaryOp::DIV),
         '%' => T::BINARY_OP(BinaryOp::MOD),

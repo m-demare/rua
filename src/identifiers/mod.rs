@@ -93,9 +93,11 @@ impl<'trie> TrieNode{
     }
 
     fn find_next_or_add (&'trie mut self, ch: char) -> &'trie mut Self {
-        match self.next.iter().position(|(c, _)| &ch==c) {
-            Some(i) => &mut self.next[i].1,
-            None => {self.next.push((ch, Box::new(Self::new(None)))); &mut self.next.last_mut().expect("Just pushed").1},
+        if let Some(i) = self.next.iter().position(|(c, _)| &ch==c) {
+            &mut self.next[i].1
+        } else {
+            self.next.push((ch, Box::new(Self::new(None))));
+            &mut self.next.last_mut().expect("Just pushed").1
         }
     }
 }
