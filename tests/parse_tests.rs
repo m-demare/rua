@@ -11,7 +11,7 @@ macro_rules! b {
 
 macro_rules! n {
     ($e: expr) => {
-        {Box::new(E::NumberLiteral($e))}
+        {(E::NumberLiteral($e).into())}
     };
 }
 
@@ -107,9 +107,9 @@ fn test_infix_exprs() {
         local baz = 5 <= 7
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Plus(n!(5.0), n!(7.0))))),
-            S::Local(id!("bar"), Some(b!(E::Times(n!(5.0), n!(7.0))))),
-            S::Local(id!("baz"), Some(b!(E::Le(n!(5.0), n!(7.0))))),
+            S::Local(id!("foo"), Some(b!(E::Plus(b!((n!(5.0), n!(7.0))))))),
+            S::Local(id!("bar"), Some(b!(E::Times(b!((n!(5.0), n!(7.0))))))),
+            S::Local(id!("baz"), Some(b!(E::Le(b!((n!(5.0), n!(7.0))))))),
         ].into()
     }));
 }
@@ -123,15 +123,15 @@ fn test_infix_combined_exprs() {
 ", Ok(Program{
         statements: [
             S::Local(id!("foo"),
-                Some(b!(E::Plus(n!(5.0),
-                    b!(E::Times(n!(7.0), n!(2.0))))))),
+                Some(b!(E::Plus(b!((n!(5.0),
+                    E::Times(b!((n!(7.0), n!(2.0)))))))))),
             S::Local(id!("bar"),
-                Some(b!(E::Plus(b!(E::Times(n!(5.0), n!(7.0))),
-                    n!(2.0))))),
+                Some(b!(E::Plus(b!((E::Times(b!((n!(5.0), n!(7.0)))),
+                    n!(2.0))))))),
             S::Local(id!("baz"),
-                Some(b!(E::And(
-                    b!(E::Le(n!(5.0), n!(7.0))),
-                    b!(E::Eq(b!(E::Plus(n!(0.0), b!(E::Exp(n!(2.0), n!(3.0))))), n!(8.0))))))),
+                Some(b!(E::And(b!((
+                    E::Le(b!((n!(5.0), n!(7.0)))),
+                    E::Eq(b!((E::Plus(b!((n!(0.0), E::Exp(b!((n!(2.0), n!(3.0))))))), n!(8.0)))))))))),
         ].into()
     }));
 }
@@ -145,13 +145,13 @@ fn test_minus_exprs() {
 ", Ok(Program{
         statements: [
             S::Local(id!("foo"),
-                Some(b!(E::Plus(b!(E::Neg(n!(5.0))),
-                    b!(E::Times(n!(7.0), b!(E::Neg(n!(2.0))))))))),
+                Some(b!(E::Plus(b!((E::Neg(n!(5.0)),
+                    E::Times(b!((n!(7.0), E::Neg(n!(2.0))))))))))),
             S::Local(id!("bar"),
-                Some(b!(E::Minus(b!(E::Minus(b!(E::Neg(n!(5.0))), b!(E::Neg(n!(7.0))))),
-                    n!(2.0))))),
+                Some(b!(E::Minus(b!((E::Minus(b!((E::Neg(n!(5.0)), E::Neg(n!(7.0))))),
+                    n!(2.0))))))),
             S::Local(id!("baz"),
-                    Some(b!(E::Neg(b!(E::Exp(n!(2.0), n!(2.0))))))),
+                    Some(b!(E::Neg(b!(E::Exp(b!((n!(2.0), n!(2.0))))))))),
         ].into()
     }));
 }
@@ -178,10 +178,10 @@ fn test_parentheses_exprs() {
         local bar = not ((true and false) or not true)
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Times(b!(E::Plus(n!(5.0), n!(7.0))), n!(2.0))))),
-            S::Local(id!("bar"), Some(b!(E::Not(b!(E::Or(b!(
-                E::And(b!(E::BooleanLiteral(true)), b!(E::BooleanLiteral(false)))),
-                b!(E::Not(b!(E::BooleanLiteral(true)))))))))),
+            S::Local(id!("foo"), Some(b!(E::Times(b!((E::Plus(b!((n!(5.0), n!(7.0)))), n!(2.0))))))),
+            S::Local(id!("bar"), Some(b!(E::Not(b!(E::Or(b!((
+                E::And(b!((E::BooleanLiteral(true), E::BooleanLiteral(false)))),
+                E::Not(b!(E::BooleanLiteral(true))))))))))),
         ].into()
     }));
 }
@@ -218,7 +218,7 @@ fn test_if_statement() {
                     S::Local(id!("a"), Some(b!(E::BooleanLiteral(false)))),
                     S::Return(Some(b!(E::BooleanLiteral(true))))].into()),
                 (E::BooleanLiteral(true), [].into()),
-                (E::Gt(n!(5.0), n!(2.0)), [S::Return(Some(b!(E::BooleanLiteral(false))))].into())])),
+                (E::Gt(b!((n!(5.0), n!(2.0)))), [S::Return(Some(b!(E::BooleanLiteral(false))))].into())])),
             ].into()
         }));
 }
@@ -273,8 +273,8 @@ fn test_assignment_statement() {
         b = 5 + 3 * 8
 ", Ok(Program{
         statements: [
-                S::Assign(id!("a"), b!(E::Or(b!(E::BooleanLiteral(true)), b!(E::BooleanLiteral(false))))),
-                S::Assign(id!("b"), b!(E::Plus(n!(5.0), b!(E::Times(n!(3.0), n!(8.0)))))),
+                S::Assign(id!("a"), b!(E::Or(b!((E::BooleanLiteral(true), E::BooleanLiteral(false)))))),
+                S::Assign(id!("b"), b!(E::Plus(b!((n!(5.0), E::Times(b!((n!(3.0), n!(8.0))))))))),
             ].into()
         }));
 }
@@ -289,10 +289,10 @@ fn test_call_statement() {
 ", Ok(Program{
         statements: [
                 S::Call(b!(E::Identifier(id!("foo"))), [].into()),
-                S::Call(b!(E::Identifier(id!("bar"))), [E::NumberLiteral(1.0), E::Plus(n!(2.0), n!(3.0))].into()),
+                S::Call(b!(E::Identifier(id!("bar"))), [E::NumberLiteral(1.0), E::Plus(b!((n!(2.0), n!(3.0))))].into()),
                 S::Call(b!(E::Call(b!(E::Identifier(id!("a"))), [E::BooleanLiteral(true)].into())),
                     [E::BooleanLiteral(false)].into()),
-                S::Call(b!(E::Plus(n!(1.0), n!(2.0))), [E::BooleanLiteral(false)].into()),
+                S::Call(b!(E::Plus(b!((n!(1.0), n!(2.0))))), [E::BooleanLiteral(false)].into()),
             ].into()
         }));
 }
@@ -305,8 +305,8 @@ fn test_call_exp() {
 ", Ok(Program{
         statements: [
                 S::Local(id!("a"), Some(Box::new(E::Call(Box::new(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())))),
-                S::Return(Some(b!(E::Plus(n!(1.0), b!(E::Call(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())),
-                [E::BooleanLiteral(false)].into())))))),
+                S::Return(Some(b!(E::Plus(b!((n!(1.0), E::Call(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())),
+                [E::BooleanLiteral(false)].into()))))))),
             ].into()
         }));
 }
@@ -319,7 +319,7 @@ fn test_while_statement() {
         end
 ", Ok(Program{
         statements: [
-                S::While(b!(E::Lt(n!(1.0), n!(5.0))), [S::Assign(id!("i"), b!(E::Plus(Box::new(E::Identifier(id!("i"))), n!(1.0))))].into()),
+                S::While(b!(E::Lt(b!((n!(1.0), n!(5.0))))), [S::Assign(id!("i"), b!(E::Plus(b!((E::Identifier(id!("i")), n!(1.0))))))].into()),
             ].into()
         }));
 }

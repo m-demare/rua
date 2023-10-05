@@ -194,7 +194,7 @@ fn parse_expression(tokens_it: &mut Peekable<Iter<Token>>, precedence: &Preceden
                 if precedence < &Precedence::Sum {
                     tokens_it.next();
                     let rhs = parse_expression(tokens_it, &Precedence::Sum, context)?;
-                    expr = Expression::Minus(Box::new(expr), Box::new(rhs));
+                    expr = Expression::Minus(Box::new((expr, rhs)));
                 } else {
                     break Ok(expr)
                 },
@@ -284,20 +284,20 @@ fn parse_binary_op(lhs: Expression, op: &BinaryOp, tokens_it: &mut Peekable<Iter
     let precedence = precedence_of_binary(op);
     let rhs = parse_expression(tokens_it, &precedence, context)?;
     Ok(match op {
-        BinaryOp::PLUS => Expression::Plus(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::TIMES => Expression::Times(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::DIV => Expression::Div(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::MOD => Expression::Mod(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::EXP => Expression::Exp(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::EQ => Expression::Eq(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::NEQ => Expression::Neq(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::LE => Expression::Le(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::GE => Expression::Ge(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::LT => Expression::Lt(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::GT => Expression::Gt(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::AND => Expression::And(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::OR => Expression::Or(Box::new(lhs), Box::new(rhs)),
-        BinaryOp::DOTDOT => Expression::Dotdot(Box::new(lhs), Box::new(rhs)),
+        BinaryOp::PLUS => Expression::Plus(Box::new((lhs, rhs))),
+        BinaryOp::TIMES => Expression::Times(Box::new((lhs, rhs))),
+        BinaryOp::DIV => Expression::Div(Box::new((lhs, rhs))),
+        BinaryOp::MOD => Expression::Mod(Box::new((lhs, rhs))),
+        BinaryOp::EXP => Expression::Exp(Box::new((lhs, rhs))),
+        BinaryOp::EQ => Expression::Eq(Box::new((lhs, rhs))),
+        BinaryOp::NEQ => Expression::Neq(Box::new((lhs, rhs))),
+        BinaryOp::LE => Expression::Le(Box::new((lhs, rhs))),
+        BinaryOp::GE => Expression::Ge(Box::new((lhs, rhs))),
+        BinaryOp::LT => Expression::Lt(Box::new((lhs, rhs))),
+        BinaryOp::GT => Expression::Gt(Box::new((lhs, rhs))),
+        BinaryOp::AND => Expression::And(Box::new((lhs, rhs))),
+        BinaryOp::OR => Expression::Or(Box::new((lhs, rhs))),
+        BinaryOp::DOTDOT => Expression::Dotdot(Box::new((lhs, rhs))),
     })
 }
 

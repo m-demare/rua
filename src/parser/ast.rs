@@ -16,26 +16,26 @@ pub enum Expression {
 
 
     // Arithmetic operators
-    Plus(Box<Expression>, Box<Expression>),
-    Minus(Box<Expression>, Box<Expression>),
-    Times(Box<Expression>, Box<Expression>),
-    Div(Box<Expression>, Box<Expression>),
-    Mod(Box<Expression>, Box<Expression>),
-    Exp(Box<Expression>, Box<Expression>),
+    Plus(Box<(Expression, Expression)>),
+    Minus(Box<(Expression, Expression)>),
+    Times(Box<(Expression, Expression)>),
+    Div(Box<(Expression, Expression)>),
+    Mod(Box<(Expression, Expression)>),
+    Exp(Box<(Expression, Expression)>),
 
     // Comparison operators
-    Eq(Box<Expression>, Box<Expression>),
-    Neq(Box<Expression>, Box<Expression>),
-    Le(Box<Expression>, Box<Expression>),
-    Ge(Box<Expression>, Box<Expression>),
-    Lt(Box<Expression>, Box<Expression>),
-    Gt(Box<Expression>, Box<Expression>),
+    Eq(Box<(Expression, Expression)>),
+    Neq(Box<(Expression, Expression)>),
+    Le(Box<(Expression, Expression)>),
+    Ge(Box<(Expression, Expression)>),
+    Lt(Box<(Expression, Expression)>),
+    Gt(Box<(Expression, Expression)>),
 
     // Logic operators
-    And(Box<Expression>, Box<Expression>),
-    Or(Box<Expression>, Box<Expression>),
+    And(Box<(Expression, Expression)>),
+    Or(Box<(Expression, Expression)>),
 
-    Dotdot(Box<Expression>, Box<Expression>),
+    Dotdot(Box<(Expression, Expression)>),
     Function(Box<[FunctionArg]>, Vec<Statement>),
 
     Call(Box<Expression>, Vec<Expression>),
