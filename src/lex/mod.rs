@@ -1,6 +1,7 @@
 mod chars;
 mod utils;
 pub mod tokens;
+mod tests;
 
 use std::iter::Peekable;
 use std::str::Chars;

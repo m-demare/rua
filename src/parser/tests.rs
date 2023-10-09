@@ -1,7 +1,10 @@
-use rua::lex::tokenize;
-use rua::parser::{ast::{Statement as S, Expression as E, FunctionArg as FA, Program}, parse};
-use rua::lex::tokens::TokenType;
-use rua::identifiers::Trie;
+#![cfg(test)]
+
+use pretty_assertions::assert_eq;
+
+use crate::lex::{tokenize, tokens::TokenType};
+use super::{ast::{Statement as S, Expression as E, FunctionArg as FA, Program}, parse};
+use crate::identifiers::Trie;
 
 macro_rules! b {
     ($e: expr) => {
@@ -29,7 +32,7 @@ macro_rules! test_parse {
 }
 
 #[test]
-fn test_local_statement() {
+fn parse_local_statement() {
     test_parse!("
         local bar
         ", Ok(Program{
@@ -40,7 +43,7 @@ fn test_local_statement() {
 }
 
 #[test]
-fn test_identifier_exp() {
+fn parse_identifier_exp() {
     test_parse!("
         local foo = bar
         ", Ok(Program{
@@ -52,7 +55,7 @@ fn test_identifier_exp() {
 
 
 #[test]
-fn test_number_exp() {
+fn parse_number_exp() {
     test_parse!("
         local baz = 5", Ok(Program{
         statements: [
@@ -62,7 +65,7 @@ fn test_number_exp() {
 }
 
 #[test]
-fn test_return_statement() {
+fn parse_return_statement() {
     test_parse!("return 5", Ok(Program{
         statements: [
             S::Return(Some(b!(E::NumberLiteral(5.0)))),
@@ -87,7 +90,7 @@ fn test_return_statement() {
 }
 
 #[test]
-fn test_prefix_exprs() {
+fn parse_prefix_exprs() {
     test_parse!("
         local foo = not asd
         local bar = #foo
@@ -100,7 +103,7 @@ fn test_prefix_exprs() {
 }
 
 #[test]
-fn test_infix_exprs() {
+fn parse_infix_exprs() {
     test_parse!("
         local foo = 5 + 7
         local bar = 5 * 7
@@ -115,7 +118,7 @@ fn test_infix_exprs() {
 }
 
 #[test]
-fn test_infix_combined_exprs() {
+fn parse_infix_combined_exprs() {
     test_parse!("
         local foo = 5 + 7 * 2
         local bar = 5 * 7 + 2
@@ -137,7 +140,7 @@ fn test_infix_combined_exprs() {
 }
 
 #[test]
-fn test_minus_exprs() {
+fn parse_minus_exprs() {
     test_parse!("
         local foo = -5 + 7 * -2
         local bar = -5 - -7 - 2
@@ -157,7 +160,7 @@ fn test_minus_exprs() {
 }
 
 #[test]
-fn test_boolean_exprs() {
+fn parse_boolean_exprs() {
     test_parse!("
         local foo = true
         local bar = not false
@@ -172,7 +175,7 @@ fn test_boolean_exprs() {
 }
 
 #[test]
-fn test_parentheses_exprs() {
+fn parse_parentheses_exprs() {
     test_parse!("
         local foo = (5 + 7) * 2
         local bar = not ((true and false) or not true)
@@ -187,7 +190,7 @@ fn test_parentheses_exprs() {
 }
 
 #[test]
-fn test_if_statement() {
+fn parse_if_statement() {
     test_parse!("
         if true then
             local a = false
@@ -224,7 +227,7 @@ fn test_if_statement() {
 }
 
 #[test]
-fn test_func_exp() {
+fn parse_func_exp() {
     test_parse!("
         local a = function()
             local b
@@ -247,7 +250,7 @@ fn test_func_exp() {
 }
 
 #[test]
-fn test_func_statement() {
+fn parse_func_statement() {
     test_parse!("
         function a()
             local b
@@ -267,7 +270,7 @@ fn test_func_statement() {
 }
 
 #[test]
-fn test_assignment_statement() {
+fn parse_assignment_statement() {
     test_parse!("
         a = true or false
         b = 5 + 3 * 8
@@ -280,7 +283,7 @@ fn test_assignment_statement() {
 }
 
 #[test]
-fn test_call_statement() {
+fn parse_call_statement() {
     test_parse!("
         foo()
         bar(1, 2+3)
@@ -300,7 +303,7 @@ fn test_call_statement() {
 }
 
 #[test]
-fn test_call_exp() {
+fn parse_call_exp() {
     test_parse!("
         local a = foo(true)
         return 1 + foo(true)(false)
@@ -314,7 +317,7 @@ fn test_call_exp() {
 }
 
 #[test]
-fn test_while_statement() {
+fn parse_while_statement() {
     test_parse!("
         while 1 < 5 do
             i = i + 1
@@ -327,7 +330,7 @@ fn test_while_statement() {
 }
 
 #[test]
-fn test_field_access_exp() {
+fn parse_field_access_exp() {
     test_parse!("
         local a = foo.bar.baz()
 ", Ok(Program{

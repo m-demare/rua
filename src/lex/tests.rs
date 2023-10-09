@@ -1,6 +1,10 @@
-use rua::lex::{tokenize, tokens::{Token, BinaryOp, UnaryOp}};
-use rua::lex::tokens::TokenType as T;
-use rua::identifiers::Trie;
+#![cfg(test)]
+
+use pretty_assertions::assert_eq;
+
+use super::{tokenize, tokens::{Token, BinaryOp, UnaryOp}};
+use super::tokens::TokenType as T;
+use crate::identifiers::Trie;
 
 macro_rules! test_lex {
     ($input: expr, $expected_output: expr) => {
@@ -16,7 +20,7 @@ macro_rules! test_lex {
 }
 
 #[test]
-fn test_basic_assignment() {
+fn lex_basic_assignment() {
     test_lex!("local foo = bar", vec![
         Token { ttype: T::LOCAL },
         Token { ttype: id!("foo") },
@@ -27,7 +31,7 @@ fn test_basic_assignment() {
 }
 
 #[test]
-fn test_ints() {
+fn lex_ints() {
     test_lex!(
         "58
         0x2A
@@ -43,14 +47,14 @@ fn test_ints() {
 }
 
 #[test]
-fn test_floats() {
+fn lex_floats() {
     test_lex!(
         "0.58
         0x0.2A
         0b0.1
         0b0.23", vec![
         Token { ttype: T::NUMBER(0.58) },
-        Token { ttype: T::NUMBER(0.1640625) },
+        Token { ttype: T::NUMBER(0.164_062_5) },
         Token { ttype: T::ILLEGAL("0b0.".into()) },
         Token { ttype: T::NUMBER(1.0) },
         Token { ttype: T::ILLEGAL("0b0.".into()) },
@@ -60,7 +64,7 @@ fn test_floats() {
 }
 
 #[test]
-fn test_ops() {
+fn lex_ops() {
     test_lex!(
         "a = a <= b and a+b or a^b
         (c-d>e);#f", vec![
@@ -92,7 +96,7 @@ fn test_ops() {
 }
 
 #[test]
-fn test_comment() {
+fn lex_comment() {
     test_lex!("a = b -- a+b\n--123", vec![
         Token { ttype: id!("a") },
         Token { ttype: T::ASSIGN },
@@ -102,7 +106,7 @@ fn test_comment() {
 }
 
 #[test]
-fn test_dots() {
+fn lex_dots() {
     test_lex!(".\n..\n...\n.123", vec![
         Token { ttype: T::DOT },
         Token { ttype: T::BINARY_OP(BinaryOp::DOTDOT) },
@@ -113,7 +117,7 @@ fn test_dots() {
 }
 
 #[test]
-fn test_illegals() {
+fn lex_illegals() {
     test_lex!("0b2 ! @ ~", vec![
         Token { ttype: T::ILLEGAL("0b2".into()) },
         Token { ttype: T::ILLEGAL("!".into()) },

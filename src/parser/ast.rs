@@ -91,7 +91,7 @@ pub enum ExpressionContext {
     Group,
 }
 
-pub const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
+pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
     match op {
         BinaryOp::OR => Precedence::Or,
         BinaryOp::AND => Precedence::And,

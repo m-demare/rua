@@ -46,7 +46,7 @@ impl<'trie> Trie {
         ).clone()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn find(&self, s: &str) -> Option<TokenType> {
         let mut node = &self.root;
         for ch in s.chars() {
@@ -73,8 +73,8 @@ impl <'trie> TrieWalker<'trie> {
     pub fn walk(&mut self, ch: char) {
         if let Some(n) = &self.curr_node {
             self.curr_node = match n.next.iter().find(|(c, _)| &ch==c) {
-                Some((_, found)) => {Some(found)},
-                None => {None},
+                Some((_, found)) => Some(found),
+                None => None,
             };
         }
     }
@@ -82,7 +82,7 @@ impl <'trie> TrieWalker<'trie> {
     pub fn get_res(self) -> Option<TokenType> {
         match self.curr_node {
             Some(n) => n.val.clone(),
-            None => {None},
+            None => None,
         }
     }
 }

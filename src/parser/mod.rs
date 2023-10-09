@@ -1,5 +1,6 @@
 pub mod ast;
 mod utils;
+mod tests;
 
 use std::{iter::Peekable, slice::Iter};
 
