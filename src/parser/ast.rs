@@ -122,6 +122,7 @@ pub enum ParseError {
     NamedFunctionExpr(Identifier),
     UnnamedFunctionSt,
     UnexpectedExpression,
+    UnexpectedEOF,
 }
 
 impl fmt::Display for ParseError {
@@ -134,6 +135,7 @@ impl fmt::Display for ParseError {
             Self::NamedFunctionExpr(id) => format!("Function expression cannot have a name (got {id:?})"),
             Self::UnnamedFunctionSt => "Function statement must have a name".to_string(),
             Self::UnexpectedExpression => "Expected statement, got expression".to_string(),
+            Self::UnexpectedEOF => "Unexpected end of file".to_string(),
         };
         write!(f, "{res}")
     }

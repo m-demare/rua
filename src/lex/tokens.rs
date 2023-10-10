@@ -4,7 +4,6 @@ use crate::identifiers::Identifier;
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum TokenType {
     ILLEGAL(Box<str>),
-    EOF,
 
     NUMBER(f64),
     IDENTIFIER(Identifier),

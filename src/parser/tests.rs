@@ -2,7 +2,7 @@
 
 use pretty_assertions::assert_eq;
 
-use crate::lex::{tokenize, tokens::TokenType};
+use crate::lex::{Tokenizer, tokens::TokenType};
 use super::{ast::{Statement as S, Expression as E, FunctionArg as FA, Program}, parse};
 use crate::identifiers::Trie;
 
@@ -26,7 +26,7 @@ macro_rules! test_parse {
             ($s: expr) => (match identifiers.find($s) { Some(TokenType::IDENTIFIER(i)) => i, t => panic!("Expected identifier, got {t:?}") })
         }
 
-        let prog = parse(&tokenize($input, &mut identifiers));
+        let prog = parse(Tokenizer::new($input.chars(), &mut identifiers));
         assert_eq!(prog, $expected_output)
     };
 }

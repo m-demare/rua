@@ -2,7 +2,7 @@
 
 use pretty_assertions::assert_eq;
 
-use super::{tokenize, tokens::{Token, BinaryOp, UnaryOp}};
+use super::{tokens::{Token, BinaryOp, UnaryOp}, Tokenizer};
 use super::tokens::TokenType as T;
 use crate::identifiers::Trie;
 
@@ -14,7 +14,7 @@ macro_rules! test_lex {
             ($s: expr) => (match identifiers.find($s) { Some(T::IDENTIFIER(i)) => T::IDENTIFIER(i), t => panic!("Expected identifier, got {t:?}") })
         }
 
-        let tokens = tokenize($input, &mut identifiers);
+        let tokens = Tokenizer::new($input.chars(), &mut identifiers).collect::<Vec<_>>();
         assert_eq!(tokens, $expected_output)
     };
 }
@@ -26,7 +26,6 @@ fn lex_basic_assignment() {
         Token { ttype: id!("foo") },
         Token { ttype: T::ASSIGN },
         Token { ttype: id!("bar") },
-        Token { ttype: T::EOF },
     ]);
 }
 
@@ -42,7 +41,6 @@ fn lex_ints() {
         Token { ttype: T::NUMBER(9.0) },
         Token { ttype: T::ILLEGAL("0b15".into()) },
         Token { ttype: T::NUMBER(8.0) },
-        Token { ttype: T::EOF },
     ]);
 }
 
@@ -59,7 +57,6 @@ fn lex_floats() {
         Token { ttype: T::NUMBER(1.0) },
         Token { ttype: T::ILLEGAL("0b0.".into()) },
         Token { ttype: T::NUMBER(23.0) },
-        Token { ttype: T::EOF },
     ]);
 }
 
@@ -91,7 +88,6 @@ fn lex_ops() {
             Token { ttype: T::SEMICOLON },
             Token { ttype: T::UNARY_OP(UnaryOp::LEN) },
             Token { ttype: id!("f") },
-            Token { ttype: T::EOF },
         ]);
 }
 
@@ -101,7 +97,6 @@ fn lex_comment() {
         Token { ttype: id!("a") },
         Token { ttype: T::ASSIGN },
         Token { ttype: id!("b") },
-        Token { ttype: T::EOF },
     ]);
 }
 
@@ -112,7 +107,6 @@ fn lex_dots() {
         Token { ttype: T::BINARY_OP(BinaryOp::DOTDOT) },
         Token { ttype: T::DOTDOTDOT },
         Token { ttype: T::NUMBER(0.123) },
-        Token { ttype: T::EOF },
     ]);
 }
 
@@ -123,7 +117,6 @@ fn lex_illegals() {
         Token { ttype: T::ILLEGAL("!".into()) },
         Token { ttype: T::ILLEGAL("@".into()) },
         Token { ttype: T::ILLEGAL("~".into()) },
-        Token { ttype: T::EOF },
     ]);
 }
 

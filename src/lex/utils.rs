@@ -1,16 +1,15 @@
 #![allow(clippy::unused_peekable)]
 
 use std::iter::Peekable;
-use std::str::Chars;
 use super::chars::{is_numeric, is_alphabetic};
 
 #[inline]
-pub fn eat_while_peeking(chars: &mut Peekable<Chars>, pred: &impl Fn(&char)->bool) {
+pub fn eat_while_peeking<T>(chars: &mut Peekable<T>, pred: &impl Fn(&char)->bool) where T: Iterator<Item = char> + Clone {
     while chars.next_if(pred).is_some() { }
 }
 
 #[allow(clippy::cast_possible_truncation)]
-pub fn read_decimals(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, String>{
+pub fn read_decimals<T>(chars: &mut Peekable<T>, radix: u32) -> Result<f64, String> where T: Iterator<Item = char> + Clone {
     let clone_it = chars.clone();
     let mut i = 0;
 
@@ -31,7 +30,7 @@ pub fn read_decimals(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, Str
     Ok(res)
 }
 
-pub fn read_number(chars: &mut Peekable<Chars>, radix: u32) -> Result<f64, String>{
+pub fn read_number<T>(chars: &mut Peekable<T>, radix: u32) -> Result<f64, String> where T: Iterator<Item = char> + Clone {
     let clone_it = chars.clone();
     let mut i = 0;
 

@@ -26,11 +26,8 @@ fn evaluate(path: &PathBuf) {
 
     let mut identifiers = Trie::new();
 
-    println!("Text:\n{contents}");
-
-    let tokens = lex::tokenize(&contents, &mut identifiers);
-    println!("Tokens:\n{tokens:?}");
+    let tokens = lex::Tokenizer::new(contents.chars(), &mut identifiers);
     
-    let ast = parser::parse(&tokens);
+    let ast = parser::parse(tokens);
     println!("AST:\n{ast:?}");
 }

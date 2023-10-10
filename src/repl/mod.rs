@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use crate::identifiers::Trie;
-use crate::lex::tokenize;
+use crate::lex::Tokenizer;
 use crate::parser::parse;
 
 pub fn run() -> io::Result<()>{
@@ -14,9 +14,8 @@ pub fn run() -> io::Result<()>{
         io::stdout().flush()?;
         stdin.read_line(&mut input)?;
 
-        let tokens = tokenize(&input, &mut identifiers);
-        println!("Tokens: {tokens:?}");
-        let ast = parse(&tokens);
+        let tokens = Tokenizer::new(input.chars(), &mut identifiers);
+        let ast = parse(tokens);
         match ast {
             Ok(tree) => {println!("AST: {tree:?}")},
             Err(err) => {println!("AST: {err}")},
