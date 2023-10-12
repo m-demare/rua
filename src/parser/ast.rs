@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, rc::Rc};
 
 use crate::{lex::tokens::{Token, TokenType, BinaryOp}, identifiers::Identifier};
 
@@ -40,7 +40,7 @@ pub enum Expression {
     Or(Box<(Expression, Expression)>),
 
     Dotdot(Box<(Expression, Expression)>),
-    Function(Box<[FunctionArg]>, Vec<Statement>),
+    Function(Rc<[FunctionArg]>, Rc<[Statement]>),
 
     Call(Box<Expression>, Vec<Expression>),
 
@@ -65,6 +65,7 @@ pub enum Statement {
 
     Call(Box<Expression>, Vec<Expression>),
     While(Box<Expression>, Vec<Statement>),
+    Break,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq)]

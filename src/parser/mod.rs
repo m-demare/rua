@@ -28,6 +28,7 @@ fn parse_block<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>, block_typ
         let statement = match &token.ttype {
             TT::LOCAL => parse_local_st(tokens_it),
             TT::RETURN => parse_return_st(tokens_it),
+            TT::BREAK => parse_break_st(tokens_it),
             TT::SEMICOLON => {tokens_it.next(); continue;},
             TT::FUNCTION => parse_function_st(tokens_it),
             TT::END | TT::ELSE | TT::ELSEIF => {
@@ -78,6 +79,19 @@ fn parse_return_st<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> Pa
         }
     }
     Ok(Statement::Return(Some(Box::new(expr))))
+}
+
+fn parse_break_st<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResult<Statement> {
+    debug_peek_token!(tokens_it, TokenType::BREAK);
+
+    tokens_it.next();
+    if !peek_token_is!(tokens_it, TokenType::END | TokenType::ELSE | TokenType::ELSEIF) {
+        if let Some(t) = tokens_it.peek() {
+            return Err(ParseError::UnexpectedToken(Box::new(t.clone()),
+                Box::new([TokenType::END, TokenType::ELSE, TokenType::ELSEIF])))
+        }
+    }
+    Ok(Statement::Break)
 }
 
 fn handle_identifier_st<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResult<Statement> {
@@ -285,7 +299,7 @@ fn parse_function_expr<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -
     }
     let body = parse_block(tokens_it, BlockType::Function)?;
     return match tokens_it.peek() {
-        Some(Token { ttype: TokenType::END }) => {tokens_it.next(); Ok((Expression::Function(args.into_boxed_slice(), body), name))},
+        Some(Token { ttype: TokenType::END }) => {tokens_it.next(); Ok((Expression::Function(args.into(), body.into()), name))},
         Some(t) => Err(ParseError::UnexpectedToken(Box::new(t.clone()), Box::new([TokenType::RPAREN]))),
         None => return Err(ParseError::UnexpectedEOF),
     }

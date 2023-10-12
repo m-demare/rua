@@ -20,7 +20,7 @@ pub struct TrieWalker<'trie> {
     trie: PhantomData<&'trie Trie>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Copy)]
 pub struct Identifier(pub u32);
 
 impl<'trie> Trie {
@@ -44,6 +44,10 @@ impl<'trie> Trie {
                 TokenType::IDENTIFIER(Identifier(self.last_id))
             }
         ).clone()
+    }
+
+    pub fn get(&self, id: Identifier) -> Option<Box<str>> {
+        self.identifiers.get(&id).cloned()
     }
 
     #[cfg(test)]

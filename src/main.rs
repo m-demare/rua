@@ -1,26 +1,32 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::perf)]
 #![allow(clippy::option_if_let_else)]
+#![feature(box_patterns)]
+#![feature(try_find)]
+#![feature(iterator_try_collect)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, cell::RefCell};
 
-use crate::identifiers::Trie;
+use parser::ast::ParseError;
+
+use crate::{identifiers::Trie, eval::{eval, scope::Scope}};
 
 mod cli;
 mod repl;
 mod lex;
 mod parser;
 mod identifiers;
+mod eval;
 
 fn main() {
     let cli = cli::parse_args();
 
     match &cli.path {
-        Some(path) => { evaluate(path); },
+        Some(path) => { let _ = evaluate(path); },
         None => { let _ = repl::run(); },
     }
 }
 
-fn evaluate(path: &PathBuf) {
+fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
     let contents = std::fs::read_to_string(path) // TODO maybe not read file all at once? Need some perf testing
         .expect("Error: input file does not exist");
 
@@ -28,6 +34,11 @@ fn evaluate(path: &PathBuf) {
 
     let tokens = lex::Tokenizer::new(contents.chars(), &mut identifiers);
     
-    let ast = parser::parse(tokens);
-    println!("AST:\n{ast:?}");
+    let ast = parser::parse(tokens)?;
+
+    let env = Scope::new(RefCell::new(identifiers).into());
+    let res = eval(&ast, &RefCell::new(env).into());
+    println!("{res:?}");
+
+    Ok(())
 }
