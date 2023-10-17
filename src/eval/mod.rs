@@ -9,6 +9,7 @@ pub mod exprs;
 pub mod scope;
 mod statements;
 mod tests;
+mod native_functions;
 
 pub fn eval(program: &Program, env: &Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
     eval_block(&program.statements, env)

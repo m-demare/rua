@@ -65,8 +65,9 @@ impl Expression {
         }
     }
 
-    fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError>{
-        let func = self.eval(env.clone())?.as_func()?;
+    pub fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError>{
+        let val = self.eval(env.clone())?;
+        let func = val.as_func()?;
         func.call(args, env)
     }
 }

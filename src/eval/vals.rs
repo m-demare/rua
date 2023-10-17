@@ -12,6 +12,7 @@ pub enum LuaVal {
     Nil,
     Function(Function),
     String(Rc<str>),
+    NativeFunction(NativeFunction),
 }
 
 #[derive(Clone)]
@@ -19,6 +20,11 @@ pub struct Function {
     args: Rc<[FunctionArg]>,
     body: Rc<[Statement]>,
     env: Rc<RefCell<Scope>>,
+}
+
+#[derive(Clone)]
+pub struct NativeFunction {
+    func: Rc<dyn Fn(FunctionContext) -> Result<LuaVal, EvalError>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -37,6 +43,14 @@ pub enum StmtResult {
     Break,
 }
 
+pub trait LuaCallable {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError>;
+}
+
+pub struct FunctionContext{
+    pub args: Vec<LuaVal>,
+}
+
 impl LuaVal {
     pub const fn as_bool(&self) -> Result<bool, TypeError>{
         match self {
@@ -52,9 +66,10 @@ impl LuaVal {
         }
     }
 
-    pub fn as_func(&self) -> Result<Function, TypeError> {
+    pub fn as_func(&self) -> Result<&dyn LuaCallable, TypeError> {
         match self {
-            Self::Function(f) => Ok(f.clone()),
+            Self::Function(f) => Ok(f),
+            Self::NativeFunction(f) => Ok(f),
             v => Err(TypeError(LuaType::Function, v.get_type())),
         }
     }
@@ -75,7 +90,8 @@ impl LuaVal {
             Self::Number(..) => LuaType::Number,
             Self::Bool(..) => LuaType::Bool,
             Self::Nil => LuaType::Nil,
-            Self::Function(..) => LuaType::Function,
+            Self::Function(..) |
+                Self::NativeFunction(..) => LuaType::Function,
             Self::String(..) => LuaType::String,
         }
     }
@@ -87,13 +103,26 @@ impl PartialEq for Function {
     }
 }
 
+impl PartialEq for NativeFunction {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.func, &other.func)
+    }
+}
+
+impl NativeFunction {
+    pub fn new(func: Rc<dyn Fn(FunctionContext) -> Result<LuaVal, EvalError>>) -> Self {
+        Self { func }
+    }
+}
+
 impl Display for LuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Number(n) => write!(f, "{n}"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
-            Self::Function(..) => write!(f, "function"),
+            Self::Function(..) |
+                Self::NativeFunction(..) => write!(f, "function"),
             Self::String(s) => write!(f, "{s}"),
         }
     }
@@ -109,8 +138,10 @@ impl Function {
     pub fn new(args: Rc<[FunctionArg]>, body: Rc<[Statement]>, env: Rc<RefCell<Scope>>) -> Self {
         Self { args, body, env }
     }
+}
 
-    pub fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
+impl LuaCallable for Function {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
         let arg_vals: Vec<LuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
         let mut new_env = Scope::extend(self.env.clone());
@@ -125,7 +156,16 @@ impl Function {
             StmtResult::Break => todo!(),
         }
     }
+}
 
+impl LuaCallable for NativeFunction {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
+        let arg_vals: Vec<LuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
+
+        (self.func)(FunctionContext {
+            args: arg_vals,
+        })
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]

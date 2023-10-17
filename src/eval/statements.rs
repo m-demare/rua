@@ -22,7 +22,7 @@ impl Statement {
                 Some((_, block)) => eval_block(block, &env),
                 None => Ok(StmtResult::None),
             },
-            Self::Call(_, _) => todo!(),
+            Self::Call(expr, args) => { expr.callfn(args, &env)?; Ok(StmtResult::None) },
             Self::While(cond, block) => {
                 while cond.eval(env.clone())?.truthy() {
                     match eval_block(block, &env)? {

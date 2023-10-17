@@ -446,6 +446,7 @@ name = "rua"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "either",
  "pretty_assertions",
  "regex-lite",
  "rustc-hash",
