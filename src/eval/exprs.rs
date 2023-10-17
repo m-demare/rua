@@ -6,6 +6,7 @@ use crate::{eval::vals::Function, parser::ast::Expression, identifiers::Identifi
 use super::{vals::{LuaVal, EvalError}, scope::Scope};
 
 impl Expression {
+    #[allow(clippy::cast_precision_loss)]
     pub fn eval(&self, env: Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
         use LuaVal as V;
 
@@ -13,9 +14,10 @@ impl Expression {
             Self::Identifier(id) => Self::get_identifier(*id, &env),
             Self::NumberLiteral(n) => Ok(V::Number(*n)),
             Self::BooleanLiteral(b) => Ok(V::Bool(*b)),
+            Self::StringLiteral(s) => Ok(V::String(s.clone())),
             Self::Nil => Ok(V::Nil),
             Self::Not(e) => Ok(V::Bool(!e.eval(env)?.as_bool()?)),
-            Self::Len(_) => todo!(),
+            Self::Len(e) => Ok(V::Number(e.eval(env)?.as_str()?.len() as f64)),
             Self::Neg(e) => Ok(V::Number(-e.eval(env)?.as_number()?)),
             Self::Plus(box (e1, e2)) => Ok(V::Number(e1.eval(env.clone())?.as_number()? + e2.eval(env)?.as_number()?)),
             Self::Minus(box (e1, e2)) => Ok(V::Number(e1.eval(env.clone())?.as_number()? - e2.eval(env)?.as_number()?)),
@@ -31,9 +33,9 @@ impl Expression {
             Self::Gt(box (e1, e2)) => Ok(V::Bool(e1.eval(env.clone())?.as_number()? > e2.eval(env)?.as_number()?)),
             Self::And(box (e1, e2)) => e1.and(e2, env),
             Self::Or(box (e1, e2)) => e1.or(e2, env),
-            Self::Dotdot(box (_, _)) => todo!(),
+            Self::Dotdot(box (e1, e2)) => Ok(V::String((e1.eval(env.clone())?.as_str()?.to_string() + &*e2.eval(env)?.as_str()?).into())),
             Self::Function(args, body) => Ok(V::Function(Function::new(args.clone(), body.clone(), env))),
-            Self::Call(expr, args) => expr.callfn(args, env),
+            Self::Call(expr, args) => expr.callfn(args, &env),
             Self::FieldAccess(_, _) => todo!(),
         }
     }
@@ -63,7 +65,7 @@ impl Expression {
         }
     }
 
-    fn callfn(&self, args: &[Self], env: Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError>{
+    fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError>{
         let func = self.eval(env.clone())?.as_func()?;
         func.call(args, env)
     }

@@ -12,6 +12,7 @@ pub enum Expression {
     Identifier(Identifier),
     NumberLiteral(f64),
     BooleanLiteral(bool),
+    StringLiteral(Rc<str>),
     Nil,
 
     Not(Box<Expression>),

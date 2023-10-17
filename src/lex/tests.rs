@@ -120,3 +120,22 @@ fn lex_illegals() {
     ]);
 }
 
+#[test]
+fn lex_strings() {
+    test_lex!(r#"
+        "hello'world"
+        'foo"bar'
+        "test\"string"
+        'test\'string'
+        'test\\\'string\'\"'
+        'test
+    "#, vec![
+        Token { ttype: T::STRING("hello'world".into()) },
+        Token { ttype: T::STRING("foo\"bar".into()) },
+        Token { ttype: T::STRING("test\"string".into()) },
+        Token { ttype: T::STRING("test'string".into()) },
+        Token { ttype: T::STRING("test\\'string'\"".into()) },
+        Token { ttype: T::ILLEGAL("Unclosed string literal".into()) },
+    ]);
+}
+

@@ -11,6 +11,7 @@ pub enum LuaVal {
     Bool(bool),
     Nil,
     Function(Function),
+    String(Rc<str>),
 }
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ pub enum LuaType {
     Bool,
     Nil,
     Function,
+    String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -57,6 +59,13 @@ impl LuaVal {
         }
     }
 
+    pub fn as_str(&self) -> Result<Rc<str>, TypeError> {
+        match self {
+            Self::String(s) => Ok(s.clone()),
+            v => Err(TypeError(LuaType::String, v.get_type())),
+        }
+    }
+
     pub const fn truthy(&self) -> bool {
         !matches!(self, Self::Bool(false) | Self::Nil)
     }
@@ -67,6 +76,7 @@ impl LuaVal {
             Self::Bool(..) => LuaType::Bool,
             Self::Nil => LuaType::Nil,
             Self::Function(..) => LuaType::Function,
+            Self::String(..) => LuaType::String,
         }
     }
 }
@@ -84,6 +94,7 @@ impl Display for LuaVal {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
             Self::Function(..) => write!(f, "function"),
+            Self::String(s) => write!(f, "{s}"),
         }
     }
 }
@@ -99,7 +110,7 @@ impl Function {
         Self { args, body, env }
     }
 
-    pub fn call(&self, args: &[Expression], args_env: Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
+    pub fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> Result<LuaVal, EvalError> {
         let arg_vals: Vec<LuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
         let mut new_env = Scope::extend(self.env.clone());

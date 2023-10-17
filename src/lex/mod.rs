@@ -5,13 +5,17 @@ mod tests;
 
 use std::iter::Peekable;
 
+use regex_lite::Regex;
+
 use self::tokens::{Token, TokenType, lookup_char, lookup_comparison, BinaryOp};
+use self::utils::take_while_peeking;
 use self::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
 use crate::identifiers::{TrieWalker, Trie};
 
 pub struct Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
     input: Peekable<T>,
     identifiers: &'ids mut Trie,
+    str_replace_re: Box<Regex>,
 }
 
 impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
@@ -25,6 +29,7 @@ impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + C
                     Some(t) => t,
                     None => continue,
                 },
+                '\'' | '"' => self.read_string(),
                 '.' => self.read_dot(),
                 a if is_alphabetic(*a) => self.read_identifier(),
                 n if is_numeric(*n) => self.read_number(),
@@ -38,11 +43,12 @@ impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + C
 
 impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
     pub fn new(input: T, identifiers: &'ids mut Trie) -> Self {
-        Self { input: input.peekable(), identifiers }
+        let str_replace_re = Regex::new(r#"\\([\\'"])"#).expect("Regex is valid").into();
+        Self { input: input.peekable(), identifiers, str_replace_re }
     }
 
     fn read_comparison(&mut self) -> Token {
-        let ch = self.input.next().expect("Chars cannot be empty here");
+        let ch = self.input.next().expect("Input cannot be empty here");
         if self.input.peek() == Some(&'='){
             self.input.next();
             return Token { ttype: lookup_comparison(ch, true) };
@@ -137,8 +143,28 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
 
     #[inline]
     fn single_char_token(&mut self) -> Token {
-        Token { ttype: lookup_char(self.input.next().expect("Chars cannot be empty here")) }
+        Token { ttype: lookup_char(self.input.next().expect("Input cannot be empty here")) }
     }
 
+    fn read_string(&mut self) -> Token {
+        let delimiter = self.input.next().expect("Input cannot be empty here");
+        debug_assert!(delimiter == '\'' || delimiter == '"');
+        let mut is_escaped = false;
+        let s: String = take_while_peeking(&mut self.input, |ch| {
+            if !is_escaped && *ch == delimiter {
+                return false
+            }
+            is_escaped = !is_escaped && *ch=='\\';
+            true
+        });
+        match self.input.next() {
+            Some(ch) => debug_assert_eq!(ch, delimiter),
+            None => return Token { ttype: TokenType::ILLEGAL("Unclosed string literal".into()) },
+        };
+
+        let s = self.str_replace_re.replace_all(&s, "$1");
+
+        Token { ttype: TokenType::STRING(s.into()) }
+    }
 }
 

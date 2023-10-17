@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::identifiers::Identifier;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -6,6 +8,7 @@ pub enum TokenType {
     ILLEGAL(Box<str>),
 
     NUMBER(f64),
+    STRING(Rc<str>),
     IDENTIFIER(Identifier),
 
     BINARY_OP(BinaryOp),

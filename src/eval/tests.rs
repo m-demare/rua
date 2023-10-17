@@ -96,7 +96,6 @@ fn test_while_stmt() {
         return fib", Ok(R::Return(V::Number(13.0))));
 }
 
-
 #[test]
 fn test_call_expr() {
     test_eval_stmt("local function foo()
@@ -123,5 +122,11 @@ fn test_call_expr() {
         return fn(4)
     end
     return apply(function(n) return n*n end)", Ok(R::Return(V::Number(16.0))));
+}
+
+#[test]
+fn test_strings() {
+    test_eval_expr(r#""foo" .. "bar""#, Ok(V::String("foobar".into())));
+    test_eval_expr(r#" #("foo" .. "bar") "#, Ok(V::Number(6.0)));
 }
 

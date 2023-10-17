@@ -219,6 +219,7 @@ fn parse_prefix_exp<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>, cont
         Some(Token { ttype: TokenType::MINUS, .. }) => Expression::Neg(Box::new(parse_expression(tokens_it, &Precedence::Prefix, context)?)),
         Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => Expression::Identifier(id),
         Some(Token { ttype: TokenType::NUMBER(n), .. }) => Expression::NumberLiteral(n),
+        Some(Token { ttype: TokenType::STRING(s), .. }) => Expression::StringLiteral(s),
         Some(Token { ttype: TokenType::TRUE, .. }) => Expression::BooleanLiteral(true),
         Some(Token { ttype: TokenType::FALSE, .. }) => Expression::BooleanLiteral(false),
         Some(Token { ttype: TokenType::LPAREN, .. }) => parse_group_expr(tokens_it)?,

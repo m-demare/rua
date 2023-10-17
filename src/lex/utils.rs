@@ -55,3 +55,14 @@ pub fn read_number<T>(chars: &mut Peekable<T>, radix: u32) -> Result<f64, String
     Ok(res)
 }
 
+
+pub fn take_while_peeking<T, F>(chars: &mut Peekable<T>, mut pred: F) -> String where T: Iterator<Item = char> + Clone, F: FnMut(&char) -> bool {
+    let mut i = 0;
+    let mut clone_it = chars.clone();
+
+    while clone_it.next_if(&mut pred).is_some() {
+        i += 1;
+    }
+    chars.take(i).collect()
+}
+
