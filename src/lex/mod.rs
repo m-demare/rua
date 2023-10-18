@@ -1,5 +1,5 @@
 mod chars;
-mod utils;
+pub mod utils;
 pub mod tokens;
 mod tests;
 
@@ -117,20 +117,9 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
     }
 
     fn read_number(&mut self) -> Token {
-        let mut radix = 10;
-        if self.input.peek() == Some(&'0') {
-            self.input.next();
-            if let Some(ch) = self.input.peek() {
-                radix = match ch {
-                    'x' => { self.input.next(); 16 },
-                    'b' => { self.input.next(); 2 },
-                    _ => 10,
-                }
-            }
-        }
-        match utils::read_number(&mut self.input, radix) {
+        match utils::read_number(&mut self.input) {
             Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-            Err(s) => Token { ttype: TokenType::ILLEGAL(format!("{}{}", if radix == 2 {"0b"} else {"0x"}, s).into_boxed_str())},
+            Err(s) => Token { ttype: TokenType::ILLEGAL(s)},
         }
     }
 

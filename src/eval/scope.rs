@@ -18,6 +18,15 @@ impl Scope {
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "print"),
             LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::print))));
+        globals.insert(
+            insert_identifier(identifiers.borrow_mut(), "tostring"),
+            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tostring))));
+        globals.insert(
+            insert_identifier(identifiers.borrow_mut(), "tonumber"),
+            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tonumber))));
+        globals.insert(
+            insert_identifier(identifiers.borrow_mut(), "type"),
+            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::lua_type))));
 
         Self { store: FxHashMap::default(), identifiers, parent_or_globals: Right(globals) }
     }
@@ -40,6 +49,13 @@ impl Scope {
                 Left(parent) => parent.borrow().get(id),
                 Right(globals) => globals.get(&id).cloned(),
             },
+        }
+    }
+
+    pub fn update(&mut self, id: Identifier, val: LuaVal) -> bool {
+        match self.store.entry(id) {
+            Entry::Occupied(mut e) => { e.insert(val); true }
+            Entry::Vacant(_) => false,
         }
     }
 
