@@ -2,7 +2,7 @@ use std::{rc::Rc, cell::RefCell};
 
 use crate::{parser::ast::{Expression, Statement}, identifiers::Identifier};
 
-use super::{vals::{StmtResult, LuaVal, EvalError}, scope::Scope};
+use super::{vals::{StmtResult, RuaVal, EvalError}, scope::Scope};
 
 impl Statement {
     pub fn eval(&self, env: Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
@@ -40,12 +40,12 @@ impl Statement {
     fn eval_return(expr: &Option<Box<Expression>>, env: Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
         Ok(match expr {
             Some(expr) => StmtResult::Return(expr.eval(env)?),
-            None => StmtResult::Return(LuaVal::Nil),
+            None => StmtResult::Return(RuaVal::Nil),
         })
     }
 
     fn eval_local(id: Identifier, exp: &Option<Box<Expression>>, env: &Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
-        let val = exp.as_ref().map_or(Ok(LuaVal::Nil), |e| e.eval(env.clone()))?;
+        let val = exp.as_ref().map_or(Ok(RuaVal::Nil), |e| e.eval(env.clone()))?;
         env.borrow_mut().set(id, val);
         
         Ok(StmtResult::None)

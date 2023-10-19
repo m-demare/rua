@@ -18,7 +18,7 @@ struct MacroArgs {
 }
 
 #[proc_macro_attribute]
-pub fn lua_func(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
     let func = parse_macro_input!(input as ItemFn);
 
     let attr_args = match NestedMeta::parse_meta_list(args.into()) {
@@ -39,7 +39,7 @@ pub fn lua_func(args: TokenStream, input: TokenStream) -> TokenStream {
     let (parameters, validate_cant_args) = get_parameters(&func, &macro_args);
     
     let output = quote!(
-        #vis #constness fn #name(ctxt: &FunctionContext) -> LuaResult {
+        #vis #constness fn #name(ctxt: &FunctionContext) -> RuaResult {
             let name_str = #name_str;
             #validate_cant_args
             #func
@@ -56,10 +56,10 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
         syn::ReturnType::Default => OutputWrappers::Resultify,
         syn::ReturnType::Type(_, ref t) => match t {
             box Type::Path(p) => match p.path.segments.first().unwrap().ident.to_string().as_str() {
-                "Result" | "LuaResult" => OutputWrappers::IntoResult,
+                "Result" | "RuaResult" => OutputWrappers::IntoResult,
                 _ => OutputWrappers::Resultify,
             },
-            t => panic!("Invalid lua return type: {t:?}"),
+            t => panic!("Invalid rua return type: {t:?}"),
         },
     };
     match wrap_output_with {
@@ -108,7 +108,7 @@ fn get_parameters(input_fn: &ItemFn, args: &MacroArgs) -> (Vec<proc_macro2::Toke
                         }
                     ))
             },
-            _ => panic!("Unsuported lua parameter: {param:?}"),
+            _ => panic!("Unsuported rua parameter: {param:?}"),
         }
     }
 

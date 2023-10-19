@@ -8,8 +8,8 @@ use crate::eval::scope::Scope;
 use crate::parser::parse_expression;
 use crate::{parser::{parse, ast::{Precedence, ExpressionContext}}, lex::Tokenizer, identifiers::Trie};
 
-use super::vals::{EvalError, LuaType};
-use super::{vals::{StmtResult as R, TypeError, LuaVal as V}, eval};
+use super::vals::{EvalError, RuaType};
+use super::{vals::{StmtResult as R, TypeError, RuaVal as V}, eval};
 
 fn test_eval_expr(input: &str, expected_output: Result<V, EvalError>) {
     let mut identifiers = Trie::new();
@@ -52,9 +52,9 @@ fn test_if_else() {
 
 #[test]
 fn test_type_errors() {
-    test_eval_expr("1 + true * nil", Err(TypeError(LuaType::Number, LuaType::Bool).into()));
-    test_eval_expr("-false or -true", Err(TypeError(LuaType::Number, LuaType::Bool).into()));
-    test_eval_expr("(false or 5) + nil", Err(TypeError(LuaType::Number, LuaType::Nil).into()));
+    test_eval_expr("1 + true * nil", Err(TypeError(RuaType::Number, RuaType::Bool).into()));
+    test_eval_expr("-false or -true", Err(TypeError(RuaType::Number, RuaType::Bool).into()));
+    test_eval_expr("(false or 5) + nil", Err(TypeError(RuaType::Number, RuaType::Nil).into()));
 }
 
 #[test]

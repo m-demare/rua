@@ -4,12 +4,12 @@ use either::{Either, Left, Right};
 use rustc_hash::FxHashMap;
 
 use crate::{identifiers::{Identifier, Trie}, lex::tokens::TokenType};
-use super::{vals::{LuaVal, NativeFunction}, native_functions};
+use super::{vals::{RuaVal, NativeFunction}, native_functions};
 
 pub struct Scope {
-    store: FxHashMap<Identifier, LuaVal>,
+    store: FxHashMap<Identifier, RuaVal>,
     identifiers: Rc<RefCell<Trie>>,
-    parent_or_globals: Either<Rc<RefCell<Scope>>, FxHashMap<Identifier, LuaVal>>,
+    parent_or_globals: Either<Rc<RefCell<Scope>>, FxHashMap<Identifier, RuaVal>>,
 }
 
 impl Scope {
@@ -17,16 +17,16 @@ impl Scope {
         let mut globals = FxHashMap::default();
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "print"),
-            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::print))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::print))));
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "tostring"),
-            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tostring))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tostring))));
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "tonumber"),
-            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tonumber))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tonumber))));
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "type"),
-            LuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::lua_type))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::rua_type))));
 
         Self { store: FxHashMap::default(), identifiers, parent_or_globals: Right(globals) }
     }
@@ -38,11 +38,11 @@ impl Scope {
         }
     }
 
-    pub fn set(&mut self, id: Identifier, val: LuaVal) {
+    pub fn set(&mut self, id: Identifier, val: RuaVal) {
         self.store.insert(id, val);
     }
 
-    pub fn get(&self, id: Identifier) -> Option<LuaVal> {
+    pub fn get(&self, id: Identifier) -> Option<RuaVal> {
         match self.store.get(&id) {
             Some(val) => Some(val.clone()),
             None => match &self.parent_or_globals {
@@ -52,7 +52,7 @@ impl Scope {
         }
     }
 
-    pub fn update(&mut self, id: Identifier, val: LuaVal) -> bool {
+    pub fn update(&mut self, id: Identifier, val: RuaVal) -> bool {
         match self.store.entry(id) {
             Entry::Occupied(mut e) => { e.insert(val); true }
             Entry::Vacant(_) => false,

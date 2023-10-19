@@ -3,12 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{eval::vals::Function, parser::ast::Expression, identifiers::Identifier};
 
 
-use super::{vals::{LuaVal, EvalError, LuaResult}, scope::Scope};
+use super::{vals::{RuaVal, EvalError, RuaResult}, scope::Scope};
 
 impl Expression {
     #[allow(clippy::cast_precision_loss)]
-    pub fn eval(&self, env: Rc<RefCell<Scope>>) -> LuaResult {
-        use LuaVal as V;
+    pub fn eval(&self, env: Rc<RefCell<Scope>>) -> RuaResult {
+        use RuaVal as V;
 
         match self {
             Self::Identifier(id) => Self::get_identifier(*id, &env),
@@ -40,7 +40,7 @@ impl Expression {
         }
     }
 
-    fn and(&self, rhs: &Self, env: Rc<RefCell<Scope>>) -> LuaResult {
+    fn and(&self, rhs: &Self, env: Rc<RefCell<Scope>>) -> RuaResult {
         let lhs = self.eval(env.clone())?;
         if lhs.truthy() {
             rhs.eval(env)
@@ -49,7 +49,7 @@ impl Expression {
         }
     }
 
-    fn or(&self, rhs: &Self, env: Rc<RefCell<Scope>>) -> LuaResult {
+    fn or(&self, rhs: &Self, env: Rc<RefCell<Scope>>) -> RuaResult {
         let lhs = self.eval(env.clone())?;
         if lhs.truthy() {
             Ok(lhs)
@@ -58,14 +58,14 @@ impl Expression {
         }
     }
 
-    fn get_identifier(id: Identifier, env: &Rc<RefCell<Scope>>) -> LuaResult {
+    fn get_identifier(id: Identifier, env: &Rc<RefCell<Scope>>) -> RuaResult {
         match env.borrow().get(id) {
             Some(val) => Ok(val),
             None => Err(EvalError::UnknownId(env.borrow().get_id_name(id).expect("Got a non existing Identifier"))),
         }
     }
 
-    pub fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> LuaResult {
+    pub fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> RuaResult {
         let val = self.eval(env.clone())?;
         let func = val.as_func()?;
         func.call(args, env)

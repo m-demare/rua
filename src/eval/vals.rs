@@ -6,7 +6,7 @@ use crate::parser::ast::{FunctionArg, Statement, Expression};
 use super::{scope::Scope, statements::eval_block};
 
 #[derive(Clone, PartialEq)]
-pub enum LuaVal {
+pub enum RuaVal {
     Number(f64),
     Bool(bool),
     Nil,
@@ -22,15 +22,15 @@ pub struct Function {
     env: Rc<RefCell<Scope>>,
 }
 
-pub type LuaResult = Result<LuaVal, EvalError>;
+pub type RuaResult = Result<RuaVal, EvalError>;
 
 #[derive(Clone)]
 pub struct NativeFunction {
-    func: Rc<dyn Fn(&FunctionContext) -> LuaResult>,
+    func: Rc<dyn Fn(&FunctionContext) -> RuaResult>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum LuaType {
+pub enum RuaType {
     Number,
     Bool,
     Nil,
@@ -41,19 +41,19 @@ pub enum LuaType {
 #[derive(Debug, PartialEq)]
 pub enum StmtResult {
     None,
-    Return(LuaVal),
+    Return(RuaVal),
     Break,
 }
 
-pub trait LuaCallable {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> LuaResult;
+pub trait RuaCallable {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult;
 }
 
 pub struct FunctionContext{
-    pub args: Vec<LuaVal>,
+    pub args: Vec<RuaVal>,
 }
 
-impl LuaVal {
+impl RuaVal {
     pub fn into_bool(self) -> Result<bool, TypeError>{
         self.try_into()
     } 
@@ -62,11 +62,11 @@ impl LuaVal {
         self.try_into()
     }
 
-    pub fn as_func(&self) -> Result<&dyn LuaCallable, TypeError> {
+    pub fn as_func(&self) -> Result<&dyn RuaCallable, TypeError> {
         match self {
             Self::Function(f) => Ok(f),
             Self::NativeFunction(f) => Ok(f),
-            v => Err(TypeError(LuaType::Function, v.get_type())),
+            v => Err(TypeError(RuaType::Function, v.get_type())),
         }
     }
 
@@ -78,14 +78,14 @@ impl LuaVal {
         !matches!(self, Self::Bool(false) | Self::Nil)
     }
 
-    pub const fn get_type(&self) -> LuaType {
+    pub const fn get_type(&self) -> RuaType {
         match self {
-            Self::Number(..) => LuaType::Number,
-            Self::Bool(..) => LuaType::Bool,
-            Self::Nil => LuaType::Nil,
+            Self::Number(..) => RuaType::Number,
+            Self::Bool(..) => RuaType::Bool,
+            Self::Nil => RuaType::Nil,
             Self::Function(..) |
-                Self::NativeFunction(..) => LuaType::Function,
-            Self::String(..) => LuaType::String,
+                Self::NativeFunction(..) => RuaType::Function,
+            Self::String(..) => RuaType::String,
         }
     }
 }
@@ -103,12 +103,12 @@ impl PartialEq for NativeFunction {
 }
 
 impl NativeFunction {
-    pub fn new(func: Rc<dyn Fn(&FunctionContext) -> LuaResult>) -> Self {
+    pub fn new(func: Rc<dyn Fn(&FunctionContext) -> RuaResult>) -> Self {
         Self { func }
     }
 }
 
-impl Display for LuaVal {
+impl Display for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Number(n) => write!(f, "{n}"),
@@ -121,7 +121,7 @@ impl Display for LuaVal {
     }
 }
 
-impl Display for LuaType {
+impl Display for RuaType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Number => write!(f, "number"),
@@ -133,7 +133,7 @@ impl Display for LuaType {
     }
 }
 
-impl Debug for LuaVal {
+impl Debug for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
@@ -145,9 +145,9 @@ impl Function {
     }
 }
 
-impl LuaCallable for Function {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> LuaResult {
-        let arg_vals: Vec<LuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
+impl RuaCallable for Function {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
+        let arg_vals: Vec<RuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
         let mut new_env = Scope::extend(self.env.clone());
         self.args.iter().zip(arg_vals).for_each(|(arg, val)| match arg {
@@ -156,16 +156,16 @@ impl LuaCallable for Function {
         });
 
         match eval_block(&self.body, &RefCell::new(new_env).into())? {
-            StmtResult::None => Ok(LuaVal::Nil),
+            StmtResult::None => Ok(RuaVal::Nil),
             StmtResult::Return(v) => Ok(v),
             StmtResult::Break => todo!(),
         }
     }
 }
 
-impl LuaCallable for NativeFunction {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> LuaResult {
-        let arg_vals: Vec<LuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
+impl RuaCallable for NativeFunction {
+    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
+        let arg_vals: Vec<RuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
         (self.func)(&FunctionContext {
             args: arg_vals,
@@ -188,7 +188,7 @@ pub enum EvalError {
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-pub struct TypeError(pub LuaType, pub LuaType);
+pub struct TypeError(pub RuaType, pub RuaType);
 
 impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -196,65 +196,65 @@ impl fmt::Display for TypeError {
     }
 }
 
-impl From<String> for LuaVal {
+impl From<String> for RuaVal {
     fn from(val: String) -> Self {
         Self::String(val.into())
     }
 }
 
-impl From<Rc<str>> for LuaVal {
+impl From<Rc<str>> for RuaVal {
     fn from(val: Rc<str>) -> Self {
         Self::String(val)
     }
 }
 
-impl From<f64> for LuaVal {
+impl From<f64> for RuaVal {
     fn from(val: f64) -> Self {
         Self::Number(val)
     }
 }
 
-impl From<bool> for LuaVal {
+impl From<bool> for RuaVal {
     fn from(val: bool) -> Self {
         Self::Bool(val)
     }
 }
 
-impl From<()> for LuaVal {
+impl From<()> for RuaVal {
     fn from((): ()) -> Self {
         Self::Nil
     }
 }
 
-impl TryInto<f64> for LuaVal {
+impl TryInto<f64> for RuaVal {
     type Error = TypeError;
 
     fn try_into(self) -> Result<f64, Self::Error> {
         match self {
             Self::Number(n) => Ok(n),
-            v => Err(TypeError(LuaType::Number, v.get_type())),
+            v => Err(TypeError(RuaType::Number, v.get_type())),
         }
     }
 }
 
-impl TryInto<bool> for LuaVal {
+impl TryInto<bool> for RuaVal {
     type Error = TypeError;
 
     fn try_into(self) -> Result<bool, Self::Error> {
         match self {
             Self::Bool(b) => Ok(b),
-            v => Err(TypeError(LuaType::Bool, v.get_type())),
+            v => Err(TypeError(RuaType::Bool, v.get_type())),
         }
     }
 }
 
-impl TryInto<Rc<str>> for LuaVal {
+impl TryInto<Rc<str>> for RuaVal {
     type Error = TypeError;
 
     fn try_into(self) -> Result<Rc<str>, Self::Error> {
         match self {
             Self::String(s) => Ok(s),
-            v => Err(TypeError(LuaType::String, v.get_type())),
+            v => Err(TypeError(RuaType::String, v.get_type())),
         }
     }
 }
@@ -270,9 +270,9 @@ pub trait TryIntoOpt<T> {
     fn try_into_opt(self) -> Result<Option<T>, Self::Error>;
 }
 
-// Cannot implement TryInto<Option<T>> for LuaVal, since it
-// conflicts with the default implementation of TryInto<Option<LuaVal>>
-impl<T> TryIntoOpt<T> for LuaVal where Self: TryInto<T, Error = TypeError>{
+// Cannot implement TryInto<Option<T>> for RuaVal, since it
+// conflicts with the default implementation of TryInto<Option<RuaVal>>
+impl<T> TryIntoOpt<T> for RuaVal where Self: TryInto<T, Error = TypeError>{
     type Error = TypeError;
 
     fn try_into_opt(self) -> Result<Option<T>, Self::Error> {
