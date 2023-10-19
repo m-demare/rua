@@ -100,7 +100,10 @@ fn get_parameters(
             return (
                 Vec::new(),
                 quote!(if ctxt.args.len() > 0 {
-                    return Err(EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()));
+                    return Err(EvalError::TooManyArguments(
+                        ctxt.args.len() as u8,
+                        name_str.into(),
+                    ));
                 }),
             )
         }

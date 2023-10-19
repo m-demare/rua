@@ -4,14 +4,19 @@ use std::{
     rc::Rc,
 };
 
-use crate::eval::eval;
-use crate::lex::Tokenizer;
-use crate::parser::ast::{ExpressionContext, ParseError, Precedence};
-use crate::parser::{parse, parse_expression};
-use crate::{
-    eval::{scope::Scope, vals::EvalError},
-    identifiers::Trie,
-    lex::tokens::{Token, TokenType},
+use crate::eval::{
+    eval,
+    scope::Scope,
+    vals::{EvalError, StmtResult},
+};
+use crate::identifiers::Trie;
+use crate::lex::{
+    tokens::{Token, TokenType},
+    Tokenizer,
+};
+use crate::parser::{
+    ast::{ParseError, Program, Statement},
+    parse,
 };
 
 pub fn run() -> io::Result<()> {
@@ -25,25 +30,24 @@ pub fn run() -> io::Result<()> {
         io::stdout().flush()?;
         stdin.read_line(&mut input)?;
 
-        let ids = env.borrow_mut().identifiers();
-        let mut ids = ids.borrow_mut();
-        let tokens = Tokenizer::new(input.chars(), &mut ids);
-        let ast = parse(tokens);
+        let ast = parse_chars(input.chars(), &env);
+
         match ast {
-            Ok(tree) => print_res(eval(&tree, &env)),
+            Ok(ref prog @ Program { ref statements, .. })
+                if statements.len() != 1
+                    || !matches!(statements.first(), Some(&Statement::Call(..))) =>
+            {
+                print_res(eval(prog, &env));
+            }
             Err(
                 ParseError::UnexpectedExpression
                 | ParseError::UnexpectedToken(box Token { ttype: TokenType::BINARY_OP(_), .. }, _)
                 | ParseError::UnexpectedEOF,
-            ) => {
-                let tokens = Tokenizer::new(input.chars(), &mut ids);
-                let expr = parse_expression(
-                    tokens.peekable().by_ref(),
-                    &Precedence::Lowest,
-                    &ExpressionContext::Return,
-                );
-                match expr {
-                    Ok(exp) => print_res(exp.eval(env.clone())),
+            )
+            | Ok(Program { .. }) => {
+                let ast = parse_chars("return ".chars().chain(input.chars()), &env);
+                match ast {
+                    Ok(expr) => print_res(eval(&expr, &env)),
                     Err(err) => println!("Error: {err}"),
                 }
             }
@@ -52,9 +56,20 @@ pub fn run() -> io::Result<()> {
     }
 }
 
-fn print_res<T: std::fmt::Debug>(val: Result<T, EvalError>) {
+fn print_res(val: Result<StmtResult, EvalError>) {
     match val {
-        Ok(v) => println!("{v:?}"),
+        Ok(StmtResult::Return(v)) => println!("{v:?}"),
+        Ok(..) => {}
         Err(e) => println!("{e}"),
     }
+}
+
+fn parse_chars<T: Iterator<Item = char> + Clone>(
+    input: T,
+    env: &Rc<RefCell<Scope>>,
+) -> Result<Program, ParseError> {
+    let ids = env.borrow_mut().identifiers();
+    let mut ids = ids.borrow_mut();
+    let tokens = Tokenizer::new(input, &mut ids);
+    parse(tokens)
 }

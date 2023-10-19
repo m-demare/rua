@@ -8,7 +8,7 @@ use self::{
     vals::{EvalError, StmtResult},
 };
 
-pub mod exprs;
+mod exprs;
 mod native_functions;
 pub mod scope;
 mod statements;
