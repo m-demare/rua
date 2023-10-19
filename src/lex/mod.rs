@@ -6,16 +6,18 @@ mod tests;
 use std::iter::Peekable;
 
 use regex_lite::Regex;
+use once_cell::sync::Lazy;
 
 use self::tokens::{Token, TokenType, lookup_char, lookup_comparison, BinaryOp};
 use self::utils::take_while_peeking;
 use self::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
 use crate::identifiers::{TrieWalker, Trie};
 
+static STR_REPLACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
+
 pub struct Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
     input: Peekable<T>,
     identifiers: &'ids mut Trie,
-    str_replace_re: Box<Regex>,
 }
 
 impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
@@ -43,8 +45,7 @@ impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + C
 
 impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
     pub fn new(input: T, identifiers: &'ids mut Trie) -> Self {
-        let str_replace_re = Regex::new(r#"\\([\\'"])"#).expect("Regex is valid").into();
-        Self { input: input.peekable(), identifiers, str_replace_re }
+        Self { input: input.peekable(), identifiers }
     }
 
     fn read_comparison(&mut self) -> Token {
@@ -151,7 +152,7 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
             None => return Token { ttype: TokenType::ILLEGAL("Unclosed string literal".into()) },
         };
 
-        let s = self.str_replace_re.replace_all(&s, "$1");
+        let s = STR_REPLACE_RE.replace_all(&s, "$1");
 
         Token { ttype: TokenType::STRING(s.into()) }
     }
