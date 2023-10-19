@@ -53,7 +53,7 @@ impl Statement {
 
     fn eval_assign(id: Identifier, exp: &Expression, env: &Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
         let val = exp.eval(env.clone())?;
-        env.borrow_mut().set(id, val);
+        env.borrow_mut().update(id, val);
         
         Ok(StmtResult::None)
     }

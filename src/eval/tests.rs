@@ -130,3 +130,27 @@ fn test_strings() {
     test_eval_expr(r#" #("foo" .. "bar") "#, Ok(V::Number(6.0)));
 }
 
+#[test]
+fn test_assign_stmt() {
+    test_eval_stmt("
+    local function foo()
+        local n = 2
+        local m = 10
+        local function asdf()
+            local n
+            n = 1
+            return n
+        end
+        return n + m + asdf()
+    end
+    return foo()", Ok(R::Return(V::Number(13.0))));
+    test_eval_stmt("
+    local function foo()
+        local function asdf()
+            global = 123
+        end
+        asdf()
+    end
+    foo()
+    return global", Ok(R::Return(V::Number(123.0))));
+}

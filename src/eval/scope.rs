@@ -52,10 +52,13 @@ impl Scope {
         }
     }
 
-    pub fn update(&mut self, id: Identifier, val: RuaVal) -> bool {
+    pub fn update(&mut self, id: Identifier, val: RuaVal) {
         match self.store.entry(id) {
-            Entry::Occupied(mut e) => { e.insert(val); true }
-            Entry::Vacant(_) => false,
+            Entry::Occupied(mut e) =>  { e.insert(val); },
+            Entry::Vacant(_) => match &mut self.parent_or_globals {
+                Left(parent) => { parent.borrow_mut().update(id, val) },
+                Right(globals) => { globals.insert(id, val); },
+            },
         }
     }
 
