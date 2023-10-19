@@ -1,17 +1,20 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::parser::ast::Program;
 
-use self::{vals::{StmtResult, EvalError}, statements::eval_block, scope::Scope};
+use self::{
+    scope::Scope,
+    statements::eval_block,
+    vals::{EvalError, StmtResult},
+};
 
-pub mod vals;
 pub mod exprs;
+mod native_functions;
 pub mod scope;
 mod statements;
 mod tests;
-mod native_functions;
+pub mod vals;
 
 pub fn eval(program: &Program, env: &Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
     eval_block(&program.statements, env)
 }
-

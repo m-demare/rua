@@ -1,13 +1,15 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::{lex::Tokenizer, parser::parse, identifiers::Trie};
+use rua::{identifiers::Trie, lex::Tokenizer, parser::parse};
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
-    c.bench_function(name, |b| b.iter(||{
-        let mut identifiers = Trie::new();
-        let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut identifiers));
-        parse(black_box(tokens))
-    }));
+    c.bench_function(name, |b| {
+        b.iter(|| {
+            let mut identifiers = Trie::new();
+            let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut identifiers));
+            parse(black_box(tokens))
+        })
+    });
 }
 
 fn parse_assignments(c: &mut Criterion) {
@@ -24,7 +26,8 @@ fn parse_fibonacci(c: &mut Criterion) {
         return fibo(n-1) + fibo(n-2)
     end
 end
-".repeat(50000);
+"
+    .repeat(50000);
 
     bench(c, &input, "parse_fibonacci")
 }

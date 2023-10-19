@@ -1,7 +1,13 @@
-use std::{fmt::{self, Display, Debug}, rc::Rc, cell::RefCell, convert::Infallible, hint::unreachable_unchecked};
+use std::{
+    cell::RefCell,
+    convert::Infallible,
+    fmt::{self, Debug, Display},
+    hint::unreachable_unchecked,
+    rc::Rc,
+};
 use thiserror::Error;
 
-use crate::parser::ast::{FunctionArg, Statement, Expression};
+use crate::parser::ast::{Expression, FunctionArg, Statement};
 
 use super::{scope::Scope, statements::eval_block};
 
@@ -49,16 +55,16 @@ pub trait RuaCallable {
     fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult;
 }
 
-pub struct FunctionContext{
+pub struct FunctionContext {
     pub args: Vec<RuaVal>,
 }
 
 impl RuaVal {
-    pub fn into_bool(self) -> Result<bool, TypeError>{
+    pub fn into_bool(self) -> Result<bool, TypeError> {
         self.try_into()
-    } 
+    }
 
-    pub fn into_number(self) -> Result<f64, TypeError>{
+    pub fn into_number(self) -> Result<f64, TypeError> {
         self.try_into()
     }
 
@@ -83,8 +89,7 @@ impl RuaVal {
             Self::Number(..) => RuaType::Number,
             Self::Bool(..) => RuaType::Bool,
             Self::Nil => RuaType::Nil,
-            Self::Function(..) |
-                Self::NativeFunction(..) => RuaType::Function,
+            Self::Function(..) | Self::NativeFunction(..) => RuaType::Function,
             Self::String(..) => RuaType::String,
         }
     }
@@ -114,8 +119,7 @@ impl Display for RuaVal {
             Self::Number(n) => write!(f, "{n}"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
-            Self::Function(..) |
-                Self::NativeFunction(..) => write!(f, "function"),
+            Self::Function(..) | Self::NativeFunction(..) => write!(f, "function"),
             Self::String(s) => write!(f, "{s}"),
         }
     }
@@ -127,7 +131,7 @@ impl Display for RuaType {
             Self::Number => write!(f, "number"),
             Self::Bool => write!(f, "boolean"),
             Self::Nil => write!(f, "nil"),
-            Self::Function  => write!(f, "function"),
+            Self::Function => write!(f, "function"),
             Self::String => write!(f, "string"),
         }
     }
@@ -147,7 +151,8 @@ impl Function {
 
 impl RuaCallable for Function {
     fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
-        let arg_vals: Vec<RuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
+        let arg_vals: Vec<RuaVal> =
+            args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
         let mut new_env = Scope::extend(self.env.clone());
         self.args.iter().zip(arg_vals).for_each(|(arg, val)| match arg {
@@ -165,11 +170,10 @@ impl RuaCallable for Function {
 
 impl RuaCallable for NativeFunction {
     fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
-        let arg_vals: Vec<RuaVal> = args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
+        let arg_vals: Vec<RuaVal> =
+            args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
 
-        (self.func)(&FunctionContext {
-            args: arg_vals,
-        })
+        (self.func)(&FunctionContext { args: arg_vals })
     }
 }
 
@@ -272,7 +276,10 @@ pub trait TryIntoOpt<T> {
 
 // Cannot implement TryInto<Option<T>> for RuaVal, since it
 // conflicts with the default implementation of TryInto<Option<RuaVal>>
-impl<T> TryIntoOpt<T> for RuaVal where Self: TryInto<T, Error = TypeError>{
+impl<T> TryIntoOpt<T> for RuaVal
+where
+    Self: TryInto<T, Error = TypeError>,
+{
     type Error = TypeError;
 
     fn try_into_opt(self) -> Result<Option<T>, Self::Error> {

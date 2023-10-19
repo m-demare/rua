@@ -1,10 +1,20 @@
-use std::{rc::Rc, cell::{RefCell, RefMut}, collections::hash_map::Entry};
 use either::{Either, Left, Right};
+use std::{
+    cell::{RefCell, RefMut},
+    collections::hash_map::Entry,
+    rc::Rc,
+};
 
 use rustc_hash::FxHashMap;
 
-use crate::{identifiers::{Identifier, Trie}, lex::tokens::TokenType};
-use super::{vals::{RuaVal, NativeFunction}, native_functions};
+use super::{
+    native_functions,
+    vals::{NativeFunction, RuaVal},
+};
+use crate::{
+    identifiers::{Identifier, Trie},
+    lex::tokens::TokenType,
+};
 
 pub struct Scope {
     store: FxHashMap<Identifier, RuaVal>,
@@ -17,22 +27,27 @@ impl Scope {
         let mut globals = FxHashMap::default();
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "print"),
-            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::print))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::print))),
+        );
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "tostring"),
-            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tostring))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tostring))),
+        );
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "tonumber"),
-            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tonumber))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::tonumber))),
+        );
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "type"),
-            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::rua_type))));
+            RuaVal::NativeFunction(NativeFunction::new(Rc::new(native_functions::rua_type))),
+        );
 
         Self { store: FxHashMap::default(), identifiers, parent_or_globals: Right(globals) }
     }
 
     pub fn extend(parent: Rc<RefCell<Self>>) -> Self {
-        Self { store: FxHashMap::default(),
+        Self {
+            store: FxHashMap::default(),
             identifiers: parent.clone().borrow().identifiers(),
             parent_or_globals: Left(parent),
         }
@@ -54,10 +69,14 @@ impl Scope {
 
     pub fn update(&mut self, id: Identifier, val: RuaVal) {
         match self.store.entry(id) {
-            Entry::Occupied(mut e) =>  { e.insert(val); },
+            Entry::Occupied(mut e) => {
+                e.insert(val);
+            }
             Entry::Vacant(_) => match &mut self.parent_or_globals {
-                Left(parent) => { parent.borrow_mut().update(id, val) },
-                Right(globals) => { globals.insert(id, val); },
+                Left(parent) => parent.borrow_mut().update(id, val),
+                Right(globals) => {
+                    globals.insert(id, val);
+                }
             },
         }
     }
@@ -77,4 +96,3 @@ fn insert_identifier(mut identifiers: RefMut<Trie>, new_id: &str) -> Identifier 
         _ => unreachable!("Native function names are identifiers"),
     }
 }
-

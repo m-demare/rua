@@ -4,25 +4,32 @@
 #![feature(try_find)]
 #![feature(iterator_try_collect)]
 
-use std::{path::PathBuf, cell::RefCell};
+use std::{cell::RefCell, path::PathBuf};
 
 use parser::ast::ParseError;
 
-use crate::{identifiers::Trie, eval::{eval, scope::Scope}};
+use crate::{
+    eval::{eval, scope::Scope},
+    identifiers::Trie,
+};
 
 mod cli;
-mod repl;
+mod eval;
+mod identifiers;
 mod lex;
 mod parser;
-mod identifiers;
-mod eval;
+mod repl;
 
 fn main() {
     let cli = cli::parse_args();
 
     match &cli.path {
-        Some(path) => { let _ = evaluate(path); },
-        None => { let _ = repl::run(); },
+        Some(path) => {
+            let _ = evaluate(path);
+        }
+        None => {
+            let _ = repl::run();
+        }
     }
 }
 
@@ -33,7 +40,7 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
     let mut identifiers = Trie::new();
 
     let tokens = lex::Tokenizer::new(contents.chars(), &mut identifiers);
-    
+
     let ast = parser::parse(tokens)?;
 
     let env = Scope::new(RefCell::new(identifiers).into());

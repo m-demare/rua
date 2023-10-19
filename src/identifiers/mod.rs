@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::lex::tokens::{TokenType, lookup_keyword};
+use crate::lex::tokens::{lookup_keyword, TokenType};
 
 pub struct Trie {
     root: TrieNode,
@@ -35,15 +35,17 @@ impl<'trie> Trie {
             node = node.find_next_or_add(ch);
         }
 
-        node.val.get_or_insert_with(||
-            if let Some(token) = lookup_keyword(s) {
-                token
-            } else {
-                self.last_id += 1;
-                self.identifiers.insert(Identifier(self.last_id), s.into());
-                TokenType::IDENTIFIER(Identifier(self.last_id))
-            }
-        ).clone()
+        node.val
+            .get_or_insert_with(|| {
+                if let Some(token) = lookup_keyword(s) {
+                    token
+                } else {
+                    self.last_id += 1;
+                    self.identifiers.insert(Identifier(self.last_id), s.into());
+                    TokenType::IDENTIFIER(Identifier(self.last_id))
+                }
+            })
+            .clone()
     }
 
     pub fn get(&self, id: Identifier) -> Option<Box<str>> {
@@ -54,7 +56,7 @@ impl<'trie> Trie {
     pub fn find(&self, s: &str) -> Option<TokenType> {
         let mut node = &self.root;
         for ch in s.chars() {
-            match node.next.iter().find(|(c, _)| &ch==c) {
+            match node.next.iter().find(|(c, _)| &ch == c) {
                 Some((_, n)) => node = n,
                 None => return None,
             }
@@ -69,20 +71,20 @@ impl Default for Trie {
     }
 }
 
-impl <'trie> TrieWalker<'trie> {
+impl<'trie> TrieWalker<'trie> {
     pub const fn new(trie: &'trie Trie) -> TrieWalker<'trie> {
-        Self {curr_node: Some(&trie.root), trie: PhantomData}
+        Self { curr_node: Some(&trie.root), trie: PhantomData }
     }
 
     pub fn walk(&mut self, ch: char) {
         if let Some(n) = &self.curr_node {
-            self.curr_node = match n.next.iter().find(|(c, _)| &ch==c) {
+            self.curr_node = match n.next.iter().find(|(c, _)| &ch == c) {
                 Some((_, found)) => Some(found),
                 None => None,
             };
         }
     }
-    
+
     pub fn get_res(self) -> Option<TokenType> {
         match self.curr_node {
             Some(n) => n.val.clone(),
@@ -91,13 +93,13 @@ impl <'trie> TrieWalker<'trie> {
     }
 }
 
-impl<'trie> TrieNode{
+impl<'trie> TrieNode {
     pub(self) fn new(val: Option<TokenType>) -> Self {
         Self { next: Vec::new(), val }
     }
 
-    fn find_next_or_add (&'trie mut self, ch: char) -> &'trie mut Self {
-        if let Some(i) = self.next.iter().position(|(c, _)| &ch==c) {
+    fn find_next_or_add(&'trie mut self, ch: char) -> &'trie mut Self {
+        if let Some(i) = self.next.iter().position(|(c, _)| &ch == c) {
             &mut self.next[i].1
         } else {
             self.next.push((ch, Box::new(Self::new(None))));
@@ -159,4 +161,3 @@ mod tests {
         assert_eq!(lukes_trie_walker.get_res(), Some(local));
     }
 }
-

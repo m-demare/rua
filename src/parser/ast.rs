@@ -1,6 +1,9 @@
 use std::{error::Error, fmt, rc::Rc};
 
-use crate::{lex::tokens::{Token, TokenType, BinaryOp}, identifiers::Identifier};
+use crate::{
+    identifiers::Identifier,
+    lex::tokens::{BinaryOp, Token, TokenType},
+};
 
 #[derive(PartialEq, Debug)]
 pub struct Program {
@@ -18,7 +21,6 @@ pub enum Expression {
     Not(Box<Expression>),
     Len(Box<Expression>),
     Neg(Box<Expression>),
-
 
     // Arithmetic operators
     Plus(Box<(Expression, Expression)>),
@@ -59,7 +61,7 @@ pub enum Statement {
     Local(Identifier, Option<Box<Expression>>),
     Assign(Identifier, Box<Expression>),
     Return(Option<Box<Expression>>),
-    
+
     IfThen(Box<Expression>, Vec<Statement>),
     IfThenElse(Box<Expression>, Vec<Statement>, Vec<Statement>),
     IfThenElseIf(Box<[(Expression, Vec<Statement>)]>),
@@ -74,14 +76,14 @@ pub enum Precedence {
     Lowest,
     Or,
     And,
-    Comparator, // >, <, <=, >=, ~=, ==
-    Dotdot,     // ..
-    Sum,        // +, -
-    Product,    // *, /, %
-    Prefix,     // not, #, - (unary)
-    Exp,        // ^
-    Call,       // foo(...)
-    FieldAccess,// foo.bar
+    Comparator,  // >, <, <=, >=, ~=, ==
+    Dotdot,      // ..
+    Sum,         // +, -
+    Product,     // *, /, %
+    Prefix,      // not, #, - (unary)
+    Exp,         // ^
+    Call,        // foo(...)
+    FieldAccess, // foo.bar
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq)]
@@ -97,8 +99,12 @@ pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
     match op {
         BinaryOp::OR => Precedence::Or,
         BinaryOp::AND => Precedence::And,
-        BinaryOp::EQ | BinaryOp::NEQ | BinaryOp::LE | BinaryOp::GE |
-            BinaryOp::LT | BinaryOp::GT => Precedence::Comparator,
+        BinaryOp::EQ
+        | BinaryOp::NEQ
+        | BinaryOp::LE
+        | BinaryOp::GE
+        | BinaryOp::LT
+        | BinaryOp::GT => Precedence::Comparator,
         BinaryOp::DOTDOT => Precedence::Dotdot,
         BinaryOp::PLUS => Precedence::Sum,
         BinaryOp::TIMES | BinaryOp::DIV | BinaryOp::MOD => Precedence::Product,
@@ -131,10 +137,20 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let res = match self {
             Self::IllegalToken(s) => format!("Illegal token {s}"),
-            Self::UnexpectedToken(got, expected) => format!("Unexpected token. Got {:?}, expected {}{expected:?}", got.ttype, if expected.len() > 1 {"one of "} else {""}),
-            Self::UnexpectedTokenWithErrorMsg(got, expected) => format!("Unexpected token. Got {:?}, expected {expected}", got.ttype),
-            Self::UnexpectedClose(block_type, got) => format!("Cannot close block of type {block_type:?} with token {:?}", got.ttype),
-            Self::NamedFunctionExpr(id) => format!("Function expression cannot have a name (got {id:?})"),
+            Self::UnexpectedToken(got, expected) => format!(
+                "Unexpected token. Got {:?}, expected {}{expected:?}",
+                got.ttype,
+                if expected.len() > 1 { "one of " } else { "" }
+            ),
+            Self::UnexpectedTokenWithErrorMsg(got, expected) => {
+                format!("Unexpected token. Got {:?}, expected {expected}", got.ttype)
+            }
+            Self::UnexpectedClose(block_type, got) => {
+                format!("Cannot close block of type {block_type:?} with token {:?}", got.ttype)
+            }
+            Self::NamedFunctionExpr(id) => {
+                format!("Function expression cannot have a name (got {id:?})")
+            }
             Self::UnnamedFunctionSt => "Function statement must have a name".to_string(),
             Self::UnexpectedExpression => "Expected statement, got expression".to_string(),
             Self::UnexpectedEOF => "Unexpected end of file".to_string(),
@@ -143,5 +159,4 @@ impl fmt::Display for ParseError {
     }
 }
 
-impl Error for ParseError { }
-
+impl Error for ParseError {}

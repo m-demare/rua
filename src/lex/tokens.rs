@@ -15,7 +15,6 @@ pub enum TokenType {
     UNARY_OP(UnaryOp),
     MINUS,
 
-
     ASSIGN,
 
     DOT,
@@ -87,7 +86,7 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Token{
+pub struct Token {
     pub ttype: TokenType,
 }
 
@@ -168,4 +167,3 @@ pub(super) fn lookup_comparison(ch: char, has_eq: bool) -> TokenType {
         }
     }
 }
-

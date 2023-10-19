@@ -6,8 +6,5 @@ pub struct Cli {
 }
 
 pub fn parse_args() -> Cli {
-    Cli {
-        path: std::env::args().nth(1).map(PathBuf::from),
-    }
+    Cli { path: std::env::args().nth(1).map(PathBuf::from) }
 }
-

@@ -4,12 +4,14 @@ use rua::{identifiers::Trie, lex::Tokenizer};
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     let mut identifiers = Trie::new();
-    c.bench_function(name, |b| b.iter(|| {
-        let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut identifiers));
-        for t in tokens {
-            black_box(t);
-        }
-    }));
+    c.bench_function(name, |b| {
+        b.iter(|| {
+            let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut identifiers));
+            for t in tokens {
+                black_box(t);
+            }
+        })
+    });
 }
 
 fn lex_one_identifier(c: &mut Criterion) {
@@ -38,7 +40,7 @@ fn bin_ints(c: &mut Criterion) {
 }
 
 fn float_numbers(c: &mut Criterion) {
-    let input = "0.987654\n.123456\n".repeat(1000000/2);
+    let input = "0.987654\n.123456\n".repeat(1000000 / 2);
     bench(c, &input, "lex_floats");
 }
 
@@ -48,7 +50,7 @@ fn single_digits(c: &mut Criterion) {
 }
 
 fn short_floats(c: &mut Criterion) {
-    let input = "0.9\n.1\n".repeat(1000000/2);
+    let input = "0.9\n.1\n".repeat(1000000 / 2);
     bench(c, &input, "lex_short_floats");
 }
 
@@ -75,7 +77,8 @@ fn lex_fibonacci(c: &mut Criterion) {
         return fibo(n-1) + fibo(n-2)
     end
 end
-".repeat(50000);
+"
+    .repeat(50000);
     bench(c, &input, "lex_fibonacci");
 }
 

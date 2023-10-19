@@ -1,4 +1,3 @@
-
 macro_rules! peek_token_is {
     ($tokens_it: expr, $($args: pat),+) => {
         match $tokens_it.peek() {
@@ -18,6 +17,5 @@ macro_rules! debug_peek_token {
     };
 }
 
-pub(super) use peek_token_is;
 pub(super) use debug_peek_token;
-
+pub(super) use peek_token_is;

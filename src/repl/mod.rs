@@ -1,12 +1,20 @@
-use std::{io::{self, Write}, cell::RefCell, rc::Rc};
+use std::{
+    cell::RefCell,
+    io::{self, Write},
+    rc::Rc,
+};
 
-use crate::{eval::{scope::Scope, vals::EvalError}, lex::tokens::{TokenType, Token}, identifiers::Trie};
-use crate::lex::Tokenizer;
-use crate::parser::ast::{Precedence, ExpressionContext, ParseError};
-use crate::parser::{parse, parse_expression};
 use crate::eval::eval;
+use crate::lex::Tokenizer;
+use crate::parser::ast::{ExpressionContext, ParseError, Precedence};
+use crate::parser::{parse, parse_expression};
+use crate::{
+    eval::{scope::Scope, vals::EvalError},
+    identifiers::Trie,
+    lex::tokens::{Token, TokenType},
+};
 
-pub fn run() -> io::Result<()>{
+pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
     let identifiers = Trie::new();
     let env = Rc::new(RefCell::new(Scope::new(RefCell::new(identifiers).into())));
@@ -23,14 +31,22 @@ pub fn run() -> io::Result<()>{
         let ast = parse(tokens);
         match ast {
             Ok(tree) => print_res(eval(&tree, &env)),
-            Err(ParseError::UnexpectedExpression | ParseError::UnexpectedToken(box Token{ttype: TokenType::BINARY_OP(_), ..}, _) | ParseError::UnexpectedEOF) => {
+            Err(
+                ParseError::UnexpectedExpression
+                | ParseError::UnexpectedToken(box Token { ttype: TokenType::BINARY_OP(_), .. }, _)
+                | ParseError::UnexpectedEOF,
+            ) => {
                 let tokens = Tokenizer::new(input.chars(), &mut ids);
-                let expr = parse_expression(tokens.peekable().by_ref(), &Precedence::Lowest, &ExpressionContext::Return);
+                let expr = parse_expression(
+                    tokens.peekable().by_ref(),
+                    &Precedence::Lowest,
+                    &ExpressionContext::Return,
+                );
                 match expr {
                     Ok(exp) => print_res(exp.eval(env.clone())),
                     Err(err) => println!("Error: {err}"),
                 }
-            },
+            }
             Err(err) => println!("Error: {err}"),
         }
     }
@@ -42,4 +58,3 @@ fn print_res<T: std::fmt::Debug>(val: Result<T, EvalError>) {
         Err(e) => println!("{e}"),
     }
 }
-

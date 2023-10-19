@@ -1,26 +1,36 @@
 mod chars;
-pub mod utils;
-pub mod tokens;
 mod tests;
+pub mod tokens;
+pub mod utils;
 
 use std::iter::Peekable;
 
-use regex_lite::Regex;
 use once_cell::sync::Lazy;
+use regex_lite::Regex;
 
-use self::tokens::{Token, TokenType, lookup_char, lookup_comparison, BinaryOp};
+use self::tokens::{lookup_char, lookup_comparison, BinaryOp, Token, TokenType};
 use self::utils::take_while_peeking;
-use self::{utils::{read_decimals, eat_while_peeking}, chars::{is_alphabetic, is_numeric, is_space}};
-use crate::identifiers::{TrieWalker, Trie};
+use self::{
+    chars::{is_alphabetic, is_numeric, is_space},
+    utils::{eat_while_peeking, read_decimals},
+};
+use crate::identifiers::{Trie, TrieWalker};
 
-static STR_REPLACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
+static STR_REPLACE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
 
-pub struct Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
+pub struct Tokenizer<'ids, T>
+where
+    T: Iterator<Item = char> + Clone,
+{
     input: Peekable<T>,
     identifiers: &'ids mut Trie,
 }
 
-impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
+impl<'ids, T> Iterator for Tokenizer<'ids, T>
+where
+    T: Iterator<Item = char> + Clone,
+{
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -35,7 +45,10 @@ impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + C
                 '.' => self.read_dot(),
                 a if is_alphabetic(*a) => self.read_identifier(),
                 n if is_numeric(*n) => self.read_number(),
-                s if is_space(*s) => { self.eat_spaces(); continue },
+                s if is_space(*s) => {
+                    self.eat_spaces();
+                    continue;
+                }
                 _ => self.single_char_token(),
             });
         }
@@ -43,14 +56,17 @@ impl<'ids, T> Iterator for Tokenizer<'ids, T> where T: Iterator<Item = char> + C
     }
 }
 
-impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
+impl<'ids, T> Tokenizer<'ids, T>
+where
+    T: Iterator<Item = char> + Clone,
+{
     pub fn new(input: T, identifiers: &'ids mut Trie) -> Self {
         Self { input: input.peekable(), identifiers }
     }
 
     fn read_comparison(&mut self) -> Token {
         let ch = self.input.next().expect("Input cannot be empty here");
-        if self.input.peek() == Some(&'='){
+        if self.input.peek() == Some(&'=') {
             self.input.next();
             return Token { ttype: lookup_comparison(ch, true) };
         }
@@ -63,7 +79,7 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
         debug_assert_eq!(ch, Some('-'));
 
         if self.input.peek() != Some(&'-') {
-            return Some(Token { ttype: TokenType::MINUS })
+            return Some(Token { ttype: TokenType::MINUS });
         }
 
         // If -- is found, discard til next \n
@@ -82,9 +98,9 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
             self.input.next();
             if self.input.peek() == Some(&'.') {
                 self.input.next();
-                return Token { ttype: TokenType::DOTDOTDOT}
+                return Token { ttype: TokenType::DOTDOTDOT };
             }
-            return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT) }
+            return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT) };
         }
 
         match self.input.peek() {
@@ -94,8 +110,8 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
                     Ok(n) => Token { ttype: TokenType::NUMBER(n) },
                     Err(s) => Token { ttype: TokenType::ILLEGAL(s.into_boxed_str()) },
                 }
-            },
-            _ => Token { ttype: TokenType::DOT},
+            }
+            _ => Token { ttype: TokenType::DOT },
         }
     }
 
@@ -113,14 +129,16 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
         let identifier = trie_walker.get_res();
         match identifier {
             Some(id) => Token { ttype: id },
-            None => Token { ttype: self.identifiers.add_or_get(&clone_it.take(i).collect::<String>()) },
+            None => {
+                Token { ttype: self.identifiers.add_or_get(&clone_it.take(i).collect::<String>()) }
+            }
         }
     }
 
     fn read_number(&mut self) -> Token {
         match utils::read_number(&mut self.input) {
             Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-            Err(s) => Token { ttype: TokenType::ILLEGAL(s)},
+            Err(s) => Token { ttype: TokenType::ILLEGAL(s) },
         }
     }
 
@@ -142,9 +160,9 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
         let mut is_escaped = false;
         let s: String = take_while_peeking(&mut self.input, |ch| {
             if !is_escaped && *ch == delimiter {
-                return false
+                return false;
             }
-            is_escaped = !is_escaped && *ch=='\\';
+            is_escaped = !is_escaped && *ch == '\\';
             true
         });
         match self.input.next() {
@@ -157,4 +175,3 @@ impl<'ids, T> Tokenizer<'ids, T> where T: Iterator<Item = char> + Clone {
         Token { ttype: TokenType::STRING(s.into()) }
     }
 }
-
