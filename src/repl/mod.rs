@@ -6,7 +6,7 @@ use std::{
 
 use crate::eval::{
     eval,
-    scope::Scope,
+    isolate::Isolate,
     vals::{EvalError, StmtResult},
 };
 use crate::lex::{
@@ -22,7 +22,8 @@ use rua_identifiers::Trie;
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
     let identifiers = Trie::new();
-    let env = Rc::new(RefCell::new(Scope::new(RefCell::new(identifiers).into())));
+
+    let isolate = Rc::new(RefCell::new(Isolate::new(identifiers)));
     loop {
         let mut input = String::new();
         let stdin = io::stdin();
@@ -30,14 +31,14 @@ pub fn run() -> io::Result<()> {
         io::stdout().flush()?;
         stdin.read_line(&mut input)?;
 
-        let ast = parse_chars(input.chars(), &env);
+        let ast = parse_chars(input.chars(), &isolate);
 
         match ast {
             Ok(ref prog @ Program { ref statements, .. })
                 if statements.len() != 1
                     || !matches!(statements.first(), Some(&Statement::Call(..))) =>
             {
-                print_res(eval(prog, &env));
+                print_res(eval(prog, isolate.clone()));
             }
             Err(
                 ParseError::UnexpectedExpression
@@ -45,9 +46,9 @@ pub fn run() -> io::Result<()> {
                 | ParseError::UnexpectedEOF,
             )
             | Ok(Program { .. }) => {
-                let ast = parse_chars("return ".chars().chain(input.chars()), &env);
+                let ast = parse_chars("return ".chars().chain(input.chars()), &isolate);
                 match ast {
-                    Ok(expr) => print_res(eval(&expr, &env)),
+                    Ok(expr) => print_res(eval(&expr, isolate.clone())),
                     Err(err) => println!("Error: {err}"),
                 }
             }
@@ -66,10 +67,10 @@ fn print_res(val: Result<StmtResult, EvalError>) {
 
 fn parse_chars<T: Iterator<Item = char> + Clone>(
     input: T,
-    env: &Rc<RefCell<Scope>>,
+    isolate: &Rc<RefCell<Isolate>>,
 ) -> Result<Program, ParseError> {
-    let ids = env.borrow_mut().identifiers();
-    let mut ids = ids.borrow_mut();
-    let tokens = Tokenizer::new(input, &mut ids);
+    let mut isolate = isolate.borrow_mut();
+    let ids = isolate.identifiers_mut();
+    let tokens = Tokenizer::new(input, ids);
     parse(tokens)
 }

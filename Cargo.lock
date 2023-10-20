@@ -493,7 +493,6 @@ name = "rua"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "either",
  "once_cell",
  "pretty_assertions",
  "regex-lite",

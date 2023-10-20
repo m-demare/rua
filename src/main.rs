@@ -8,7 +8,7 @@ use std::{cell::RefCell, path::PathBuf};
 
 use parser::ast::ParseError;
 
-use crate::eval::{eval, scope::Scope};
+use crate::eval::{eval, isolate::Isolate};
 use rua_identifiers::Trie;
 
 mod cli;
@@ -40,8 +40,8 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
 
     let ast = parser::parse(tokens)?;
 
-    let env = Scope::new(RefCell::new(identifiers).into());
-    let res = eval(&ast, &RefCell::new(env).into());
+    let isolate = Isolate::new(identifiers);
+    let res = eval(&ast, RefCell::new(isolate).into());
     println!("{res:?}");
 
     Ok(())

@@ -147,10 +147,7 @@ fn handle_identifier_st<T: Iterator<Item = Token>>(
                 &ExpressionContext::Group,
             )? {
                 Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
-                t => {
-                    println!("{t:?}");
-                    Err(ParseError::UnexpectedExpression)
-                }
+                _ => Err(ParseError::UnexpectedExpression),
             },
             Some(t) => {
                 Err(ParseError::UnexpectedToken(Box::new(t.clone()), Box::new([TokenType::ASSIGN])))

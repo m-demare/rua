@@ -4,7 +4,7 @@ use std::cell::RefCell;
 
 use pretty_assertions::assert_eq;
 
-use crate::eval::scope::Scope;
+use crate::eval::{scope::Scope, isolate::Isolate};
 use crate::parser::parse_expression;
 use rua_identifiers::Trie;
 use crate::{parser::{parse, ast::{Precedence, ExpressionContext}}, lex::Tokenizer};
@@ -17,8 +17,9 @@ fn test_eval_expr(input: &str, expected_output: Result<V, EvalError>) {
     let tokens = Tokenizer::new(input.chars(), &mut identifiers);
     let expr = parse_expression(tokens.peekable().by_ref(), &Precedence::Lowest, &ExpressionContext::Group)
         .expect(&("Invalid test input: ".to_owned() + input));
-    let env = Scope::new(RefCell::new(identifiers).into());
-    let res = expr.eval(RefCell::new(env).into());
+    let isolate = Isolate::new(identifiers);
+    let root_scope = Scope::new(RefCell::new(isolate).into());
+    let res = expr.eval(RefCell::new(root_scope).into());
     assert_eq!(res, expected_output);
     drop(expected_output);
 }
@@ -27,8 +28,8 @@ fn test_eval_stmt(input: &str, expected_output: Result<R, EvalError>) {
     let mut identifiers = Trie::new();
     let tokens = Tokenizer::new(input.chars(), &mut identifiers);
     let prog = parse(tokens).expect(&("Invalid test input: ".to_owned() + input));
-    let env = Scope::new(RefCell::new(identifiers).into());
-    let res = eval(&prog, &RefCell::new(env).into());
+    let isolate = Isolate::new(identifiers);
+    let res = eval(&prog, RefCell::new(isolate).into());
     assert_eq!(res, expected_output);
     drop(expected_output);
 }
