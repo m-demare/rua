@@ -7,7 +7,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::parser::ast::{Expression, FunctionArg, Statement};
+use crate::parser::ast::{FunctionArg, Statement};
 
 use super::{scope::Scope, statements::eval_block};
 
@@ -52,11 +52,17 @@ pub enum StmtResult {
 }
 
 pub trait RuaCallable {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult;
+    fn call(&self, args: &[RuaVal]) -> RuaResult;
 }
 
 pub struct FunctionContext {
     pub args: Vec<RuaVal>,
+}
+
+impl FunctionContext {
+    pub fn new(args: Vec<RuaVal>) -> Self {
+        Self { args }
+    }
 }
 
 impl RuaVal {
@@ -150,13 +156,10 @@ impl Function {
 }
 
 impl RuaCallable for Function {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
-        let arg_vals: Vec<RuaVal> =
-            args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
-
+    fn call(&self, args: &[RuaVal]) -> RuaResult {
         let mut new_env = Scope::extend(self.env.clone());
-        self.args.iter().zip(arg_vals).for_each(|(arg, val)| match arg {
-            FunctionArg::Identifier(id) => new_env.set(*id, val),
+        self.args.iter().zip(args).for_each(|(arg, val)| match arg {
+            FunctionArg::Identifier(id) => new_env.set(*id, val.clone()),
             FunctionArg::Dotdotdot => todo!(),
         });
 
@@ -169,15 +172,12 @@ impl RuaCallable for Function {
 }
 
 impl RuaCallable for NativeFunction {
-    fn call(&self, args: &[Expression], args_env: &Rc<RefCell<Scope>>) -> RuaResult {
-        let arg_vals: Vec<RuaVal> =
-            args.iter().map(|arg| arg.eval(args_env.clone())).try_collect()?;
-
-        (self.func)(&FunctionContext { args: arg_vals })
+    fn call(&self, args: &[RuaVal]) -> RuaResult {
+        (self.func)(&FunctionContext::new(args.to_vec()))
     }
 }
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum EvalError {
     #[error("TypeError: {0}")]
     TypeError(#[from] TypeError),
@@ -189,6 +189,8 @@ pub enum EvalError {
     TooManyArguments(u8, Box<str>),
     #[error("{0}")]
     Exception(Box<str>),
+    #[error("Assertion failed. Error: {0:?}")]
+    AssertionFailed(Option<RuaVal>),
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -263,6 +265,18 @@ impl TryInto<Rc<str>> for RuaVal {
     }
 }
 
+impl TryInto<Box<dyn RuaCallable>> for RuaVal {
+    type Error = TypeError;
+
+    fn try_into(self) -> Result<Box<dyn RuaCallable>, Self::Error> {
+        match self {
+            Self::Function(f) => Ok(Box::new(f)),
+            Self::NativeFunction(f) => Ok(Box::new(f)),
+            v => Err(TypeError(RuaType::Function, v.get_type())),
+        }
+    }
+}
+
 impl From<Infallible> for EvalError {
     fn from(_: Infallible) -> Self {
         unsafe { unreachable_unchecked() }
@@ -287,5 +301,13 @@ where
             Self::Nil => None,
             v => Some(v.try_into()?),
         })
+    }
+}
+
+impl TryIntoOpt<Self> for RuaVal {
+    type Error = TypeError;
+
+    fn try_into_opt(self) -> Result<Option<Self>, Self::Error> {
+        Ok(Some(self))
     }
 }

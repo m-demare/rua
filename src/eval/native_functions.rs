@@ -11,6 +11,8 @@ use rua_func_macros::rua_func;
 use rua_identifiers::{Identifier, Trie};
 use rustc_hash::FxHashMap;
 
+// Built in functions {{{
+
 #[rua_func]
 pub fn print(ctxt: &FunctionContext) {
     let s = ctxt.args.iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
@@ -45,6 +47,31 @@ pub fn rua_type(val: RuaVal) -> String {
     t.to_string()
 }
 
+#[rua_func]
+pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
+    if assertion.truthy() {
+        Ok(assertion)
+    } else {
+        Err(EvalError::AssertionFailed(err))
+    }
+}
+
+// TODO revise when I add returning multiple values
+#[rua_func]
+pub fn pcall(ctxt: &FunctionContext, func: RuaVal) -> RuaVal {
+    match func.as_func() {
+        Ok(f) => match f.call(&ctxt.args[1..]) {
+            Ok(v) => v,
+            Err(_) => RuaVal::Bool(false),
+        },
+        Err(_) => RuaVal::Bool(false),
+    }
+}
+
+// }}}
+
+// Helpers {{{
+
 pub fn insert_identifier(identifiers: &mut Trie<TokenType>, new_id: &str) -> Identifier {
     let identifier = identifiers.add_or_get(new_id, |id, s| {
         if lookup_keyword(s).is_none() {
@@ -66,6 +93,8 @@ pub fn default_global(identifiers: &mut Trie<TokenType>) -> FxHashMap<Identifier
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tostring)))),
         ("tonumber", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tonumber)))),
         ("type", RuaVal::NativeFunction(NativeFunction::new(Rc::new(rua_type)))),
+        ("assert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(assert)))),
+        ("pcall", RuaVal::NativeFunction(NativeFunction::new(Rc::new(pcall)))),
     ];
     for (name, val) in to_add {
         global.insert(insert_identifier(identifiers, name), val);
@@ -88,3 +117,5 @@ macro_rules! rua_global {
         $base
     });
 }
+
+// }}}

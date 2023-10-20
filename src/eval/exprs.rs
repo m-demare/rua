@@ -98,6 +98,9 @@ impl Expression {
     pub fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> RuaResult {
         let val = self.eval(env.clone())?;
         let func = val.as_func()?;
-        func.call(args, env)
+
+        let arg_vals: Vec<RuaVal> = args.iter().map(|arg| arg.eval(env.clone())).try_collect()?;
+
+        func.call(&arg_vals)
     }
 }
