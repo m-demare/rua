@@ -1,34 +1,32 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::lex::tokens::{lookup_keyword, TokenType};
-
-pub struct Trie {
-    root: TrieNode,
-    identifiers: HashMap<Identifier, Box<str>>,
+pub struct Trie<T: Clone> {
+    root: TrieNode<T>,
+    identifiers: HashMap<Identifier, Box<str>>, // TODO FxHashMap?
     last_id: u32,
 }
 
-pub struct TrieNode {
-    next: Vec<(char, Box<TrieNode>)>,
+pub struct TrieNode<T: Clone> {
+    next: Vec<(char, Box<TrieNode<T>>)>,
     // A HashMap is slower, there won't be that many keys
     // (see https://github.com/m-demare/rust_microbenches)
-    val: Option<TokenType>,
+    val: Option<T>,
 }
 
-pub struct TrieWalker<'trie> {
-    curr_node: Option<&'trie TrieNode>,
-    trie: PhantomData<&'trie Trie>,
+pub struct TrieWalker<'trie, T: Clone> {
+    curr_node: Option<&'trie TrieNode<T>>,
+    trie: PhantomData<&'trie Trie<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Copy)]
-pub struct Identifier(pub u32);
+pub struct Identifier(u32);
 
-impl<'trie> Trie {
+impl<'trie, T: Clone> Trie<T> {
     pub fn new() -> Self {
         Self { root: (TrieNode::new(None)), identifiers: HashMap::new(), last_id: 0 }
     }
 
-    pub fn add_or_get(&'trie mut self, s: &str) -> TokenType {
+    pub fn add_or_get<F: Fn(Identifier, &str) -> T>(&'trie mut self, s: &str, get_val: F) -> T {
         let mut node = &mut self.root;
 
         for ch in s.chars() {
@@ -37,13 +35,9 @@ impl<'trie> Trie {
 
         node.val
             .get_or_insert_with(|| {
-                if let Some(token) = lookup_keyword(s) {
-                    token
-                } else {
-                    self.last_id += 1;
-                    self.identifiers.insert(Identifier(self.last_id), s.into());
-                    TokenType::IDENTIFIER(Identifier(self.last_id))
-                }
+                self.last_id += 1;
+                self.identifiers.insert(Identifier(self.last_id), s.into());
+                get_val(Identifier(self.last_id), s)
             })
             .clone()
     }
@@ -53,7 +47,7 @@ impl<'trie> Trie {
     }
 
     #[cfg(test)]
-    pub fn find(&self, s: &str) -> Option<TokenType> {
+    pub fn find(&self, s: &str) -> Option<T> {
         let mut node = &self.root;
         for ch in s.chars() {
             match node.next.iter().find(|(c, _)| &ch == c) {
@@ -65,14 +59,14 @@ impl<'trie> Trie {
     }
 }
 
-impl Default for Trie {
+impl<T: Clone> Default for Trie<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'trie> TrieWalker<'trie> {
-    pub const fn new(trie: &'trie Trie) -> TrieWalker<'trie> {
+impl<'trie, T: Clone> TrieWalker<'trie, T> {
+    pub const fn new(trie: &'trie Trie<T>) -> TrieWalker<'trie, T> {
         Self { curr_node: Some(&trie.root), trie: PhantomData }
     }
 
@@ -85,7 +79,7 @@ impl<'trie> TrieWalker<'trie> {
         }
     }
 
-    pub fn get_res(self) -> Option<TokenType> {
+    pub fn get_res(self) -> Option<T> {
         match self.curr_node {
             Some(n) => n.val.clone(),
             None => None,
@@ -93,8 +87,8 @@ impl<'trie> TrieWalker<'trie> {
     }
 }
 
-impl<'trie> TrieNode {
-    pub(self) fn new(val: Option<TokenType>) -> Self {
+impl<'trie, T: Clone> TrieNode<T> {
+    pub(self) fn new(val: Option<T>) -> Self {
         Self { next: Vec::new(), val }
     }
 
@@ -112,45 +106,30 @@ impl<'trie> TrieNode {
 mod tests {
     use super::*;
 
+    const fn identity2(id: Identifier, _: &str) -> Identifier {
+        id
+    }
+
     #[test]
     fn test_identifiers() {
         let mut trie = Trie::new();
         assert_eq!(None, trie.find("foooo"));
         assert_eq!(None, trie.find("foo"));
-        let foooo = trie.add_or_get("foooo");
-        assert_eq!(TokenType::IDENTIFIER(Identifier(trie.last_id)), foooo);
-        let foo = trie.add_or_get("foo");
-        assert_eq!(TokenType::IDENTIFIER(Identifier(trie.last_id)), foo);
+        let foooo = trie.add_or_get("foooo", identity2);
+        assert_eq!(Identifier(trie.last_id), foooo);
+        let foo = trie.add_or_get("foo", identity2);
+        assert_eq!(Identifier(trie.last_id), foo);
 
         assert_eq!(Some(foo), trie.find("foo"));
         assert_eq!(Some(foooo), trie.find("foooo"));
     }
 
     #[test]
-    fn test_keywords() {
-        let mut trie = Trie::new();
-        assert_eq!(None, trie.find("local"));
-        assert_eq!(None, trie.find("if"));
-
-        let local = trie.add_or_get("local");
-        assert_eq!(TokenType::LOCAL, local);
-
-        let if_token = trie.add_or_get("if");
-        assert_eq!(TokenType::IF, if_token);
-
-        let loca = trie.add_or_get("loca");
-        assert_eq!(TokenType::IDENTIFIER(Identifier(trie.last_id)), loca);
-
-        let locall = trie.add_or_get("locall");
-        assert_eq!(TokenType::IDENTIFIER(Identifier(trie.last_id)), locall);
-    }
-
-    #[test]
     fn test_walker() {
         let mut trie = Trie::new();
 
-        let foo = trie.add_or_get("foo");
-        let local = trie.add_or_get("local");
+        let foo = trie.add_or_get("foo", identity2);
+        let local = trie.add_or_get("local", identity2);
 
         let mut lukes_trie_walker = TrieWalker::new(&trie);
         "foo".chars().for_each(|ch| lukes_trie_walker.walk(ch));

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::identifiers::Identifier;
+use rua_identifiers::Identifier;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]

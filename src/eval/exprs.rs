@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{eval::vals::Function, identifiers::Identifier, parser::ast::Expression};
+use crate::{eval::vals::Function, parser::ast::Expression};
+use rua_identifiers::Identifier;
 
 use super::{
     scope::Scope,

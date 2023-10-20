@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 
 use crate::lex::{Tokenizer, tokens::TokenType};
 use super::{ast::{Statement as S, Expression as E, FunctionArg as FA, Program}, parse};
-use crate::identifiers::Trie;
+use rua_identifiers::Trie;
 
 macro_rules! b {
     ($e: expr) => {
@@ -23,7 +23,10 @@ macro_rules! test_parse {
         let mut identifiers = Trie::new();
         #[allow(unused_macros)]
         macro_rules! id {
-            ($s: expr) => (match identifiers.find($s) { Some(TokenType::IDENTIFIER(i)) => i, t => panic!("Expected identifier, got {t:?}") })
+            ($s: expr) => (match identifiers.add_or_get($s, |_, _| panic!("Identifier {} not found", $s)) {
+                TokenType::IDENTIFIER(i) => i,
+                t => panic!("Expected identifier, got {t:?}")
+            })
         }
 
         let prog = parse(Tokenizer::new($input.chars(), &mut identifiers));

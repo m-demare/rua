@@ -8,13 +8,13 @@ use std::iter::Peekable;
 use once_cell::sync::Lazy;
 use regex_lite::Regex;
 
-use self::tokens::{lookup_char, lookup_comparison, BinaryOp, Token, TokenType};
+use self::tokens::{lookup_char, lookup_comparison, lookup_keyword, BinaryOp, Token, TokenType};
 use self::utils::take_while_peeking;
 use self::{
     chars::{is_alphabetic, is_numeric, is_space},
     utils::{eat_while_peeking, read_decimals},
 };
-use crate::identifiers::{Trie, TrieWalker};
+use rua_identifiers::{Trie, TrieWalker};
 
 static STR_REPLACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
@@ -24,7 +24,7 @@ where
     T: Iterator<Item = char> + Clone,
 {
     input: Peekable<T>,
-    identifiers: &'ids mut Trie,
+    identifiers: &'ids mut Trie<TokenType>,
 }
 
 impl<'ids, T> Iterator for Tokenizer<'ids, T>
@@ -60,7 +60,7 @@ impl<'ids, T> Tokenizer<'ids, T>
 where
     T: Iterator<Item = char> + Clone,
 {
-    pub fn new(input: T, identifiers: &'ids mut Trie) -> Self {
+    pub fn new(input: T, identifiers: &'ids mut Trie<TokenType>) -> Self {
         Self { input: input.peekable(), identifiers }
     }
 
@@ -129,9 +129,18 @@ where
         let identifier = trie_walker.get_res();
         match identifier {
             Some(id) => Token { ttype: id },
-            None => {
-                Token { ttype: self.identifiers.add_or_get(&clone_it.take(i).collect::<String>()) }
-            }
+            None => Token {
+                ttype: self.identifiers.add_or_get(
+                    &clone_it.take(i).collect::<String>(),
+                    |id, s| {
+                        if let Some(token) = lookup_keyword(s) {
+                            token
+                        } else {
+                            TokenType::IDENTIFIER(id)
+                        }
+                    },
+                ),
+            },
         }
     }
 

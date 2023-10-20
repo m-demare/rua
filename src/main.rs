@@ -8,14 +8,11 @@ use std::{cell::RefCell, path::PathBuf};
 
 use parser::ast::ParseError;
 
-use crate::{
-    eval::{eval, scope::Scope},
-    identifiers::Trie,
-};
+use crate::eval::{eval, scope::Scope};
+use rua_identifiers::Trie;
 
 mod cli;
 mod eval;
-mod identifiers;
 mod lex;
 mod parser;
 mod repl;

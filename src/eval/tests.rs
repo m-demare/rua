@@ -6,7 +6,8 @@ use pretty_assertions::assert_eq;
 
 use crate::eval::scope::Scope;
 use crate::parser::parse_expression;
-use crate::{parser::{parse, ast::{Precedence, ExpressionContext}}, lex::Tokenizer, identifiers::Trie};
+use rua_identifiers::Trie;
+use crate::{parser::{parse, ast::{Precedence, ExpressionContext}}, lex::Tokenizer};
 
 use super::vals::{EvalError, RuaType};
 use super::{vals::{StmtResult as R, TypeError, RuaVal as V}, eval};

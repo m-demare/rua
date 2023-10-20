@@ -9,7 +9,6 @@ use crate::eval::{
     scope::Scope,
     vals::{EvalError, StmtResult},
 };
-use crate::identifiers::Trie;
 use crate::lex::{
     tokens::{Token, TokenType},
     Tokenizer,
@@ -18,6 +17,7 @@ use crate::parser::{
     ast::{ParseError, Program, Statement},
     parse,
 };
+use rua_identifiers::Trie;
 
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");

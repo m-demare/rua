@@ -498,6 +498,7 @@ dependencies = [
  "pretty_assertions",
  "regex-lite",
  "rua_func_macros",
+ "rua_identifiers",
  "rustc-hash",
  "thiserror",
 ]
@@ -511,6 +512,10 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "rua_identifiers"
+version = "0.1.0"
 
 [[package]]
 name = "rustc-hash"

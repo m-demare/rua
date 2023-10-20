@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "lib/func_macros",
+    "lib/identifiers",
 ]
 
 [package]
@@ -19,6 +20,7 @@ regex-lite = "0.1.5"
 rustc-hash = "1.1.0"
 thiserror = "1.0.49"
 rua_func_macros = { path = "./lib/func_macros" }
+rua_identifiers = { path = "./lib/identifiers" }
 once_cell = "1.18.0"
 
 [profile.release]

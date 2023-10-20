@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::{identifiers::Trie, lex::Tokenizer};
+use rua::lex::Tokenizer;
+use rua_identifiers::Trie;
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     let mut identifiers = Trie::new();

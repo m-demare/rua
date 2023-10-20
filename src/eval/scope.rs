@@ -11,19 +11,17 @@ use super::{
     native_functions,
     vals::{NativeFunction, RuaVal},
 };
-use crate::{
-    identifiers::{Identifier, Trie},
-    lex::tokens::TokenType,
-};
+use crate::lex::tokens::{lookup_keyword, TokenType};
+use rua_identifiers::{Identifier, Trie};
 
 pub struct Scope {
     store: FxHashMap<Identifier, RuaVal>,
-    identifiers: Rc<RefCell<Trie>>,
+    identifiers: Rc<RefCell<Trie<TokenType>>>,
     parent_or_globals: Either<Rc<RefCell<Scope>>, FxHashMap<Identifier, RuaVal>>,
 }
 
 impl Scope {
-    pub fn new(identifiers: Rc<RefCell<Trie>>) -> Self {
+    pub fn new(identifiers: Rc<RefCell<Trie<TokenType>>>) -> Self {
         let mut globals = FxHashMap::default();
         globals.insert(
             insert_identifier(identifiers.borrow_mut(), "print"),
@@ -85,14 +83,21 @@ impl Scope {
         self.identifiers.borrow().get(id)
     }
 
-    pub fn identifiers(&self) -> Rc<RefCell<Trie>> {
+    pub fn identifiers(&self) -> Rc<RefCell<Trie<TokenType>>> {
         self.identifiers.clone()
     }
 }
 
-fn insert_identifier(mut identifiers: RefMut<Trie>, new_id: &str) -> Identifier {
-    match identifiers.add_or_get(new_id) {
+fn insert_identifier(mut identifiers: RefMut<Trie<TokenType>>, new_id: &str) -> Identifier {
+    let identifier = identifiers.add_or_get(new_id, |id, s| {
+        if lookup_keyword(s).is_none() {
+            TokenType::IDENTIFIER(id)
+        } else {
+            panic!("Cannot use {s} as an identifier, it's a reserved keyword")
+        }
+    });
+    match identifier {
         TokenType::IDENTIFIER(id) => id,
-        _ => unreachable!("Native function names are identifiers"),
+        _ => panic!("Cannot use {new_id} as an identifier, it's a reserved keyword"),
     }
 }

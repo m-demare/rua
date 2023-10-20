@@ -1,9 +1,8 @@
 use std::{error::Error, fmt, rc::Rc};
 
-use crate::{
-    identifiers::Identifier,
-    lex::tokens::{BinaryOp, Token, TokenType},
-};
+use rua_identifiers::Identifier;
+
+use crate::lex::tokens::{BinaryOp, Token, TokenType};
 
 #[derive(PartialEq, Debug)]
 pub struct Program {

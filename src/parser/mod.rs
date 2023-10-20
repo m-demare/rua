@@ -12,11 +12,11 @@ use self::{
     utils::peek_token_is,
 };
 use crate::{
-    identifiers::Identifier,
     lex::tokens::{BinaryOp, Token, TokenType, UnaryOp},
     parser::utils::debug_peek_token,
 };
 use ast::Program;
+use rua_identifiers::Identifier;
 
 // https://www.lua.org/manual/5.1/manual.html#8
 

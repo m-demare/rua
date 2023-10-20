@@ -4,14 +4,17 @@ use pretty_assertions::assert_eq;
 
 use super::{tokens::{Token, BinaryOp, UnaryOp}, Tokenizer};
 use super::tokens::TokenType as T;
-use crate::identifiers::Trie;
+use rua_identifiers::Trie;
 
 macro_rules! test_lex {
     ($input: expr, $expected_output: expr) => {
         let mut identifiers = Trie::new();
         #[allow(unused_macros)]
         macro_rules! id {
-            ($s: expr) => (match identifiers.find($s) { Some(T::IDENTIFIER(i)) => T::IDENTIFIER(i), t => panic!("Expected identifier, got {t:?}") })
+            ($s: expr) => (match identifiers.add_or_get($s, |_, _| panic!("Identifier {} not found", $s)) {
+                T::IDENTIFIER(i) => T::IDENTIFIER(i),
+                t => panic!("Expected identifier, got {t:?}")
+            })
         }
 
         let tokens = Tokenizer::new($input.chars(), &mut identifiers).collect::<Vec<_>>();
