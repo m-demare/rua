@@ -22,7 +22,12 @@ fn main() {
 
     match &cli.path {
         Some(path) => {
-            let _ = evaluate(path);
+            match evaluate(path) {
+                Ok(()) => {}
+                Err(parse_err) => {
+                    println!("ParseError: {parse_err}");
+                }
+            };
         }
         None => {
             let _ = repl::run();
@@ -42,7 +47,12 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
 
     let isolate = Isolate::new(identifiers);
     let res = eval(&ast, RefCell::new(isolate).into());
-    println!("{res:?}");
+    match res {
+        Ok(_) => {}
+        Err(eval_err) => {
+            println!("Exception: {eval_err}");
+        }
+    };
 
     Ok(())
 }

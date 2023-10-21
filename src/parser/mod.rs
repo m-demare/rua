@@ -136,8 +136,7 @@ fn handle_identifier_st<T: Iterator<Item = Token>>(
 ) -> ParseResult<Statement> {
     if let Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) = tokens_it.next() {
         match tokens_it.peek() {
-            Some(Token { ttype: TokenType::ASSIGN, .. }) => {
-                tokens_it.next();
+            Some(Token { ttype: TokenType::ASSIGN | TokenType::COMMA, .. }) => {
                 parse_assign_st(tokens_it, id)
             }
             Some(Token { ttype: TokenType::LPAREN | TokenType::DOT, .. }) => match parse_infix_exp(
@@ -163,8 +162,48 @@ fn parse_assign_st<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
     id: Identifier,
 ) -> ParseResult<Statement> {
-    let rhs = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Assign)?;
-    Ok(Statement::Assign(id, Box::new(rhs)))
+    let mut identifiers = vec![id];
+    let mut rhs = Vec::new();
+    loop {
+        match tokens_it.next() {
+            Some(Token { ttype: TokenType::COMMA, .. }) => {}
+            Some(Token { ttype: TokenType::ASSIGN, .. }) => break,
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    t.into(),
+                    [TokenType::COMMA, TokenType::ASSIGN].into(),
+                ))
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+        match tokens_it.next() {
+            Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => identifiers.push(id),
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    t.into(),
+                    [TokenType::IDENTIFIER(Identifier::default())].into(),
+                ))
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+    }
+    loop {
+        match tokens_it.peek() {
+            Some(..) => rhs.push(parse_expression(
+                tokens_it,
+                &Precedence::Lowest,
+                &ExpressionContext::Assign,
+            )?),
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+        match tokens_it.peek() {
+            Some(Token { ttype: TokenType::COMMA, .. }) => {
+                tokens_it.next();
+            }
+            Some(..) | None => break,
+        }
+    }
+    Ok(Statement::Assign(identifiers, rhs))
 }
 
 fn parse_function_st<T: Iterator<Item = Token>>(
@@ -175,7 +214,7 @@ fn parse_function_st<T: Iterator<Item = Token>>(
     tokens_it.next();
     let (func, name) = parse_function_expr(tokens_it)?;
     match name {
-        Some(name) => Ok(Statement::Assign(name, Box::new(func))),
+        Some(name) => Ok(Statement::Assign(vec![name], vec![func])),
         None => Err(ParseError::UnnamedFunctionSt),
     }
 }
@@ -188,34 +227,60 @@ fn parse_local_st<T: Iterator<Item = Token>>(
     tokens_it.next();
     if Some(&Token { ttype: TokenType::FUNCTION }) == tokens_it.peek() {
         if let Statement::Assign(name, func) = parse_function_st(tokens_it)? {
-            Ok(Statement::Local(name, Some(func)))
+            Ok(Statement::Local(name, func))
         } else {
             unreachable!("parse_function_st can only return successfully an AssignStatement")
         }
     } else {
-        let id = parse_identifier(tokens_it)?;
-        if !peek_token_is!(tokens_it, TokenType::ASSIGN) {
-            return Ok(Statement::Local(id, None));
+        let mut identifiers = Vec::new();
+        let mut rhs = Vec::new();
+        let mut has_assign = false;
+        loop {
+            match tokens_it.peek() {
+                Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => {
+                    identifiers.push(*id);
+                    tokens_it.next();
+                }
+                Some(t) => {
+                    return Err(ParseError::UnexpectedToken(
+                        Box::new(t.clone()),
+                        [TokenType::IDENTIFIER(Identifier::default())].into(),
+                    ))
+                }
+                None => return Err(ParseError::UnexpectedEOF),
+            }
+            match tokens_it.peek() {
+                Some(Token { ttype: TokenType::COMMA, .. }) => {
+                    tokens_it.next();
+                }
+                Some(Token { ttype: TokenType::ASSIGN, .. }) => {
+                    has_assign = true;
+                    tokens_it.next();
+                    break;
+                }
+                Some(..) | None => break,
+            }
         }
-        tokens_it.next();
-        let expr = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Assign)?;
-        Ok(Statement::Local(id, Some(Box::new(expr))))
+        if has_assign {
+            loop {
+                match tokens_it.peek() {
+                    Some(..) => rhs.push(parse_expression(
+                        tokens_it,
+                        &Precedence::Lowest,
+                        &ExpressionContext::Assign,
+                    )?),
+                    None => return Err(ParseError::UnexpectedEOF),
+                }
+                match tokens_it.peek() {
+                    Some(Token { ttype: TokenType::COMMA, .. }) => {
+                        tokens_it.next();
+                    }
+                    Some(..) | None => break,
+                }
+            }
+        }
+        Ok(Statement::Local(identifiers, rhs))
     }
-}
-
-fn parse_identifier<T: Iterator<Item = Token>>(
-    tokens_it: &mut Peekable<T>,
-) -> ParseResult<Identifier> {
-    Ok(match tokens_it.next() {
-        Some(Token { ttype: TokenType::IDENTIFIER(id) }) => id,
-        Some(t) => {
-            return Err(ParseError::UnexpectedToken(
-                Box::new(t),
-                [TokenType::IDENTIFIER(Identifier::default())].into(),
-            ))
-        }
-        None => return Err(ParseError::UnexpectedEOF),
-    })
 }
 
 pub fn parse_expression<T: Iterator<Item = Token>>(

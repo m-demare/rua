@@ -40,7 +40,7 @@ fn parse_local_statement() {
         local bar
         ", Ok(Program{
         statements: [
-            S::Local(id!("bar"), None),
+            S::Local(vec![id!("bar")], Vec::new()),
         ].into()
     }));
 }
@@ -48,10 +48,10 @@ fn parse_local_statement() {
 #[test]
 fn parse_identifier_exp() {
     test_parse!("
-        local foo = bar
+        local foo, asd = bar, baz
         ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Identifier(id!("bar"))))),
+            S::Local(vec![id!("foo"), id!("asd")], vec![E::Identifier(id!("bar")), E::Identifier(id!("baz"))]),
         ].into()
     }));
 }
@@ -62,7 +62,7 @@ fn parse_number_exp() {
     test_parse!("
         local baz = 5", Ok(Program{
         statements: [
-            S::Local(id!("baz"), Some(b!(E::NumberLiteral(5.0)))),
+            S::Local(vec![id!("baz")], vec![E::NumberLiteral(5.0)]),
         ].into()
     }));
 }
@@ -99,8 +99,8 @@ fn parse_prefix_exprs() {
         local bar = #foo
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Not(b!(E::Identifier(id!("asd"))))))),
-            S::Local(id!("bar"), Some(b!(E::Len(b!(E::Identifier(id!("foo"))))))),
+            S::Local(vec![id!("foo")], vec![E::Not(b!(E::Identifier(id!("asd"))))]),
+            S::Local(vec![id!("bar")], vec![E::Len(b!(E::Identifier(id!("foo"))))]),
         ].into()
     }));
 }
@@ -113,9 +113,9 @@ fn parse_infix_exprs() {
         local baz = 5 <= 7
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Plus(b!((n!(5.0), n!(7.0))))))),
-            S::Local(id!("bar"), Some(b!(E::Times(b!((n!(5.0), n!(7.0))))))),
-            S::Local(id!("baz"), Some(b!(E::Le(b!((n!(5.0), n!(7.0))))))),
+            S::Local(vec![id!("foo")], vec![E::Plus(b!((n!(5.0), n!(7.0))))]),
+            S::Local(vec![id!("bar")], vec![E::Times(b!((n!(5.0), n!(7.0))))]),
+            S::Local(vec![id!("baz")], vec![E::Le(b!((n!(5.0), n!(7.0))))]),
         ].into()
     }));
 }
@@ -128,16 +128,16 @@ fn parse_infix_combined_exprs() {
         local baz = 5 <= 7 and 0 + 2^3 ==8
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"),
-                Some(b!(E::Plus(b!((n!(5.0),
-                    E::Times(b!((n!(7.0), n!(2.0)))))))))),
-            S::Local(id!("bar"),
-                Some(b!(E::Plus(b!((E::Times(b!((n!(5.0), n!(7.0)))),
-                    n!(2.0))))))),
-            S::Local(id!("baz"),
-                Some(b!(E::And(b!((
+            S::Local(vec![id!("foo")],
+                vec![E::Plus(b!((n!(5.0),
+                    E::Times(b!((n!(7.0), n!(2.0)))))))]),
+            S::Local(vec![id!("bar")],
+                vec![E::Plus(b!((E::Times(b!((n!(5.0), n!(7.0)))),
+                    n!(2.0))))]),
+            S::Local(vec![id!("baz")],
+                vec![E::And(b!((
                     E::Le(b!((n!(5.0), n!(7.0)))),
-                    E::Eq(b!((E::Plus(b!((n!(0.0), E::Exp(b!((n!(2.0), n!(3.0))))))), n!(8.0)))))))))),
+                    E::Eq(b!((E::Plus(b!((n!(0.0), E::Exp(b!((n!(2.0), n!(3.0))))))), n!(8.0)))))))]),
         ].into()
     }));
 }
@@ -150,14 +150,14 @@ fn parse_minus_exprs() {
         local baz = -2^2
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"),
-                Some(b!(E::Plus(b!((E::Neg(n!(5.0)),
-                    E::Times(b!((n!(7.0), E::Neg(n!(2.0))))))))))),
-            S::Local(id!("bar"),
-                Some(b!(E::Minus(b!((E::Minus(b!((E::Neg(n!(5.0)), E::Neg(n!(7.0))))),
-                    n!(2.0))))))),
-            S::Local(id!("baz"),
-                    Some(b!(E::Neg(b!(E::Exp(b!((n!(2.0), n!(2.0))))))))),
+            S::Local(vec![id!("foo")],
+                vec![E::Plus(b!((E::Neg(n!(5.0)),
+                    E::Times(b!((n!(7.0), E::Neg(n!(2.0))))))))]),
+            S::Local(vec![id!("bar")],
+                vec![E::Minus(b!((E::Minus(b!((E::Neg(n!(5.0)), E::Neg(n!(7.0))))),
+                    n!(2.0))))]),
+            S::Local(vec![id!("baz")],
+                    vec![E::Neg(b!(E::Exp(b!((n!(2.0), n!(2.0))))))]),
         ].into()
     }));
 }
@@ -169,10 +169,10 @@ fn parse_boolean_exprs() {
         local bar = not false
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"),
-                Some(b!(E::BooleanLiteral(true)))),
-            S::Local(id!("bar"),
-                Some(b!(E::Not(b!(E::BooleanLiteral(false)))))),
+            S::Local(vec![id!("foo")],
+                vec![E::BooleanLiteral(true)]),
+            S::Local(vec![id!("bar")],
+                vec![E::Not(b!(E::BooleanLiteral(false)))]),
         ].into()
     }));
 }
@@ -184,10 +184,10 @@ fn parse_parentheses_exprs() {
         local bar = not ((true and false) or not true)
 ", Ok(Program{
         statements: [
-            S::Local(id!("foo"), Some(b!(E::Times(b!((E::Plus(b!((n!(5.0), n!(7.0)))), n!(2.0))))))),
-            S::Local(id!("bar"), Some(b!(E::Not(b!(E::Or(b!((
+            S::Local(vec![id!("foo")], vec![E::Times(b!((E::Plus(b!((n!(5.0), n!(7.0)))), n!(2.0))))]),
+            S::Local(vec![id!("bar")], vec![E::Not(b!(E::Or(b!((
                 E::And(b!((E::BooleanLiteral(true), E::BooleanLiteral(false)))),
-                E::Not(b!(E::BooleanLiteral(true))))))))))),
+                E::Not(b!(E::BooleanLiteral(true))))))))]),
         ].into()
     }));
 }
@@ -196,16 +196,13 @@ fn parse_parentheses_exprs() {
 fn parse_if_statement() {
     test_parse!("
         if true then
-            local a = false
         end
         if false then
-            local a = false
             return true
         else
             return false
         end
         if false then
-            local a = false
             return true
         elseif true then
         elseif 5 > 2 then
@@ -213,15 +210,13 @@ fn parse_if_statement() {
         end
 ", Ok(Program{
         statements: [
-            S::IfThen(b!(E::BooleanLiteral(true)), [S::Local(id!("a"), Some(b!(E::BooleanLiteral(false))))].into()),
+            S::IfThen(b!(E::BooleanLiteral(true)), [].into()),
             S::IfThenElse(b!(E::BooleanLiteral(false)),
                 [
-                    S::Local(id!("a"), Some(b!(E::BooleanLiteral(false)))),
                     S::Return(Some(b!(E::BooleanLiteral(true))))].into(),
                 [S::Return(Some(b!(E::BooleanLiteral(false))))].into()),
             S::IfThenElseIf(b!([
                 (E::BooleanLiteral(false), [
-                    S::Local(id!("a"), Some(b!(E::BooleanLiteral(false)))),
                     S::Return(Some(b!(E::BooleanLiteral(true))))].into()),
                 (E::BooleanLiteral(true), [].into()),
                 (E::Gt(b!((n!(5.0), n!(2.0)))), [S::Return(Some(b!(E::BooleanLiteral(false))))].into())])),
@@ -242,12 +237,12 @@ fn parse_func_exp() {
         end
 ", Ok(Program{
         statements: [
-                S::Local(id!("a"), Some(b!(E::Function([].into(), [
-                    S::Local(id!("b"), None),
+                S::Local(vec![id!("a")], vec![E::Function([].into(), [
+                    S::Local(vec![id!("b")], Vec::new()),
                     S::Return(Some(b!(E::BooleanLiteral(true)))),
-                ].into())))),
-                S::Local(id!("c"), Some(b!(E::Function([FA::Identifier(id!("foo")), FA::Identifier(id!("bar"))].into(), [].into())))),
-                S::Local(id!("d"), Some(b!(E::Function([FA::Identifier(id!("foo")), FA::Dotdotdot].into(), [].into())))),
+                ].into())]),
+                S::Local(vec![id!("c")], vec![E::Function([FA::Identifier(id!("foo")), FA::Identifier(id!("bar"))].into(), [].into())]),
+                S::Local(vec![id!("d")], vec![E::Function([FA::Identifier(id!("foo")), FA::Dotdotdot].into(), [].into())]),
             ].into()
         }));
 }
@@ -263,11 +258,11 @@ fn parse_func_statement() {
         end
 ", Ok(Program{
         statements: [
-                S::Assign(id!("a"), b!(E::Function([].into(), [
-                    S::Local(id!("b"), None),
+                S::Assign(vec![id!("a")], vec![E::Function([].into(), [
+                    S::Local(vec![id!("b")], Vec::new()),
                     S::Return(Some(b!(E::BooleanLiteral(true)))),
-                ].into()))),
-                S::Local(id!("c"), Some(b!(E::Function([FA::Identifier(id!("foo")), FA::Identifier(id!("bar"))].into(), [].into())))),
+                ].into())]),
+                S::Local(vec![id!("c")], vec![E::Function([FA::Identifier(id!("foo")), FA::Identifier(id!("bar"))].into(), [].into())]),
             ].into()
         }));
 }
@@ -276,11 +271,12 @@ fn parse_func_statement() {
 fn parse_assignment_statement() {
     test_parse!("
         a = true or false
-        b = 5 + 3 * 8
+        b, c, d = 5 + 3 * 8, 2
 ", Ok(Program{
         statements: [
-                S::Assign(id!("a"), b!(E::Or(b!((E::BooleanLiteral(true), E::BooleanLiteral(false)))))),
-                S::Assign(id!("b"), b!(E::Plus(b!((n!(5.0), E::Times(b!((n!(3.0), n!(8.0))))))))),
+                S::Assign(vec![id!("a")], vec![E::Or(b!((E::BooleanLiteral(true), E::BooleanLiteral(false))))]),
+                S::Assign(vec![id!("b"), id!("c"), id!("d")],
+                    vec![E::Plus(b!((n!(5.0), E::Times(b!((n!(3.0), n!(8.0))))))), n!(2.0)]),
             ].into()
         }));
 }
@@ -312,7 +308,7 @@ fn parse_call_exp() {
         return 1 + foo(true)(false)
 ", Ok(Program{
         statements: [
-                S::Local(id!("a"), Some(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())))),
+                S::Local(vec![id!("a")], vec![E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())]),
                 S::Return(Some(b!(E::Plus(b!((n!(1.0), E::Call(b!(E::Call(b!(E::Identifier(id!("foo"))), [E::BooleanLiteral(true)].into())),
                 [E::BooleanLiteral(false)].into()))))))),
             ].into()
@@ -327,7 +323,7 @@ fn parse_while_statement() {
         end
 ", Ok(Program{
         statements: [
-                S::While(b!(E::Lt(b!((n!(1.0), n!(5.0))))), [S::Assign(id!("i"), b!(E::Plus(b!((E::Identifier(id!("i")), n!(1.0))))))].into()),
+                S::While(b!(E::Lt(b!((n!(1.0), n!(5.0))))), [S::Assign(vec![id!("i")], vec![E::Plus(b!((E::Identifier(id!("i")), n!(1.0))))])].into()),
             ].into()
         }));
 }
@@ -338,7 +334,7 @@ fn parse_field_access_exp() {
         local a = foo.bar.baz()
 ", Ok(Program{
         statements: [
-                S::Local(id!("a"), Some(b!(E::Call(b!(E::FieldAccess(b!(E::FieldAccess(b!(E::Identifier(id!("foo"))), id!("bar"))), id!("baz"))), [].into())))),
+                S::Local(vec![id!("a")], vec![E::Call(b!(E::FieldAccess(b!(E::FieldAccess(b!(E::Identifier(id!("foo"))), id!("bar"))), id!("baz"))), [].into())]),
             ].into()
         }));
 }

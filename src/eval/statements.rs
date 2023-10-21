@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, convert::identity, rc::Rc};
 
 use crate::parser::ast::{Expression, Statement};
 use rua_identifiers::Identifier;
@@ -11,8 +11,8 @@ use super::{
 impl Statement {
     pub fn eval(&self, env: Rc<RefCell<Scope>>) -> Result<StmtResult, EvalError> {
         match self {
-            Self::Local(id, e) => Self::eval_local(*id, e, &env),
-            Self::Assign(id, e) => Self::eval_assign(*id, e, &env),
+            Self::Local(id, e) => Self::eval_local(id, e, &env),
+            Self::Assign(id, e) => Self::eval_assign(id, e, &env),
             Self::Return(e) => Self::eval_return(e, env),
             Self::IfThen(cond, block) => {
                 if cond.eval(env.clone())?.truthy() {
@@ -64,23 +64,27 @@ impl Statement {
     }
 
     fn eval_local(
-        id: Identifier,
-        exp: &Option<Box<Expression>>,
+        ids: &[Identifier],
+        exps: &[Expression],
         env: &Rc<RefCell<Scope>>,
     ) -> Result<StmtResult, EvalError> {
-        let val = exp.as_ref().map_or(Ok(RuaVal::Nil), |e| e.eval(env.clone()))?;
-        env.borrow_mut().set(id, val);
+        let vals: Vec<_> = exps.iter().map(|e| e.eval(env.clone())).try_collect()?;
+        for (i, id) in ids.iter().enumerate() {
+            env.borrow_mut().set(*id, vals.get(i).cloned().map_or(RuaVal::Nil, identity));
+        }
 
         Ok(StmtResult::None)
     }
 
     fn eval_assign(
-        id: Identifier,
-        exp: &Expression,
+        ids: &[Identifier],
+        exps: &[Expression],
         env: &Rc<RefCell<Scope>>,
     ) -> Result<StmtResult, EvalError> {
-        let val = exp.eval(env.clone())?;
-        env.borrow_mut().update(id, val);
+        let vals: Vec<_> = exps.iter().map(|e| e.eval(env.clone())).try_collect()?;
+        for (i, id) in ids.iter().enumerate() {
+            env.borrow_mut().update(*id, vals.get(i).cloned().map_or(RuaVal::Nil, identity));
+        }
 
         Ok(StmtResult::None)
     }

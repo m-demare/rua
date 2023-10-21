@@ -57,8 +57,8 @@ pub enum FunctionArg {
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    Local(Identifier, Option<Box<Expression>>),
-    Assign(Identifier, Box<Expression>),
+    Local(Vec<Identifier>, Vec<Expression>),
+    Assign(Vec<Identifier>, Vec<Expression>),
     Return(Option<Box<Expression>>),
 
     IfThen(Box<Expression>, Vec<Statement>),
