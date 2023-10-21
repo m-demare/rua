@@ -208,6 +208,12 @@ impl From<String> for RuaVal {
     }
 }
 
+impl From<&str> for RuaVal {
+    fn from(val: &str) -> Self {
+        Self::String(val.into())
+    }
+}
+
 impl From<Rc<str>> for RuaVal {
     fn from(val: Rc<str>) -> Self {
         Self::String(val)

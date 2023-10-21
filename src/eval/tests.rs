@@ -156,3 +156,14 @@ fn test_assign_stmt() {
     foo()
     return global", Ok(R::Return(V::Number(123.0))));
 }
+
+#[test]
+fn test_native_functions() {
+    test_eval_stmt("return type(tostring(5))", Ok(R::Return(V::String("string".into()))));
+    test_eval_stmt("return type(tonumber('5'))", Ok(R::Return(V::String("number".into()))));
+    test_eval_stmt("return tostring(5) .. 'foo'", Ok(R::Return(V::String("5foo".into()))));
+    test_eval_stmt("return tonumber('110', 2)", Ok(R::Return(V::Number(6.0))));
+    test_eval_stmt("assert(false, 'custom error')", Err(EvalError::AssertionFailed(Some("custom error".into()))));
+    test_eval_stmt("return pcall(print, 5, 'hello world')", Ok(R::Return(V::Nil)));
+    test_eval_stmt("return pcall(assert, false)", Ok(R::Return(V::Bool(false))));
+}
