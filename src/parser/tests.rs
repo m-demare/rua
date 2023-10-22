@@ -346,6 +346,15 @@ fn parse_table_exp() {
             S::Local(vec![id!("a")], vec![E::TableLiteral(Vec::new(), Vec::new())])
         ].into()
     }));
+    test_parse!("
+        local a = {b=2}
+        return 5",
+        Ok(Program {
+        statements: [
+            S::Local(vec![id!("a")], vec![E::TableLiteral(Vec::new(), vec![(E::Identifier(id!("b")), n!(2.0))])]),
+            S::Return(Some(n!(5.0))),
+        ].into()
+    }));
 
     test_parse!("
         local a = {
