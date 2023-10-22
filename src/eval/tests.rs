@@ -36,19 +36,19 @@ fn test_eval_stmt(input: &str, expected_output: Result<R, EvalError>) {
 
 #[test]
 fn test_expressions() {
-   test_eval_expr("1 + 1 - 5 * 2", Ok(V::Number(-8.0)));
-   test_eval_expr("1 + (1 - 5) * 2", Ok(V::Number(-7.0)));
+   test_eval_expr("1 + 1 - 5 * 2", Ok(V::Number((-8.0).into())));
+   test_eval_expr("1 + (1 - 5) * 2", Ok(V::Number((-7.0).into())));
    test_eval_expr("true and 5<2", Ok(V::Bool(false)));
    test_eval_expr("5<=2 or 3-5+2 > -4", Ok(V::Bool(true)));
-   test_eval_expr("5 or 1", Ok(V::Number(5.0)));
-   test_eval_expr("nil or 1", Ok(V::Number(1.0)));
-   test_eval_expr("5 and 1", Ok(V::Number(1.0)));
+   test_eval_expr("5 or 1", Ok(V::Number(5.0.into())));
+   test_eval_expr("nil or 1", Ok(V::Number(1.0.into())));
+   test_eval_expr("5 and 1", Ok(V::Number(1.0.into())));
    test_eval_expr("nil and 1", Ok(V::Nil));
 }
 
 #[test]
 fn test_if_else() {
-   test_eval_stmt("if 5>=5 then return 1 else return nil end", Ok(R::Return(V::Number(1.0))));
+   test_eval_stmt("if 5>=5 then return 1 else return nil end", Ok(R::Return(V::Number(1.0.into()))));
    test_eval_stmt("if false then return 1 else return nil end", Ok(R::Return(V::Nil)));
 }
 
@@ -61,7 +61,7 @@ fn test_type_errors() {
 
 #[test]
 fn test_local_stmt() {
-    test_eval_stmt("local foo = 5; return foo", Ok(R::Return(V::Number(5.0))));
+    test_eval_stmt("local foo = 5; return foo", Ok(R::Return(V::Number(5.0.into()))));
 }
 
 #[test]
@@ -75,13 +75,13 @@ fn test_while_stmt() {
         while i < 42 do
             i = i + 1
         end
-        return i", Ok(R::Return(V::Number(42.0))));
+        return i", Ok(R::Return(V::Number(42.0.into()))));
     test_eval_stmt("local i = 0
         while i < 42 do
             i = i + 1
             if i > 13 then break end
         end
-        return i", Ok(R::Return(V::Number(14.0))));
+        return i", Ok(R::Return(V::Number(14.0.into()))));
     test_eval_stmt("
         local n = 7
         local i = 3
@@ -95,7 +95,7 @@ fn test_while_stmt() {
             i = i + 1
         end
 
-        return fib", Ok(R::Return(V::Number(13.0))));
+        return fib", Ok(R::Return(V::Number(13.0.into()))));
 }
 
 #[test]
@@ -103,14 +103,14 @@ fn test_call_expr() {
     test_eval_stmt("local function foo()
         return 1337
     end
-    return foo()", Ok(R::Return(V::Number(1337.0))));
+    return foo()", Ok(R::Return(V::Number(1337.0.into()))));
     test_eval_stmt("
     local DEFAULT = 1
     local function fact(n)
         if n < 2 then return DEFAULT end
         return n * fact(n-1)
     end
-    return fact(5)", Ok(R::Return(V::Number(120.0))));
+    return fact(5)", Ok(R::Return(V::Number(120.0.into()))));
     test_eval_stmt("
     local add = function(x)
         return function(y)
@@ -118,18 +118,18 @@ fn test_call_expr() {
         end
     end
     local add2 = add(2)
-    return add2(5)", Ok(R::Return(V::Number(7.0))));
+    return add2(5)", Ok(R::Return(V::Number(7.0.into()))));
     test_eval_stmt("
     function apply(fn)
         return fn(4)
     end
-    return apply(function(n) return n*n end)", Ok(R::Return(V::Number(16.0))));
+    return apply(function(n) return n*n end)", Ok(R::Return(V::Number(16.0.into()))));
 }
 
 #[test]
 fn test_strings() {
     test_eval_expr(r#""foo" .. "bar""#, Ok(V::String("foobar".into())));
-    test_eval_expr(r#" #("foo" .. "bar") "#, Ok(V::Number(6.0)));
+    test_eval_expr(r#" #("foo" .. "bar") "#, Ok(V::Number(6.0.into())));
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn test_assign_stmt() {
         end
         return n + m + asdf()
     end
-    return foo()", Ok(R::Return(V::Number(13.0))));
+    return foo()", Ok(R::Return(V::Number(13.0.into()))));
     test_eval_stmt("
     local function foo()
         local function asdf()
@@ -154,7 +154,7 @@ fn test_assign_stmt() {
         asdf()
     end
     foo()
-    return global", Ok(R::Return(V::Number(123.0))));
+    return global", Ok(R::Return(V::Number(123.0.into()))));
 }
 
 #[test]
@@ -162,8 +162,40 @@ fn test_native_functions() {
     test_eval_stmt("return type(tostring(5))", Ok(R::Return(V::String("string".into()))));
     test_eval_stmt("return type(tonumber('5'))", Ok(R::Return(V::String("number".into()))));
     test_eval_stmt("return tostring(5) .. 'foo'", Ok(R::Return(V::String("5foo".into()))));
-    test_eval_stmt("return tonumber('110', 2)", Ok(R::Return(V::Number(6.0))));
+    test_eval_stmt("return tonumber('110', 2)", Ok(R::Return(V::Number(6.0.into()))));
     test_eval_stmt("assert(false, 'custom error')", Err(EvalError::AssertionFailed(Some("custom error".into()))));
     test_eval_stmt("return pcall(print, 5, 'hello world')", Ok(R::Return(V::Nil)));
     test_eval_stmt("return pcall(assert, false)", Ok(R::Return(V::Bool(false))));
+}
+
+#[test]
+fn test_table_field_access() {
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[1]",
+        Ok(R::Return(V::Number(1.0.into()))));
+    test_eval_stmt("
+        local a = {1, b = true, 3, [2+3] = false}
+        return a[2]",
+        Ok(R::Return(V::Number(3.0.into()))));
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a['b']",
+        Ok(R::Return(V::Bool(true))));
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[5]",
+        Ok(R::Return(V::Bool(false))));
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.b",
+        Ok(R::Return(V::Bool(true))));
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.c",
+        Ok(R::Return(V::Nil)));
+    test_eval_stmt("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[false]",
+        Ok(R::Return(V::Nil)));
 }

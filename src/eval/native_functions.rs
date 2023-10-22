@@ -6,7 +6,10 @@ use crate::lex::{
     utils::read_number_radix,
 };
 
-use super::vals::{EvalError, FunctionContext, NativeFunction, RuaResult, RuaVal, TryIntoOpt};
+use super::vals::{
+    function::{FunctionContext, NativeFunction},
+    EvalError, RuaResult, RuaVal, TryIntoOpt,
+};
 use rua_func_macros::rua_func;
 use rua_identifiers::{Identifier, Trie};
 use rustc_hash::FxHashMap;
@@ -36,7 +39,7 @@ pub fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResult {
         ));
     }
     Ok(match read_number_radix(s.to_string().chars().peekable().by_ref(), r) {
-        Ok(n) => RuaVal::Number(n),
+        Ok(n) => RuaVal::Number(n.into()),
         Err(..) => RuaVal::Nil,
     })
 }

@@ -10,12 +10,19 @@ pub struct Program {
 }
 
 #[derive(PartialEq, Debug)]
+pub struct TableLiteral(
+    pub Vec<Expression>,
+    pub Vec<(Identifier, Expression)>,
+    pub Vec<(Expression, Expression)>,
+);
+
+#[derive(PartialEq, Debug)]
 pub enum Expression {
     Identifier(Identifier),
     NumberLiteral(f64),
     BooleanLiteral(bool),
     StringLiteral(Rc<str>),
-    TableLiteral(Vec<Expression>, Vec<(Expression, Expression)>),
+    TableLiteral(Box<TableLiteral>),
     Nil,
 
     Not(Box<Expression>),

@@ -1,5 +1,8 @@
+pub mod function;
+pub mod number;
+pub mod table;
+
 use std::{
-    cell::RefCell,
     convert::Infallible,
     fmt::{self, Debug, Display},
     hint::unreachable_unchecked,
@@ -7,33 +10,24 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::parser::ast::{FunctionArg, Statement};
+use self::{
+    function::{Function, NativeFunction},
+    number::RuaNumber,
+    table::Table,
+};
 
-use super::{scope::Scope, statements::eval_block};
-
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum RuaVal {
-    Number(f64),
+    Number(RuaNumber),
     Bool(bool),
     Nil,
     Function(Function),
     String(Rc<str>),
     NativeFunction(NativeFunction),
-}
-
-#[derive(Clone)]
-pub struct Function {
-    args: Rc<[FunctionArg]>,
-    body: Rc<[Statement]>,
-    env: Rc<RefCell<Scope>>,
+    Table(Table),
 }
 
 pub type RuaResult = Result<RuaVal, EvalError>;
-
-#[derive(Clone)]
-pub struct NativeFunction {
-    func: Rc<dyn Fn(&FunctionContext) -> RuaResult>,
-}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuaType {
@@ -42,9 +36,10 @@ pub enum RuaType {
     Nil,
     Function,
     String,
+    Table,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum StmtResult {
     None,
     Return(RuaVal),
@@ -55,22 +50,16 @@ pub trait RuaCallable {
     fn call(&self, args: &[RuaVal]) -> RuaResult;
 }
 
-pub struct FunctionContext {
-    pub args: Vec<RuaVal>,
-}
-
-impl FunctionContext {
-    pub fn new(args: Vec<RuaVal>) -> Self {
-        Self { args }
-    }
-}
-
 impl RuaVal {
     pub fn into_bool(self) -> Result<bool, TypeError> {
         self.try_into()
     }
 
     pub fn into_number(self) -> Result<f64, TypeError> {
+        self.try_into()
+    }
+
+    pub fn into_table(self) -> Result<Table, TypeError> {
         self.try_into()
     }
 
@@ -97,36 +86,20 @@ impl RuaVal {
             Self::Nil => RuaType::Nil,
             Self::Function(..) | Self::NativeFunction(..) => RuaType::Function,
             Self::String(..) => RuaType::String,
+            Self::Table(..) => RuaType::Table,
         }
-    }
-}
-
-impl PartialEq for Function {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
-}
-
-impl PartialEq for NativeFunction {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.func, &other.func)
-    }
-}
-
-impl NativeFunction {
-    pub fn new(func: Rc<dyn Fn(&FunctionContext) -> RuaResult>) -> Self {
-        Self { func }
     }
 }
 
 impl Display for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Number(n) => write!(f, "{n}"),
+            Self::Number(n) => write!(f, "{}", n.val()),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
             Self::Function(..) | Self::NativeFunction(..) => write!(f, "function"),
             Self::String(s) => write!(f, "{s}"),
+            Self::Table(t) => write!(f, "table: 0x{:x}", t.addr() as usize),
         }
     }
 }
@@ -139,6 +112,7 @@ impl Display for RuaType {
             Self::Nil => write!(f, "nil"),
             Self::Function => write!(f, "function"),
             Self::String => write!(f, "string"),
+            Self::Table => write!(f, "table"),
         }
     }
 }
@@ -149,35 +123,7 @@ impl Debug for RuaVal {
     }
 }
 
-impl Function {
-    pub fn new(args: Rc<[FunctionArg]>, body: Rc<[Statement]>, env: Rc<RefCell<Scope>>) -> Self {
-        Self { args, body, env }
-    }
-}
-
-impl RuaCallable for Function {
-    fn call(&self, args: &[RuaVal]) -> RuaResult {
-        let mut new_env = Scope::extend(self.env.clone());
-        self.args.iter().zip(args).for_each(|(arg, val)| match arg {
-            FunctionArg::Identifier(id) => new_env.set(*id, val.clone()),
-            FunctionArg::Dotdotdot => todo!(),
-        });
-
-        match eval_block(&self.body, &RefCell::new(new_env).into())? {
-            StmtResult::None => Ok(RuaVal::Nil),
-            StmtResult::Return(v) => Ok(v),
-            StmtResult::Break => todo!(),
-        }
-    }
-}
-
-impl RuaCallable for NativeFunction {
-    fn call(&self, args: &[RuaVal]) -> RuaResult {
-        (self.func)(&FunctionContext::new(args.to_vec()))
-    }
-}
-
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum EvalError {
     #[error("TypeError: {0}")]
     TypeError(#[from] TypeError),
@@ -220,9 +166,15 @@ impl From<Rc<str>> for RuaVal {
     }
 }
 
+impl From<Box<str>> for RuaVal {
+    fn from(val: Box<str>) -> Self {
+        Self::String(val.into())
+    }
+}
+
 impl From<f64> for RuaVal {
     fn from(val: f64) -> Self {
-        Self::Number(val)
+        Self::Number(RuaNumber::new(val))
     }
 }
 
@@ -243,7 +195,7 @@ impl TryInto<f64> for RuaVal {
 
     fn try_into(self) -> Result<f64, Self::Error> {
         match self {
-            Self::Number(n) => Ok(n),
+            Self::Number(n) => Ok(n.val()),
             v => Err(TypeError(RuaType::Number, v.get_type())),
         }
     }
@@ -283,6 +235,23 @@ impl TryInto<Box<dyn RuaCallable>> for RuaVal {
     }
 }
 
+impl From<Table> for RuaVal {
+    fn from(val: Table) -> Self {
+        Self::Table(val)
+    }
+}
+
+impl TryInto<Table> for RuaVal {
+    type Error = TypeError;
+
+    fn try_into(self) -> Result<Table, Self::Error> {
+        match self {
+            Self::Table(t) => Ok(t),
+            v => Err(TypeError(RuaType::Table, v.get_type())),
+        }
+    }
+}
+
 impl From<Infallible> for EvalError {
     fn from(_: Infallible) -> Self {
         unsafe { unreachable_unchecked() }
@@ -315,5 +284,17 @@ impl TryIntoOpt<Self> for RuaVal {
 
     fn try_into_opt(self) -> Result<Option<Self>, Self::Error> {
         Ok(Some(self))
+    }
+}
+
+impl From<f64> for RuaNumber {
+    fn from(val: f64) -> Self {
+        Self::new(val)
+    }
+}
+
+impl From<RuaNumber> for f64 {
+    fn from(value: RuaNumber) -> Self {
+        value.val()
     }
 }

@@ -2,7 +2,7 @@
 
 use pretty_assertions::assert_eq;
 
-use crate::lex::{Tokenizer, tokens::TokenType};
+use crate::{lex::{Tokenizer, tokens::TokenType}, parser::ast::TableLiteral};
 use super::{ast::{Statement as S, Expression as E, FunctionArg as FA, Program}, parse};
 use rua_identifiers::Trie;
 
@@ -343,7 +343,7 @@ fn parse_field_access_exp() {
 fn parse_table_exp() {
     test_parse!("local a = {}", Ok(Program {
         statements: [
-            S::Local(vec![id!("a")], vec![E::TableLiteral(Vec::new(), Vec::new())])
+            S::Local(vec![id!("a")], vec![E::TableLiteral(b!(TableLiteral(Vec::new(), Vec::new(), Vec::new())))])
         ].into()
     }));
     test_parse!("
@@ -351,7 +351,7 @@ fn parse_table_exp() {
         return 5",
         Ok(Program {
         statements: [
-            S::Local(vec![id!("a")], vec![E::TableLiteral(Vec::new(), vec![(E::Identifier(id!("b")), n!(2.0))])]),
+            S::Local(vec![id!("a")], vec![E::TableLiteral(b!(TableLiteral(Vec::new(), vec![(id!("b"), n!(2.0))], Vec::new())))]),
             S::Return(Some(n!(5.0))),
         ].into()
     }));
@@ -366,12 +366,12 @@ fn parse_table_exp() {
 ", Ok(Program{
         statements: [
                 S::Local(vec![id!("a")], vec![
-                    E::TableLiteral(
+                    E::TableLiteral(b!(TableLiteral(
                         vec![E::Identifier(id!("bar")), E::Plus(b!((n!(123.0), n!(1337.0))))],
+                        vec![(id!("foo"), E::BooleanLiteral(true))],
                         vec![
-                            (E::Identifier(id!("foo")), E::BooleanLiteral(true)),
                             (E::BooleanLiteral(true), E::Identifier(id!("baz"))),
-                        ])
+                        ])))
                 ]),
             ].into()
         }));

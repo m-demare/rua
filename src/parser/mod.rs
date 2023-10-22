@@ -6,7 +6,8 @@ use std::iter::Peekable;
 
 use self::{
     ast::{
-        precedence_of_binary, BlockType, Expression, FunctionArg, ParseError, Precedence, Statement,
+        precedence_of_binary, BlockType, Expression, FunctionArg, ParseError, Precedence,
+        Statement, TableLiteral,
     },
     utils::{assert_next_token_is, peek_token_is},
 };
@@ -420,6 +421,7 @@ fn parse_group_expr<T: Iterator<Item = Token>>(
 #[allow(unused_parens)]
 fn parse_table<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResult<Expression> {
     let mut array_exprs = Vec::new();
+    let mut id_values = Vec::new();
     let mut key_values = Vec::new();
     loop {
         match tokens_it.peek().cloned() {
@@ -435,10 +437,9 @@ fn parse_table<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseR
                 tokens_it.next();
                 match tokens_it.peek() {
                     Some(Token { ttype: TT::ASSIGN, .. }) => {
-                        let key = Expression::Identifier(id);
                         tokens_it.next();
                         let val = parse_expression(tokens_it, &Precedence::Lowest)?;
-                        key_values.push((key, val));
+                        id_values.push((id, val));
                     }
                     Some(_) => {
                         let val = parse_infix_exp(
@@ -473,7 +474,7 @@ fn parse_table<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseR
             None => return Err(ParseError::UnexpectedEOF),
         }
     }
-    Ok(Expression::TableLiteral(array_exprs, key_values))
+    Ok(Expression::TableLiteral(Box::new(TableLiteral(array_exprs, id_values, key_values))))
 }
 
 fn parse_function_expr<T: Iterator<Item = Token>>(
