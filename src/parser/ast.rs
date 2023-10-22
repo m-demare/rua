@@ -85,15 +85,6 @@ pub enum Precedence {
     FieldAccess, // foo.bar
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Eq)]
-pub enum ExpressionContext {
-    Assign,
-    Call,
-    Return,
-    Condition,
-    Group,
-}
-
 pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
     match op {
         BinaryOp::OR => Precedence::Or,

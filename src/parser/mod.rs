@@ -6,8 +6,7 @@ use std::iter::Peekable;
 
 use self::{
     ast::{
-        precedence_of_binary, BlockType, Expression, ExpressionContext, FunctionArg, ParseError,
-        Precedence, Statement,
+        precedence_of_binary, BlockType, Expression, FunctionArg, ParseError, Precedence, Statement,
     },
     utils::peek_token_is,
 };
@@ -85,7 +84,7 @@ fn parse_block<T: Iterator<Item = Token>>(
 fn handle_lparen_st<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
 ) -> Result<Statement, ParseError> {
-    match parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Group)? {
+    match parse_expression(tokens_it, &Precedence::Lowest)? {
         Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
         _ => Err(ParseError::UnexpectedExpression),
     }
@@ -102,7 +101,7 @@ fn parse_return_st<T: Iterator<Item = Token>>(
     {
         return Ok(Statement::Return(None));
     }
-    let expr = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Return)?;
+    let expr = parse_expression(tokens_it, &Precedence::Lowest)?;
     if !peek_token_is!(tokens_it, TokenType::END | TokenType::ELSE | TokenType::ELSEIF) {
         if let Some(t) = tokens_it.peek() {
             return Err(ParseError::UnexpectedToken(
@@ -139,15 +138,12 @@ fn handle_identifier_st<T: Iterator<Item = Token>>(
             Some(Token { ttype: TokenType::ASSIGN | TokenType::COMMA, .. }) => {
                 parse_assign_st(tokens_it, id)
             }
-            Some(Token { ttype: TokenType::LPAREN | TokenType::DOT, .. }) => match parse_infix_exp(
-                tokens_it,
-                Expression::Identifier(id),
-                &Precedence::Lowest,
-                &ExpressionContext::Group,
-            )? {
-                Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
-                _ => Err(ParseError::UnexpectedExpression),
-            },
+            Some(Token { ttype: TokenType::LPAREN | TokenType::DOT, .. }) => {
+                match parse_infix_exp(tokens_it, Expression::Identifier(id), &Precedence::Lowest)? {
+                    Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
+                    _ => Err(ParseError::UnexpectedExpression),
+                }
+            }
             Some(t) => {
                 Err(ParseError::UnexpectedToken(Box::new(t.clone()), Box::new([TokenType::ASSIGN])))
             }
@@ -189,11 +185,7 @@ fn parse_assign_st<T: Iterator<Item = Token>>(
     }
     loop {
         match tokens_it.peek() {
-            Some(..) => rhs.push(parse_expression(
-                tokens_it,
-                &Precedence::Lowest,
-                &ExpressionContext::Assign,
-            )?),
+            Some(..) => rhs.push(parse_expression(tokens_it, &Precedence::Lowest)?),
             None => return Err(ParseError::UnexpectedEOF),
         }
         match tokens_it.peek() {
@@ -264,11 +256,7 @@ fn parse_local_st<T: Iterator<Item = Token>>(
         if has_assign {
             loop {
                 match tokens_it.peek() {
-                    Some(..) => rhs.push(parse_expression(
-                        tokens_it,
-                        &Precedence::Lowest,
-                        &ExpressionContext::Assign,
-                    )?),
+                    Some(..) => rhs.push(parse_expression(tokens_it, &Precedence::Lowest)?),
                     None => return Err(ParseError::UnexpectedEOF),
                 }
                 match tokens_it.peek() {
@@ -286,30 +274,22 @@ fn parse_local_st<T: Iterator<Item = Token>>(
 pub fn parse_expression<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
     precedence: &Precedence,
-    context: &ExpressionContext,
 ) -> ParseResult<Expression> {
-    let expr = parse_prefix_exp(tokens_it, context)?;
+    let expr = parse_prefix_exp(tokens_it)?;
 
-    parse_infix_exp(tokens_it, expr, precedence, context)
-
-    // TODO terminators (depending on ExpressionContext)
-    // if peek_token_is(tokens_it, &TokenType::SEMICOLON) {
-    //     tokens_it.next();
-    // }
-    // Ok(expr)
+    parse_infix_exp(tokens_it, expr, precedence)
 }
 
 fn parse_infix_exp<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
     mut lhs: Expression,
     precedence: &Precedence,
-    context: &ExpressionContext,
 ) -> Result<Expression, ParseError> {
     loop {
         match tokens_it.peek().cloned() {
             Some(Token { ttype: TokenType::BINARY_OP(ref op), .. }) => {
                 if precedence < &precedence_of_binary(op) {
-                    lhs = parse_binary_op(lhs, op, tokens_it, context)?;
+                    lhs = parse_binary_op(lhs, op, tokens_it)?;
                 } else {
                     break Ok(lhs);
                 }
@@ -317,7 +297,7 @@ fn parse_infix_exp<T: Iterator<Item = Token>>(
             Some(Token { ttype: TokenType::MINUS, .. }) => {
                 if precedence < &Precedence::Sum {
                     tokens_it.next();
-                    let rhs = parse_expression(tokens_it, &Precedence::Sum, context)?;
+                    let rhs = parse_expression(tokens_it, &Precedence::Sum)?;
                     lhs = Expression::Minus(Box::new((lhs, rhs)));
                 } else {
                     break Ok(lhs);
@@ -357,14 +337,11 @@ fn parse_infix_exp<T: Iterator<Item = Token>>(
 
 fn parse_prefix_exp<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
-    context: &ExpressionContext,
 ) -> Result<Expression, ParseError> {
     Ok(match tokens_it.next() {
-        Some(Token { ttype: TokenType::UNARY_OP(ref op), .. }) => {
-            parse_unary_op(op, tokens_it, context)?
-        }
+        Some(Token { ttype: TokenType::UNARY_OP(ref op), .. }) => parse_unary_op(op, tokens_it)?,
         Some(Token { ttype: TokenType::MINUS, .. }) => {
-            Expression::Neg(Box::new(parse_expression(tokens_it, &Precedence::Prefix, context)?))
+            Expression::Neg(Box::new(parse_expression(tokens_it, &Precedence::Prefix)?))
         }
         Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => Expression::Identifier(id),
         Some(Token { ttype: TokenType::NUMBER(n), .. }) => Expression::NumberLiteral(n),
@@ -402,11 +379,7 @@ fn parse_call_expr<T: Iterator<Item = Token>>(
                 break;
             }
             Some(_) => {
-                args.push(parse_expression(
-                    tokens_it,
-                    &Precedence::Lowest,
-                    &ExpressionContext::Call,
-                )?);
+                args.push(parse_expression(tokens_it, &Precedence::Lowest)?);
                 if peek_token_is!(tokens_it, TokenType::COMMA) {
                     tokens_it.next();
                 }
@@ -420,7 +393,7 @@ fn parse_call_expr<T: Iterator<Item = Token>>(
 fn parse_group_expr<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
 ) -> ParseResult<Expression> {
-    let expr = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Group)?;
+    let expr = parse_expression(tokens_it, &Precedence::Lowest)?;
     return match tokens_it.peek() {
         Some(Token { ttype: TokenType::RPAREN }) => {
             tokens_it.next();
@@ -504,9 +477,8 @@ fn parse_function_expr<T: Iterator<Item = Token>>(
 fn parse_unary_op<T: Iterator<Item = Token>>(
     op: &UnaryOp,
     tokens_it: &mut Peekable<T>,
-    context: &ExpressionContext,
 ) -> ParseResult<Expression> {
-    let right = parse_expression(tokens_it, &Precedence::Prefix, context)?;
+    let right = parse_expression(tokens_it, &Precedence::Prefix)?;
     Ok(match op {
         UnaryOp::NOT => Expression::Not(Box::new(right)),
         UnaryOp::LEN => Expression::Len(Box::new(right)),
@@ -517,11 +489,10 @@ fn parse_binary_op<T: Iterator<Item = Token>>(
     lhs: Expression,
     op: &BinaryOp,
     tokens_it: &mut Peekable<T>,
-    context: &ExpressionContext,
 ) -> ParseResult<Expression> {
     tokens_it.next();
     let precedence = precedence_of_binary(op);
-    let rhs = parse_expression(tokens_it, &precedence, context)?;
+    let rhs = parse_expression(tokens_it, &precedence)?;
     Ok(match op {
         BinaryOp::PLUS => Expression::Plus(Box::new((lhs, rhs))),
         BinaryOp::TIMES => Expression::Times(Box::new((lhs, rhs))),
@@ -544,7 +515,7 @@ fn parse_if<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResu
     debug_peek_token!(tokens_it, TokenType::IF);
 
     tokens_it.next();
-    let cond = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Condition)?;
+    let cond = parse_expression(tokens_it, &Precedence::Lowest)?;
     if !peek_token_is!(tokens_it, TokenType::THEN) {
         return match tokens_it.peek() {
             Some(t) => {
@@ -593,11 +564,7 @@ fn parse_if_elseif<T: Iterator<Item = Token>>(
     loop {
         match tokens_it.next() {
             Some(Token { ttype: TokenType::ELSEIF }) => {
-                let new_cond = parse_expression(
-                    tokens_it,
-                    &Precedence::Lowest,
-                    &ExpressionContext::Condition,
-                )?;
+                let new_cond = parse_expression(tokens_it, &Precedence::Lowest)?;
                 if !peek_token_is!(tokens_it, TokenType::THEN) {
                     return match tokens_it.peek() {
                         Some(t) => Err(ParseError::UnexpectedToken(
@@ -633,7 +600,7 @@ fn parse_while_st<T: Iterator<Item = Token>>(
     debug_peek_token!(tokens_it, TokenType::WHILE);
 
     tokens_it.next();
-    let cond = parse_expression(tokens_it, &Precedence::Lowest, &ExpressionContext::Condition)?;
+    let cond = parse_expression(tokens_it, &Precedence::Lowest)?;
     if !peek_token_is!(tokens_it, TokenType::DO) {
         return match tokens_it.peek() {
             Some(t) => {

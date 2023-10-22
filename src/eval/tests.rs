@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::eval::{scope::Scope, isolate::Isolate};
 use crate::parser::parse_expression;
 use rua_identifiers::Trie;
-use crate::{parser::{parse, ast::{Precedence, ExpressionContext}}, lex::Tokenizer};
+use crate::{parser::{parse, ast::Precedence}, lex::Tokenizer};
 
 use super::vals::{EvalError, RuaType};
 use super::{vals::{StmtResult as R, TypeError, RuaVal as V}, eval};
@@ -15,7 +15,7 @@ use super::{vals::{StmtResult as R, TypeError, RuaVal as V}, eval};
 fn test_eval_expr(input: &str, expected_output: Result<V, EvalError>) {
     let mut identifiers = Trie::new();
     let tokens = Tokenizer::new(input.chars(), &mut identifiers);
-    let expr = parse_expression(tokens.peekable().by_ref(), &Precedence::Lowest, &ExpressionContext::Group)
+    let expr = parse_expression(tokens.peekable().by_ref(), &Precedence::Lowest)
         .expect(&("Invalid test input: ".to_owned() + input));
     let isolate = Isolate::new(identifiers);
     let root_scope = Scope::new(RefCell::new(isolate).into());
