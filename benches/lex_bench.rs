@@ -16,12 +16,12 @@ fn bench(c: &mut Criterion, input: &str, name: &str) {
 }
 
 fn lex_one_identifier(c: &mut Criterion) {
-    let input = "local aaaaaa = 123".to_owned() + &"\naaaaaa = aaaaaa+123".repeat(500000);
+    let input = "local aaaaaa = 123".to_owned() + &"\naaaaaa = aaaaaa+123".repeat(400000);
     bench(c, &input, "lex_one_identifier");
 }
 
 fn lex_many_identifiers(c: &mut Criterion) {
-    let input = "dajf lkjflsk iojf iowe sadijf woefjoweaifjweaf sfsdl _sdfsdaf _12345 sdf_o489i we894sadf lkjscvv hkfjsdh i j k\n".repeat(100000);
+    let input = "dajf lkjflsk iojf iowe sadijf woefjoweaifjweaf sfsdl _sdfsdaf _12345 sdf_o489i we894sadf lkjscvv hkfjsdh i j k\n".repeat(8000);
     bench(c, &input, "lex_many_identifiers");
 }
 
@@ -61,12 +61,12 @@ fn comments(c: &mut Criterion) {
 }
 
 fn spaces(c: &mut Criterion) {
-    let input = "              +     \t\t    +   \n".repeat(1000000);
+    let input = "              +     \t\t    +   \n".repeat(500000);
     bench(c, &input, "lex_spaces");
 }
 
 fn bunch_of_keywords(c: &mut Criterion) {
-    let input = "local function and or not break while do if then end\n".repeat(500000);
+    let input = "local function and or not break while do if then end\n".repeat(100000);
     bench(c, &input, "lex_keywords");
 }
 

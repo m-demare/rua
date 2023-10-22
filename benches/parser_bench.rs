@@ -14,7 +14,7 @@ fn bench(c: &mut Criterion, input: &str, name: &str) {
 }
 
 fn parse_assignments(c: &mut Criterion) {
-    let input = "local aaaaaa = 123".to_owned() + &"\naaaaaa = aaaaaa+123".repeat(500000);
+    let input = "local aaaaaa = 123".to_owned() + &"\naaaaaa = aaaaaa+123".repeat(70000);
 
     bench(c, &input, "parse_assignments")
 }
@@ -28,7 +28,7 @@ fn parse_fibonacci(c: &mut Criterion) {
     end
 end
 "
-    .repeat(50000);
+    .repeat(10000);
 
     bench(c, &input, "parse_fibonacci")
 }
