@@ -338,3 +338,55 @@ fn parse_field_access_exp() {
             ].into()
         }));
 }
+
+#[test]
+fn parse_table_exp() {
+    test_parse!("local a = {}", Ok(Program {
+        statements: [
+            S::Local(vec![id!("a")], vec![E::TableLiteral(Vec::new(), Vec::new())])
+        ].into()
+    }));
+
+    test_parse!("
+        local a = {
+            foo = true;
+            bar,
+            123 + 1337;
+            [true] = baz,
+        }
+", Ok(Program{
+        statements: [
+                S::Local(vec![id!("a")], vec![
+                    E::TableLiteral(
+                        vec![E::Identifier(id!("bar")), E::Plus(b!((n!(123.0), n!(1337.0))))],
+                        vec![
+                            (E::Identifier(id!("foo")), E::BooleanLiteral(true)),
+                            (E::BooleanLiteral(true), E::Identifier(id!("baz"))),
+                        ])
+                ]),
+            ].into()
+        }));
+}
+
+#[test]
+fn parse_index_exp() {
+
+    test_parse!("
+        local a = foo['bar'][5][true]
+", Ok(Program{
+        statements: [
+                S::Local(vec![id!("a")], vec![
+                    E::Index(b!((
+                        E::Index(b!((
+                            E::Index(b!((
+                                E::Identifier(id!("foo")),
+                                E::StringLiteral("bar".into()),
+                            ))),
+                            n!(5.0)
+                        ))),
+                        E::BooleanLiteral(true)
+                    ))),
+                ]),
+            ].into()
+        }));
+}

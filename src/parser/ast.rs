@@ -15,6 +15,7 @@ pub enum Expression {
     NumberLiteral(f64),
     BooleanLiteral(bool),
     StringLiteral(Rc<str>),
+    TableLiteral(Vec<Expression>, Vec<(Expression, Expression)>),
     Nil,
 
     Not(Box<Expression>),
@@ -47,6 +48,7 @@ pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
 
     FieldAccess(Box<Expression>, Identifier),
+    Index(Box<(Expression, Expression)>),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -82,7 +84,7 @@ pub enum Precedence {
     Prefix,      // not, #, - (unary)
     Exp,         // ^
     Call,        // foo(...)
-    FieldAccess, // foo.bar
+    FieldAccess, // foo.bar, foo[bar]
 }
 
 pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {

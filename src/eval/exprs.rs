@@ -64,7 +64,9 @@ impl Expression {
                 Ok(V::Function(Function::new(args.clone(), body.clone(), env)))
             }
             Self::Call(expr, args) => expr.callfn(args, &env),
+            Self::TableLiteral(..) => todo!(),
             Self::FieldAccess(_, _) => todo!(),
+            Self::Index(..) => todo!(),
         }
     }
 

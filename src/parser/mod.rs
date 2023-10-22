@@ -8,7 +8,7 @@ use self::{
     ast::{
         precedence_of_binary, BlockType, Expression, FunctionArg, ParseError, Precedence, Statement,
     },
-    utils::peek_token_is,
+    utils::{assert_next_token_is, peek_token_is},
 };
 use crate::{
     lex::tokens::{BinaryOp, Token, TokenType, UnaryOp},
@@ -83,7 +83,7 @@ fn parse_block<T: Iterator<Item = Token>>(
 
 fn handle_lparen_st<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
-) -> Result<Statement, ParseError> {
+) -> ParseResult<Statement> {
     match parse_expression(tokens_it, &Precedence::Lowest)? {
         Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
         _ => Err(ParseError::UnexpectedExpression),
@@ -284,7 +284,7 @@ fn parse_infix_exp<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
     mut lhs: Expression,
     precedence: &Precedence,
-) -> Result<Expression, ParseError> {
+) -> ParseResult<Expression> {
     loop {
         match tokens_it.peek().cloned() {
             Some(Token { ttype: TokenType::BINARY_OP(ref op), .. }) => {
@@ -329,15 +329,38 @@ fn parse_infix_exp<T: Iterator<Item = Token>>(
                     break Ok(lhs);
                 }
             }
-            // TODO LBRACK
+            Some(Token { ttype: TokenType::LBRACK, .. }) => {
+                if precedence < &Precedence::FieldAccess {
+                    lhs = parse_index(lhs, tokens_it)?;
+                } else {
+                    break Ok(lhs);
+                }
+            }
             _ => break Ok(lhs),
         }
     }
 }
 
+fn parse_index<T: Iterator<Item = Token>>(
+    lhs: Expression,
+    tokens_it: &mut Peekable<T>,
+) -> ParseResult<Expression> {
+    debug_peek_token!(tokens_it, TokenType::LBRACK);
+    tokens_it.next();
+    let index = parse_expression(tokens_it, &Precedence::Lowest)?;
+    match tokens_it.next() {
+        Some(Token { ttype: TokenType::RBRACK, .. }) => {}
+        Some(t) => {
+            return Err(ParseError::UnexpectedToken(Box::new(t), [TokenType::RBRACK].into()))
+        }
+        None => return Err(ParseError::UnexpectedEOF),
+    }
+    Ok(Expression::Index(Box::new((lhs, index))))
+}
+
 fn parse_prefix_exp<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
-) -> Result<Expression, ParseError> {
+) -> ParseResult<Expression> {
     Ok(match tokens_it.next() {
         Some(Token { ttype: TokenType::UNARY_OP(ref op), .. }) => parse_unary_op(op, tokens_it)?,
         Some(Token { ttype: TokenType::MINUS, .. }) => {
@@ -350,6 +373,7 @@ fn parse_prefix_exp<T: Iterator<Item = Token>>(
         Some(Token { ttype: TokenType::FALSE, .. }) => Expression::BooleanLiteral(false),
         Some(Token { ttype: TokenType::LPAREN, .. }) => parse_group_expr(tokens_it)?,
         Some(Token { ttype: TokenType::NIL, .. }) => Expression::Nil,
+        Some(Token { ttype: TokenType::LBRACE, .. }) => parse_table(tokens_it)?,
         Some(Token { ttype: TokenType::FUNCTION, .. }) => match parse_function_expr(tokens_it)? {
             (exp, None) => exp,
             (_, Some(id)) => return Err(ParseError::NamedFunctionExpr(id)),
@@ -404,6 +428,68 @@ fn parse_group_expr<T: Iterator<Item = Token>>(
         }
         None => Err(ParseError::UnexpectedEOF),
     };
+}
+
+#[allow(unused_parens)]
+fn parse_table<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResult<Expression> {
+    let mut array_exprs = Vec::new();
+    let mut key_values = Vec::new();
+    loop {
+        match tokens_it.peek().cloned() {
+            Some(Token { ttype: TokenType::LBRACK, .. }) => {
+                tokens_it.next();
+                let key = parse_expression(tokens_it, &Precedence::Lowest)?;
+                assert_next_token_is!(tokens_it, (TokenType::RBRACK));
+                assert_next_token_is!(tokens_it, (TokenType::ASSIGN));
+                let val = parse_expression(tokens_it, &Precedence::Lowest)?;
+                key_values.push((key, val));
+            }
+            Some(Token { ttype: TokenType::IDENTIFIER(id), .. }) => {
+                tokens_it.next();
+                match tokens_it.peek() {
+                    Some(Token { ttype: TokenType::ASSIGN, .. }) => {
+                        let key = Expression::Identifier(id);
+                        tokens_it.next();
+                        let val = parse_expression(tokens_it, &Precedence::Lowest)?;
+                        key_values.push((key, val));
+                    }
+                    Some(_) => {
+                        let val = parse_infix_exp(
+                            tokens_it,
+                            Expression::Identifier(id),
+                            &Precedence::Lowest,
+                        )?;
+                        array_exprs.push(val);
+                    }
+                    None => return Err(ParseError::UnexpectedEOF),
+                }
+            }
+            Some(Token { ttype: TokenType::RBRACE, .. }) => {
+                tokens_it.next();
+                break;
+            }
+            Some(_) => {
+                let val = parse_expression(tokens_it, &Precedence::Lowest)?;
+                array_exprs.push(val);
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+        match tokens_it.next() {
+            Some(Token { ttype: TokenType::COMMA | TokenType::SEMICOLON, .. }) => continue,
+            Some(Token { ttype: TokenType::RBRACE, .. }) => {
+                tokens_it.next();
+                break;
+            }
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    Box::new(t),
+                    [TokenType::COMMA, TokenType::RBRACE, TokenType::SEMICOLON].into(),
+                ))
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+    }
+    Ok(Expression::TableLiteral(array_exprs, key_values))
 }
 
 fn parse_function_expr<T: Iterator<Item = Token>>(
