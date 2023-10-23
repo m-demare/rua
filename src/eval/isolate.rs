@@ -1,29 +1,25 @@
-use crate::eval::native_functions::default_global;
-
-use super::vals::RuaVal;
+use super::{
+    native_functions::default_global,
+    vals::{table::Table, RuaVal},
+};
 
 use rua_identifiers::{Identifier, Trie};
-use rustc_hash::FxHashMap;
 
-use crate::{lex::tokens::TokenType, rua_global};
+use crate::lex::tokens::TokenType;
 
 pub struct Isolate {
     identifiers: Trie<TokenType>,
-    global: FxHashMap<Identifier, RuaVal>,
+    global: Table,
 }
 
 impl Isolate {
-    pub const fn with_global(
-        identifiers: Trie<TokenType>,
-        global: FxHashMap<Identifier, RuaVal>,
-    ) -> Self {
+    pub fn with_global(identifiers: Trie<TokenType>, mut global: Table) -> Self {
+        global.insert("_G".into(), RuaVal::Table(global.clone()));
         Self { identifiers, global }
     }
 
-    pub fn new(mut identifiers: Trie<TokenType>) -> Self {
-        let global = rua_global!(
-            identifiers = &mut identifiers;
-        );
+    pub fn new(identifiers: Trie<TokenType>) -> Self {
+        let global = default_global();
         Self::with_global(identifiers, global)
     }
 
@@ -35,11 +31,13 @@ impl Isolate {
         &self.identifiers
     }
 
-    pub fn get_global(&self, id: Identifier) -> Option<RuaVal> {
-        self.global.get(&id).cloned()
+    pub fn get_global_id(&self, id: Identifier) -> RuaVal {
+        let name = self.identifiers.get(id).expect("Got a non existing Identifier");
+        self.global.get(&name.into())
     }
 
-    pub fn set_global(&mut self, id: Identifier, val: RuaVal) {
-        self.global.insert(id, val);
+    pub fn set_global_id(&mut self, id: Identifier, val: RuaVal) {
+        let name = self.identifiers.get(id).expect("Got a non existing Identifier");
+        self.global.insert(name.into(), val);
     }
 }

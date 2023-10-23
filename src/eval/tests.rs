@@ -66,7 +66,7 @@ fn test_local_stmt() {
 
 #[test]
 fn test_unknown_id() {
-    test_eval_stmt("return foo", Err(EvalError::UnknownId("foo".into())));
+    test_eval_stmt("return foo", Ok(R::Return(V::Nil)));
 }
 
 #[test]

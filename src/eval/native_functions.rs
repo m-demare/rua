@@ -1,18 +1,14 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::lex::{
-    tokens::{lookup_keyword, TokenType},
-    utils::read_number_radix,
-};
+use crate::lex::utils::read_number_radix;
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
+    table::Table,
     EvalError, RuaResult, RuaVal, TryIntoOpt,
 };
 use rua_func_macros::rua_func;
-use rua_identifiers::{Identifier, Trie};
-use rustc_hash::FxHashMap;
 
 // Built in functions {{{
 
@@ -75,22 +71,7 @@ pub fn pcall(ctxt: &FunctionContext, func: RuaVal) -> RuaVal {
 
 // Helpers {{{
 
-pub fn insert_identifier(identifiers: &mut Trie<TokenType>, new_id: &str) -> Identifier {
-    let identifier = identifiers.add_or_get(new_id, |id, s| {
-        if lookup_keyword(s).is_none() {
-            TokenType::IDENTIFIER(id)
-        } else {
-            panic!("Cannot use {s} as an identifier, it's a reserved keyword")
-        }
-    });
-    match identifier {
-        TokenType::IDENTIFIER(id) => id,
-        _ => panic!("Cannot use {new_id} as an identifier, it's a reserved keyword"),
-    }
-}
-
-pub fn default_global(identifiers: &mut Trie<TokenType>) -> FxHashMap<Identifier, RuaVal> {
-    let mut global = FxHashMap::default();
+pub fn default_global() -> Table {
     let to_add = [
         ("print", RuaVal::NativeFunction(NativeFunction::new(Rc::new(print)))),
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tostring)))),
@@ -99,26 +80,7 @@ pub fn default_global(identifiers: &mut Trie<TokenType>) -> FxHashMap<Identifier
         ("assert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(assert)))),
         ("pcall", RuaVal::NativeFunction(NativeFunction::new(Rc::new(pcall)))),
     ];
-    for (name, val) in to_add {
-        global.insert(insert_identifier(identifiers, name), val);
-    }
-    global
-}
-
-#[macro_export]
-macro_rules! rua_global {
-    (identifiers = $identifiers: expr; $($name: expr => $global: expr),* $(,)*) => ({
-        rua_global!(identifiers = $identifiers; base = default_global($identifiers); $( $name => $global ),*)
-    });
-    (identifiers = $identifiers: expr; base = $base: expr; $($name: expr => $global: expr),* $(,)*) => ({
-        $(
-            $base.insert(
-                insert_identifier($identifiers, $name),
-                $global,
-            );
-        )*
-        $base
-    });
+    Table::from_iter(to_add)
 }
 
 // }}}

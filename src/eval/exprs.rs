@@ -8,7 +8,7 @@ use rua_identifiers::Identifier;
 
 use super::{
     scope::Scope,
-    vals::{table::Table, EvalError, RuaResult, RuaVal},
+    vals::{table::Table, RuaResult, RuaVal},
 };
 
 impl Expression {
@@ -17,7 +17,7 @@ impl Expression {
         use RuaVal as V;
 
         match self {
-            Self::Identifier(id) => Self::get_identifier(*id, &env),
+            Self::Identifier(id) => Ok(Self::get_identifier(*id, &env)),
             Self::NumberLiteral(n) => Ok(V::Number(RuaNumber::new(*n))),
             Self::BooleanLiteral(b) => Ok(V::Bool(*b)),
             Self::StringLiteral(s) => Ok(V::String(s.clone())),
@@ -93,13 +93,8 @@ impl Expression {
         }
     }
 
-    fn get_identifier(id: Identifier, env: &Rc<RefCell<Scope>>) -> RuaResult {
-        match env.borrow().get(id) {
-            Some(val) => Ok(val),
-            None => Err(EvalError::UnknownId(
-                env.borrow().get_id_name(id).expect("Got a non existing Identifier"),
-            )),
-        }
+    fn get_identifier(id: Identifier, env: &Rc<RefCell<Scope>>) -> RuaVal {
+        env.borrow().get(id)
     }
 
     pub fn callfn(&self, args: &[Self], env: &Rc<RefCell<Scope>>) -> RuaResult {

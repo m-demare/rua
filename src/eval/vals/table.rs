@@ -68,3 +68,16 @@ impl Hash for Table {
         self.id.hash(state);
     }
 }
+
+impl<I> FromIterator<(I, RuaVal)> for Table
+where
+    I: Into<RuaVal>,
+{
+    fn from_iter<T: IntoIterator<Item = (I, RuaVal)>>(iter: T) -> Self {
+        let mut table = Self::new();
+        for (key, val) in iter {
+            table.insert(key.into(), val);
+        }
+        table
+    }
+}

@@ -127,8 +127,6 @@ impl Debug for RuaVal {
 pub enum EvalError {
     #[error("TypeError: {0}")]
     TypeError(#[from] TypeError),
-    #[error("Unknown identifier '{0}'")]
-    UnknownId(Box<str>),
     #[error("bad argument #{0} to '{1}' (value expected)")]
     ExpectedArgument(u8, Box<str>),
     #[error("Too many arguments ({0}) passed to '{1}'")]

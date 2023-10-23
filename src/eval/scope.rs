@@ -29,12 +29,12 @@ impl Scope {
         self.store.insert(id, val);
     }
 
-    pub fn get(&self, id: Identifier) -> Option<RuaVal> {
+    pub fn get(&self, id: Identifier) -> RuaVal {
         match self.store.get(&id) {
-            Some(val) => Some(val.clone()),
+            Some(val) => val.clone(),
             None => match &self.parent {
                 Some(parent) => parent.borrow().get(id),
-                None => self.isolate.borrow().get_global(id),
+                None => self.isolate.borrow().get_global_id(id),
             },
         }
     }
@@ -47,7 +47,7 @@ impl Scope {
             Entry::Vacant(_) => match &mut self.parent {
                 Some(parent) => parent.borrow_mut().update(id, val),
                 None => {
-                    self.isolate.borrow_mut().set_global(id, val);
+                    self.isolate.borrow_mut().set_global_id(id, val);
                 }
             },
         }
