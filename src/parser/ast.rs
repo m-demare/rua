@@ -1,6 +1,7 @@
-use std::{error::Error, fmt, rc::Rc};
+use std::rc::Rc;
 
 use rua_identifiers::Identifier;
+use thiserror::Error;
 
 use crate::lex::tokens::{BinaryOp, Token, TokenType};
 
@@ -67,7 +68,7 @@ pub enum FunctionArg {
 #[derive(PartialEq, Debug)]
 pub enum Statement {
     Local(Vec<Identifier>, Vec<Expression>),
-    Assign(Vec<Identifier>, Vec<Expression>),
+    Assign(Vec<Expression>, Vec<Expression>),
     Return(Option<Box<Expression>>),
 
     IfThen(Box<Expression>, Vec<Statement>),
@@ -120,42 +121,24 @@ pub enum BlockType {
     While,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum ParseError {
+    #[error("Illegal token {0}")]
     IllegalToken(Box<str>),
+    #[error("Unexpected token. Got {0:?}, expected {}{1:?}", if .1.len() > 1 { "one of " } else { "" })]
     UnexpectedToken(Box<Token>, Box<[TokenType]>),
+    #[error("Unexpected token. Got {:?}, expected {1}", .0.ttype)]
     UnexpectedTokenWithErrorMsg(Box<Token>, Box<str>),
+    #[error("Cannot close block of type {0:?} with token {:?}", .1.ttype)]
     UnexpectedClose(Box<BlockType>, Box<Token>),
+    #[error("Function expression cannot have a name (got {0:?})")]
     NamedFunctionExpr(Identifier),
+    #[error("Function statement must have a name")]
     UnnamedFunctionSt,
+    #[error("Expected statement, got expression")]
     UnexpectedExpression,
+    #[error("Unexpected end of file")]
     UnexpectedEOF,
+    #[error("Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS")]
+    InvalidAssignLHS,
 }
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let res = match self {
-            Self::IllegalToken(s) => format!("Illegal token {s}"),
-            Self::UnexpectedToken(got, expected) => format!(
-                "Unexpected token. Got {:?}, expected {}{expected:?}",
-                got.ttype,
-                if expected.len() > 1 { "one of " } else { "" }
-            ),
-            Self::UnexpectedTokenWithErrorMsg(got, expected) => {
-                format!("Unexpected token. Got {:?}, expected {expected}", got.ttype)
-            }
-            Self::UnexpectedClose(block_type, got) => {
-                format!("Cannot close block of type {block_type:?} with token {:?}", got.ttype)
-            }
-            Self::NamedFunctionExpr(id) => {
-                format!("Function expression cannot have a name (got {id:?})")
-            }
-            Self::UnnamedFunctionSt => "Function statement must have a name".to_string(),
-            Self::UnexpectedExpression => "Expected statement, got expression".to_string(),
-            Self::UnexpectedEOF => "Unexpected end of file".to_string(),
-        };
-        write!(f, "{res}")
-    }
-}
-
-impl Error for ParseError {}

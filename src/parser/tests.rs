@@ -258,7 +258,7 @@ fn parse_func_statement() {
         end
 ", Ok(Program{
         statements: [
-                S::Assign(vec![id!("a")], vec![E::Function([].into(), [
+                S::Assign(vec![E::Identifier(id!("a"))], vec![E::Function([].into(), [
                     S::Local(vec![id!("b")], Vec::new()),
                     S::Return(Some(b!(E::BooleanLiteral(true)))),
                 ].into())]),
@@ -272,11 +272,17 @@ fn parse_assignment_statement() {
     test_parse!("
         a = true or false
         b, c, d = 5 + 3 * 8, 2
+        a.b.c, c[5] = 5, true, false
 ", Ok(Program{
         statements: [
-                S::Assign(vec![id!("a")], vec![E::Or(b!((E::BooleanLiteral(true), E::BooleanLiteral(false))))]),
-                S::Assign(vec![id!("b"), id!("c"), id!("d")],
+                S::Assign(vec![E::Identifier(id!("a"))], vec![E::Or(b!((E::BooleanLiteral(true), E::BooleanLiteral(false))))]),
+                S::Assign(vec![E::Identifier(id!("b")), E::Identifier(id!("c")), E::Identifier(id!("d"))],
                     vec![E::Plus(b!((n!(5.0), E::Times(b!((n!(3.0), n!(8.0))))))), n!(2.0)]),
+                S::Assign(vec![
+                        E::FieldAccess(b!(E::FieldAccess(b!(E::Identifier(id!("a"))), id!("b"))), id!("c")),
+                        E::Index(b!((E::Identifier(id!("c")), n!(5.0)))),
+                    ],
+                    vec![n!(5.0), E::BooleanLiteral(true), E::BooleanLiteral(false)]),
             ].into()
         }));
 }
@@ -323,7 +329,7 @@ fn parse_while_statement() {
         end
 ", Ok(Program{
         statements: [
-                S::While(b!(E::Lt(b!((n!(1.0), n!(5.0))))), [S::Assign(vec![id!("i")], vec![E::Plus(b!((E::Identifier(id!("i")), n!(1.0))))])].into()),
+                S::While(b!(E::Lt(b!((n!(1.0), n!(5.0))))), [S::Assign(vec![E::Identifier(id!("i"))], vec![E::Plus(b!((E::Identifier(id!("i")), n!(1.0))))])].into()),
             ].into()
         }));
 }

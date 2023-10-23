@@ -83,15 +83,10 @@ fn test_while_stmt() {
         end
         return i", Ok(R::Return(V::Number(14.0.into()))));
     test_eval_stmt("
-        local n = 7
-        local i = 3
-        local fib = 1
-        local aux1 = 1
-        local aux2
+        local n, i = 7, 3
+        local fib, last_fib = 1, 1
         while i <= n do
-            aux2 = fib
-            fib = aux1 + fib
-            aux1 = aux2
+            last_fib, fib = fib, fib + last_fib
             i = i + 1
         end
 
@@ -198,4 +193,19 @@ fn test_table_field_access() {
         local a = {1, b = true, 2, [2+3] = false}
         return a[false]",
         Ok(R::Return(V::Nil)));
+}
+
+#[test]
+fn test_table_assignment() {
+    test_eval_stmt("
+        local fibo_mem = {}
+        local function fibo2(n)
+        if n<3 then return 1 end
+        if fibo_mem[n] then return fibo_mem[n] end
+
+        fibo_mem[n] = fibo2(n-1) + fibo2(n-2)
+        return fibo_mem[n]
+        end
+        return fibo2(8)",
+        Ok(R::Return(V::Number(21.0.into()))));
 }

@@ -130,30 +130,27 @@ fn parse_break_st<T: Iterator<Item = Token>>(
 fn handle_identifier_st<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
 ) -> ParseResult<Statement> {
-    if let Some(Token { ttype: TT::IDENTIFIER(id), .. }) = tokens_it.next() {
-        match tokens_it.peek() {
-            Some(Token { ttype: TT::ASSIGN | TT::COMMA, .. }) => parse_assign_st(tokens_it, id),
-            Some(Token { ttype: TT::LPAREN | TT::DOT, .. }) => {
-                match parse_infix_exp(tokens_it, Expression::Identifier(id), &Precedence::Lowest)? {
-                    Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
-                    _ => Err(ParseError::UnexpectedExpression),
-                }
-            }
-            Some(t) => {
-                Err(ParseError::UnexpectedToken(Box::new(t.clone()), Box::new([TT::ASSIGN])))
-            }
-            None => Err(ParseError::UnexpectedEOF),
-        }
-    } else {
-        unreachable!("Can't call handle_identifier_st without an identifier");
+    let expr = parse_expression(tokens_it, &Precedence::Lowest)?;
+    match tokens_it.peek() {
+        Some(Token { ttype: TT::ASSIGN | TT::COMMA, .. }) => parse_assign_st(tokens_it, expr),
+        _ => match expr {
+            Expression::Call(lhs, args) => Ok(Statement::Call(lhs, args)),
+            _ => Err(ParseError::UnexpectedExpression),
+        },
     }
 }
 
 fn parse_assign_st<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
-    id: Identifier,
+    first_lhs: Expression,
 ) -> ParseResult<Statement> {
-    let mut identifiers = vec![id];
+    if !matches!(
+        first_lhs,
+        Expression::Identifier(..) | Expression::FieldAccess(..) | Expression::Index(..)
+    ) {
+        return Err(ParseError::InvalidAssignLHS);
+    }
+    let mut lhs = vec![first_lhs];
     let mut rhs = Vec::new();
     loop {
         match tokens_it.next() {
@@ -164,16 +161,14 @@ fn parse_assign_st<T: Iterator<Item = Token>>(
             }
             None => return Err(ParseError::UnexpectedEOF),
         }
-        match tokens_it.next() {
-            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => identifiers.push(id),
-            Some(t) => {
-                return Err(ParseError::UnexpectedToken(
-                    t.into(),
-                    [TT::IDENTIFIER(Identifier::default())].into(),
-                ))
-            }
-            None => return Err(ParseError::UnexpectedEOF),
+        let expr = parse_expression(tokens_it, &Precedence::Lowest)?;
+        if !matches!(
+            expr,
+            Expression::Identifier(..) | Expression::FieldAccess(..) | Expression::Index(..)
+        ) {
+            return Err(ParseError::InvalidAssignLHS);
         }
+        lhs.push(expr);
     }
     loop {
         match tokens_it.peek() {
@@ -187,7 +182,7 @@ fn parse_assign_st<T: Iterator<Item = Token>>(
             Some(..) | None => break,
         }
     }
-    Ok(Statement::Assign(identifiers, rhs))
+    Ok(Statement::Assign(lhs, rhs))
 }
 
 fn parse_function_st<T: Iterator<Item = Token>>(
@@ -198,7 +193,7 @@ fn parse_function_st<T: Iterator<Item = Token>>(
     tokens_it.next();
     let (func, name) = parse_function_expr(tokens_it)?;
     match name {
-        Some(name) => Ok(Statement::Assign(vec![name], vec![func])),
+        Some(name) => Ok(Statement::Assign(vec![Expression::Identifier(name)], vec![func])),
         None => Err(ParseError::UnnamedFunctionSt),
     }
 }
@@ -211,7 +206,11 @@ fn parse_local_st<T: Iterator<Item = Token>>(
     tokens_it.next();
     if Some(&Token { ttype: TT::FUNCTION }) == tokens_it.peek() {
         if let Statement::Assign(name, func) = parse_function_st(tokens_it)? {
-            Ok(Statement::Local(name, func))
+            if let Some(Expression::Identifier(name)) = name.first() {
+                Ok(Statement::Local(vec![*name], func))
+            } else {
+                todo!("I don't think name in local statement can be something other than identifier, so this should be an error")
+            }
         } else {
             unreachable!("parse_function_st can only return successfully an AssignStatement")
         }

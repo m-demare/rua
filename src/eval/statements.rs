@@ -77,13 +77,31 @@ impl Statement {
     }
 
     fn eval_assign(
-        ids: &[Identifier],
+        lhss: &[Expression],
         exps: &[Expression],
         env: &Rc<RefCell<Scope>>,
     ) -> Result<StmtResult, EvalError> {
         let vals: Vec<_> = exps.iter().map(|e| e.eval(env.clone())).try_collect()?;
-        for (i, id) in ids.iter().enumerate() {
-            env.borrow_mut().update(*id, vals.get(i).cloned().map_or(RuaVal::Nil, identity));
+        for (i, lhs) in lhss.iter().enumerate() {
+            let val = vals.get(i).cloned().map_or(RuaVal::Nil, identity);
+            match lhs {
+                Expression::Identifier(id) => {
+                    env.borrow_mut().update(*id, val);
+                }
+                Expression::Index(box (table_exp, idx)) => {
+                    table_exp.eval(env.clone())?.into_table()?.insert(idx.eval(env.clone())?, val);
+                }
+                Expression::FieldAccess(table_exp, id) => {
+                    table_exp.eval(env.clone())?.into_table()?.insert(
+                        env.borrow()
+                            .get_id_name(*id)
+                            .expect("Got a non existing Identifier")
+                            .into(),
+                        val,
+                    );
+                }
+                e => unreachable!("Invalid assignment LHS: {e:?}"),
+            }
         }
 
         Ok(StmtResult::None)
