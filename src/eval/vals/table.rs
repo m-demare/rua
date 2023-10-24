@@ -16,16 +16,13 @@ pub struct Table {
     id: usize,
 }
 
-static COUNTER: AtomicUsize = AtomicUsize::new(0);
 impl Table {
     pub fn new() -> Self {
-        Self {
-            inner: RefCell::new(FxHashMap::default()).into(),
-            id: COUNTER.fetch_add(1, Ordering::Relaxed),
-        }
+        Self::with_capacity(0)
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self {
             inner: RefCell::new(FxHashMap::with_capacity_and_hasher(
                 capacity,
@@ -37,6 +34,9 @@ impl Table {
     }
 
     pub fn insert(&mut self, key: RuaVal, val: RuaVal) -> Option<RuaVal> {
+        if RuaVal::Nil == val {
+            return self.inner.borrow_mut().remove(&key);
+        }
         self.inner.borrow_mut().insert(key, val)
     }
 
@@ -44,8 +44,37 @@ impl Table {
         self.inner.borrow().get(key).cloned().map_or(RuaVal::Nil, identity)
     }
 
-    pub fn addr(&self) -> *const RefCell<FxHashMap<RuaVal, RuaVal>> {
-        Rc::as_ptr(&self.inner)
+    #[allow(clippy::cast_precision_loss)]
+    pub fn push(&mut self, val: RuaVal) {
+        let pos = self.arr_size() + 1;
+        self.insert(RuaVal::Number((pos as f64).into()), val);
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    pub fn pop(&mut self) -> Option<RuaVal> {
+        let pos = self.arr_size();
+        self.remove(&RuaVal::Number((pos as f64).into()))
+    }
+
+    pub fn remove(&mut self, key: &RuaVal) -> Option<RuaVal> {
+        self.inner.borrow_mut().remove(key)
+    }
+
+    pub fn addr(&self) -> usize {
+        Rc::as_ptr(&self.inner) as usize
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    pub fn arr_size(&self) -> usize {
+        let inner = self.inner.borrow();
+        // TODO use a more efficient algorithm
+        for i in 1.. {
+            let val = inner.get(&RuaVal::Number((i as f64).into()));
+            if val.is_none() {
+                return i - 1;
+            }
+        }
+        unreachable!();
     }
 }
 

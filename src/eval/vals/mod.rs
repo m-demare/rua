@@ -89,6 +89,15 @@ impl RuaVal {
             Self::Table(..) => RuaType::Table,
         }
     }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> Result<usize, TypeError> {
+        match self {
+            Self::String(s) => Ok(s.len()),
+            Self::Table(t) => Ok(t.arr_size()),
+            v => Err(TypeError(v.get_type(), RuaType::Table)),
+        }
+    }
 }
 
 impl Display for RuaVal {
@@ -99,7 +108,7 @@ impl Display for RuaVal {
             Self::Nil => write!(f, "nil"),
             Self::Function(..) | Self::NativeFunction(..) => write!(f, "function"),
             Self::String(s) => write!(f, "{s}"),
-            Self::Table(t) => write!(f, "table: 0x{:x}", t.addr() as usize),
+            Self::Table(t) => write!(f, "table: 0x{:x}", t.addr()),
         }
     }
 }
@@ -282,6 +291,15 @@ impl TryIntoOpt<Self> for RuaVal {
 
     fn try_into_opt(self) -> Result<Option<Self>, Self::Error> {
         Ok(Some(self))
+    }
+}
+
+impl From<Option<Self>> for RuaVal {
+    fn from(val: Option<Self>) -> Self {
+        match val {
+            Some(v) => v,
+            None => Self::Nil,
+        }
     }
 }
 

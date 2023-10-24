@@ -62,9 +62,13 @@ fn parse_block<T: Iterator<Item = Token>>(
             TT::ILLEGAL(s) => return Err(ParseError::IllegalToken(s.clone())),
             TT::IF => parse_if(tokens_it),
             TT::WHILE => parse_while_st(tokens_it),
-            TT::NUMBER(_) | TT::BINARY_OP(_) | TT::LBRACE | TT::NIL | TT::TRUE | TT::FALSE => {
-                Err(ParseError::UnexpectedExpression)
-            }
+            TT::NUMBER(_)
+            | TT::UNARY_OP(_)
+            | TT::BINARY_OP(_)
+            | TT::LBRACE
+            | TT::NIL
+            | TT::TRUE
+            | TT::FALSE => Err(ParseError::UnexpectedExpression),
             _ => {
                 return Err(ParseError::UnexpectedToken(
                     Box::new(token.clone()),

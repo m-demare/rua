@@ -67,20 +67,35 @@ pub fn pcall(ctxt: &FunctionContext, func: RuaVal) -> RuaVal {
     }
 }
 
+#[rua_func]
+pub fn table_insert(mut table: Table, val: RuaVal) {
+    table.push(val);
+}
+
+#[rua_func]
+pub fn table_remove(mut table: Table) -> Option<RuaVal> {
+    table.pop()
+}
+
 // }}}
 
 // Helpers {{{
 
 pub fn default_global() -> Table {
-    let to_add = [
+    let table = [
+        ("insert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_insert)))),
+        ("remove", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_remove)))),
+    ];
+    let global = [
         ("print", RuaVal::NativeFunction(NativeFunction::new(Rc::new(print)))),
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tostring)))),
         ("tonumber", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tonumber)))),
         ("type", RuaVal::NativeFunction(NativeFunction::new(Rc::new(rua_type)))),
         ("assert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(assert)))),
         ("pcall", RuaVal::NativeFunction(NativeFunction::new(Rc::new(pcall)))),
+        ("table", RuaVal::Table(Table::from_iter(table))),
     ];
-    Table::from_iter(to_add)
+    Table::from_iter(global)
 }
 
 // }}}

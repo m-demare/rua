@@ -23,7 +23,7 @@ impl Expression {
             Self::StringLiteral(s) => Ok(V::String(s.clone())),
             Self::Nil => Ok(V::Nil),
             Self::Not(e) => Ok(V::Bool(!e.eval(env)?.into_bool()?)),
-            Self::Len(e) => Ok(V::Number((e.eval(env)?.into_str()?.len() as f64).into())),
+            Self::Len(e) => Ok(V::Number((e.eval(env)?.len()? as f64).into())),
             Self::Neg(e) => Ok(V::Number((-e.eval(env)?.into_number()?).into())),
             Self::Plus(box (e1, e2)) => Ok(V::Number(
                 (e1.eval(env.clone())?.into_number()? + e2.eval(env)?.into_number()?).into(),
