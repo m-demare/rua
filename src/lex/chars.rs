@@ -7,5 +7,5 @@ pub const fn is_alphabetic(ch: char) -> bool {
 }
 
 pub const fn is_space(ch: char) -> bool {
-    matches!(ch, ' ' | '\n' | '\t' | '\r')
+    matches!(ch, ' ' | '\t' | '\r')
 }

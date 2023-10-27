@@ -25,6 +25,7 @@ where
 {
     input: Peekable<T>,
     identifiers: &'ids mut Trie<TokenType>,
+    line: usize,
 }
 
 impl<'ids, T> Iterator for Tokenizer<'ids, T>
@@ -43,6 +44,11 @@ where
                 },
                 '\'' | '"' => self.read_string(),
                 '.' => self.read_dot(),
+                '\n' => {
+                    self.input.next();
+                    self.line += 1;
+                    continue;
+                }
                 a if is_alphabetic(*a) => self.read_identifier(),
                 n if is_numeric(*n) => self.read_number(),
                 s if is_space(*s) => {
@@ -61,16 +67,16 @@ where
     T: Iterator<Item = char> + Clone,
 {
     pub fn new(input: T, identifiers: &'ids mut Trie<TokenType>) -> Self {
-        Self { input: input.peekable(), identifiers }
+        Self { input: input.peekable(), identifiers, line: 0 }
     }
 
     fn read_comparison(&mut self) -> Token {
         let ch = self.input.next().expect("Input cannot be empty here");
         if self.input.peek() == Some(&'=') {
             self.input.next();
-            return Token { ttype: lookup_comparison(ch, true) };
+            return Token { ttype: lookup_comparison(ch, true), line: self.line };
         }
-        Token { ttype: lookup_comparison(ch, false) }
+        Token { ttype: lookup_comparison(ch, false), line: self.line }
     }
 
     fn read_minus(&mut self) -> Option<Token> {
@@ -79,13 +85,12 @@ where
         debug_assert_eq!(ch, Some('-'));
 
         if self.input.peek() != Some(&'-') {
-            return Some(Token { ttype: TokenType::MINUS });
+            return Some(Token { ttype: TokenType::MINUS, line: self.line });
         }
 
         // If -- is found, discard til next \n
         self.input.next();
         eat_while_peeking(&mut self.input, &|ch: &char| *ch != '\n');
-        self.input.next();
         None
     }
 
@@ -98,20 +103,22 @@ where
             self.input.next();
             if self.input.peek() == Some(&'.') {
                 self.input.next();
-                return Token { ttype: TokenType::DOTDOTDOT };
+                return Token { ttype: TokenType::DOTDOTDOT, line: self.line };
             }
-            return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT) };
+            return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT), line: self.line };
         }
 
         match self.input.peek() {
             Some(n) if is_numeric(*n) => {
                 let float = read_decimals(&mut self.input, 10);
                 match float {
-                    Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-                    Err(s) => Token { ttype: TokenType::ILLEGAL(s.into_boxed_str()) },
+                    Ok(n) => Token { ttype: TokenType::NUMBER(n), line: self.line },
+                    Err(s) => {
+                        Token { ttype: TokenType::ILLEGAL(s.into_boxed_str()), line: self.line }
+                    }
                 }
             }
-            _ => Token { ttype: TokenType::DOT },
+            _ => Token { ttype: TokenType::DOT, line: self.line },
         }
     }
 
@@ -128,7 +135,7 @@ where
         }
         let identifier = trie_walker.get_res();
         match identifier {
-            Some(id) => Token { ttype: id },
+            Some(id) => Token { ttype: id, line: self.line },
             None => Token {
                 ttype: self.identifiers.add_or_get(
                     &clone_it.take(i).collect::<String>(),
@@ -140,14 +147,15 @@ where
                         }
                     },
                 ),
+                line: self.line,
             },
         }
     }
 
     fn read_number(&mut self) -> Token {
         match utils::read_number(&mut self.input) {
-            Ok(n) => Token { ttype: TokenType::NUMBER(n) },
-            Err(s) => Token { ttype: TokenType::ILLEGAL(s) },
+            Ok(n) => Token { ttype: TokenType::NUMBER(n), line: self.line },
+            Err(s) => Token { ttype: TokenType::ILLEGAL(s), line: self.line },
         }
     }
 
@@ -160,7 +168,10 @@ where
 
     #[inline]
     fn single_char_token(&mut self) -> Token {
-        Token { ttype: lookup_char(self.input.next().expect("Input cannot be empty here")) }
+        Token {
+            ttype: lookup_char(self.input.next().expect("Input cannot be empty here")),
+            line: self.line,
+        }
     }
 
     fn read_string(&mut self) -> Token {
@@ -171,16 +182,24 @@ where
             if !is_escaped && *ch == delimiter {
                 return false;
             }
+            if *ch == '\n' {
+                self.line += 1;
+            }
             is_escaped = !is_escaped && *ch == '\\';
             true
         });
         match self.input.next() {
             Some(ch) => debug_assert_eq!(ch, delimiter),
-            None => return Token { ttype: TokenType::ILLEGAL("Unclosed string literal".into()) },
+            None => {
+                return Token {
+                    ttype: TokenType::ILLEGAL("Unclosed string literal".into()),
+                    line: self.line,
+                }
+            }
         };
 
         let s = STR_REPLACE_RE.replace_all(&s, "$1");
 
-        Token { ttype: TokenType::STRING(s.into()) }
+        Token { ttype: TokenType::STRING(s.into()), line: self.line }
     }
 }

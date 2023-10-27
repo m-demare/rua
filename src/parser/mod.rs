@@ -208,7 +208,7 @@ fn parse_local_st<T: Iterator<Item = Token>>(
     debug_peek_token!(tokens_it, TT::LOCAL);
 
     tokens_it.next();
-    if Some(&Token { ttype: TT::FUNCTION }) == tokens_it.peek() {
+    if peek_token_is!(tokens_it, TT::FUNCTION) {
         if let Statement::Assign(name, func) = parse_function_st(tokens_it)? {
             if let Some(Expression::Identifier(name)) = name.first() {
                 Ok(Statement::Local(vec![*name], func))
@@ -412,7 +412,7 @@ fn parse_group_expr<T: Iterator<Item = Token>>(
 ) -> ParseResult<Expression> {
     let expr = parse_expression(tokens_it, &Precedence::Lowest)?;
     return match tokens_it.peek() {
-        Some(Token { ttype: TT::RPAREN }) => {
+        Some(Token { ttype: TT::RPAREN, .. }) => {
             tokens_it.next();
             Ok(expr)
         }
@@ -484,7 +484,7 @@ fn parse_function_expr<T: Iterator<Item = Token>>(
     tokens_it: &mut Peekable<T>,
 ) -> ParseResult<(Expression, Option<Identifier>)> {
     let name = match tokens_it.peek().cloned() {
-        Some(Token { ttype: TT::IDENTIFIER(id) }) => {
+        Some(Token { ttype: TT::IDENTIFIER(id), .. }) => {
             tokens_it.next();
             Some(id)
         }
@@ -502,14 +502,14 @@ fn parse_function_expr<T: Iterator<Item = Token>>(
     let mut args = Vec::new();
     loop {
         match tokens_it.peek().cloned() {
-            Some(Token { ttype: TT::IDENTIFIER(id) }) => {
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => {
                 tokens_it.next();
                 args.push(FunctionArg::Identifier(id));
                 if peek_token_is!(tokens_it, TT::COMMA) {
                     tokens_it.next();
                 }
             }
-            Some(Token { ttype: TT::DOTDOTDOT }) => {
+            Some(Token { ttype: TT::DOTDOTDOT, .. }) => {
                 tokens_it.next();
                 args.push(FunctionArg::Dotdotdot);
                 if !peek_token_is!(tokens_it, TT::RPAREN) {
@@ -522,7 +522,7 @@ fn parse_function_expr<T: Iterator<Item = Token>>(
                     };
                 }
             }
-            Some(Token { ttype: TT::RPAREN }) => {
+            Some(Token { ttype: TT::RPAREN, .. }) => {
                 tokens_it.next();
                 break;
             }
@@ -537,7 +537,7 @@ fn parse_function_expr<T: Iterator<Item = Token>>(
     }
     let body = parse_block(tokens_it, BlockType::Function)?;
     return match tokens_it.peek() {
-        Some(Token { ttype: TT::END }) => {
+        Some(Token { ttype: TT::END, .. }) => {
             tokens_it.next();
             Ok((Expression::Function(args.into(), body.into()), name))
         }
@@ -598,7 +598,7 @@ fn parse_if<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResu
     let block = parse_block(tokens_it, BlockType::If)?;
 
     match tokens_it.peek() {
-        Some(Token { ttype: TT::ELSE }) => {
+        Some(Token { ttype: TT::ELSE, .. }) => {
             tokens_it.next();
             let else_block = parse_block(tokens_it, BlockType::Else)?;
             if !peek_token_is!(tokens_it, TT::END) {
@@ -612,8 +612,8 @@ fn parse_if<T: Iterator<Item = Token>>(tokens_it: &mut Peekable<T>) -> ParseResu
             tokens_it.next();
             Ok(Statement::IfThenElse(Box::new(cond), block, else_block))
         }
-        Some(Token { ttype: TT::ELSEIF }) => parse_if_elseif(tokens_it, cond, block),
-        Some(Token { ttype: TT::END }) => {
+        Some(Token { ttype: TT::ELSEIF, .. }) => parse_if_elseif(tokens_it, cond, block),
+        Some(Token { ttype: TT::END, .. }) => {
             tokens_it.next();
             Ok(Statement::IfThen(Box::new(cond), block))
         }
@@ -630,7 +630,7 @@ fn parse_if_elseif<T: Iterator<Item = Token>>(
     let mut conds = vec![(if_cond, if_block)];
     loop {
         match tokens_it.next() {
-            Some(Token { ttype: TT::ELSEIF }) => {
+            Some(Token { ttype: TT::ELSEIF, .. }) => {
                 let new_cond = parse_expression(tokens_it, &Precedence::Lowest)?;
                 if !peek_token_is!(tokens_it, TT::THEN) {
                     return match tokens_it.peek() {
@@ -645,12 +645,12 @@ fn parse_if_elseif<T: Iterator<Item = Token>>(
                 let new_block = parse_block(tokens_it, BlockType::If)?;
                 conds.push((new_cond, new_block));
             }
-            Some(Token { ttype: TT::ELSE }) => {
+            Some(Token { ttype: TT::ELSE, .. }) => {
                 let new_cond = Expression::BooleanLiteral(true);
                 let new_block = parse_block(tokens_it, BlockType::If)?;
                 conds.push((new_cond, new_block));
             }
-            Some(Token { ttype: TT::END }) => {
+            Some(Token { ttype: TT::END, .. }) => {
                 break Ok(Statement::IfThenElseIf(conds.into_boxed_slice()))
             }
             Some(t) => break Err(ParseError::UnexpectedToken(Box::new(t), Box::new([TT::END]))),

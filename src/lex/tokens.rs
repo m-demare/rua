@@ -88,6 +88,7 @@ pub enum UnaryOp {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub ttype: TokenType,
+    pub line: usize,
 }
 
 pub fn lookup_keyword(identifier: &str) -> Option<TokenType> {
