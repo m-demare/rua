@@ -41,3 +41,7 @@ harness = false
 name = "parser_bench"
 harness = false
 
+[[bench]]
+name = "eval_bench"
+harness = false
+
