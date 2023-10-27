@@ -108,7 +108,7 @@ impl Expression {
 
     fn field_access(env: Rc<RefCell<Scope>>, table: &Self, id: Identifier) -> RuaResult {
         let key = env.borrow().get_id_name(id).expect("Got a non existing Identifier").into();
-        Ok(table.eval(env)?.into_table()?.get(&key))
+        Ok(table.eval(env)?.into_table()?.get(&key).into())
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -139,6 +139,6 @@ impl Expression {
 
     pub fn index(env: Rc<RefCell<Scope>>, table: &Self, idx: &Self) -> RuaResult {
         let key = idx.eval(env.clone())?;
-        Ok(table.eval(env)?.into_table()?.get(&key))
+        Ok(table.eval(env)?.into_table()?.get(&key).into())
     }
 }

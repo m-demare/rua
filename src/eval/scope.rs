@@ -34,7 +34,7 @@ impl Scope {
             Some(val) => val.clone(),
             None => match &self.parent {
                 Some(parent) => parent.borrow().get(id),
-                None => self.isolate.borrow().get_global_id(id),
+                None => self.isolate.borrow().get_global_id(id).into(),
             },
         }
     }

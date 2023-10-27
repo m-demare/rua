@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    convert::identity,
     hash::{BuildHasherDefault, Hash, Hasher},
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
@@ -15,6 +14,8 @@ pub struct Table {
     inner: Rc<RefCell<FxHashMap<RuaVal, RuaVal>>>,
     id: usize,
 }
+
+const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
 
 impl Table {
     pub fn new() -> Self {
@@ -40,8 +41,8 @@ impl Table {
         self.inner.borrow_mut().insert(key, val)
     }
 
-    pub fn get(&self, key: &RuaVal) -> RuaVal {
-        self.inner.borrow().get(key).cloned().map_or(RuaVal::Nil, identity)
+    pub fn get(&self, key: &RuaVal) -> Option<RuaVal> {
+        self.inner.borrow().get(key).cloned()
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -64,17 +65,34 @@ impl Table {
         Rc::as_ptr(&self.inner) as usize
     }
 
+    /// Returns any number n, such that:
+    /// - n is a key in the table
+    /// - n+1 isn't a key in the table
     #[allow(clippy::cast_precision_loss)]
     pub fn arr_size(&self) -> usize {
         let inner = self.inner.borrow();
-        // TODO use a more efficient algorithm
-        for i in 1.. {
-            let val = inner.get(&RuaVal::Number((i as f64).into()));
-            if val.is_none() {
-                return i - 1;
+        let (mut lower, mut upper) = (0, 1);
+        while self.get(&(upper as f64).into()).is_some() {
+            lower = upper;
+            if upper > MAX_SAFE_INTEGER / 2 {
+                // Malicious input, resort to linear search
+                for i in 1.. {
+                    let val = inner.get(&RuaVal::Number((i as f64).into()));
+                    if val.is_none() {
+                        return i - 1;
+                    }
+                }
+            }
+            upper *= 2;
+        }
+        while upper > lower + 1 {
+            let mid = (lower + upper) / 2;
+            match self.get(&(mid as f64).into()) {
+                Some(_) => lower = mid,
+                None => upper = mid,
             }
         }
-        unreachable!();
+        lower
     }
 }
 
@@ -108,5 +126,69 @@ where
             table.insert(key.into(), val);
         }
         table
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::eval::vals::RuaVal;
+
+    use super::Table;
+
+    #[test]
+    fn test_insert() {
+        let mut table = Table::new();
+        table.insert(1.0.into(), "test".into());
+        table.insert(3.0.into(), "test2".into());
+        assert!(table.arr_size() == 1 || table.arr_size() == 3);
+
+        let table2: RuaVal = Table::new().into();
+        table.insert(table2.clone(), 5.0.into());
+        table.push(true.into());
+
+        assert_eq!(table.arr_size(), 3);
+        assert_eq!(table.get(&1.0.into()), Some("test".into()));
+        assert_eq!(table.get(&2.0.into()), Some(true.into()));
+        assert_eq!(table.get(&3.0.into()), Some("test2".into()));
+        assert_eq!(table.get(&table2), Some(5.0.into()));
+        assert_eq!(table.get(&Table::new().into()), None);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_remove() {
+        let vec: Vec<(RuaVal, RuaVal)> = vec![
+            (0.0.into(), 50.0.into()),
+            (1.0.into(), 51.0.into()),
+            (2.0.into(), 52.0.into()),
+            ("hello".into(), "world".into()),
+            (3.0.into(), 53.0.into()),
+            (4.0.into(), 54.0.into()),
+            (6.0.into(), 56.0.into()),
+        ];
+        let mut table = Table::from_iter(vec);
+
+        assert!(table.arr_size() == 4 || table.arr_size() == 6);
+        match table.pop() {
+            Some(RuaVal::Number(n)) if n.val() == 56.0 => assert_eq!(table.arr_size(), 4),
+            Some(RuaVal::Number(n)) if n.val() == 54.0 => {
+                assert!(table.arr_size() == 3 || table.arr_size() == 6);
+            }
+            Some(n) => panic!("Should have popped 54 or 56, not {n}"),
+            None => panic!("There were items to pop"),
+        };
+
+        assert_eq!(table.remove(&"foo".into()), None);
+        assert_eq!(table.remove(&"hello".into()), Some("world".into()));
+        assert_eq!(table.get(&"hello".into()), None);
+
+        table.pop();
+        assert!(table.arr_size() == 2 || table.arr_size() == 3 || table.arr_size() == 6);
+        table.remove(&6.0.into());
+
+        match table.get(&3.0.into()) {
+            Some(_) => assert_eq!(table.arr_size(), 3),
+            None => assert_eq!(table.arr_size(), 2),
+        }
     }
 }

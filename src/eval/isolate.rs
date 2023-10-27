@@ -31,7 +31,7 @@ impl Isolate {
         &self.identifiers
     }
 
-    pub fn get_global_id(&self, id: Identifier) -> RuaVal {
+    pub fn get_global_id(&self, id: Identifier) -> Option<RuaVal> {
         let name = self.identifiers.get(id).expect("Got a non existing Identifier");
         self.global.get(&name.into())
     }
