@@ -1,5 +1,6 @@
 pub mod function;
 pub mod number;
+pub mod string;
 pub mod table;
 
 use std::{
@@ -10,9 +11,12 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::eval::Vm;
+
 use self::{
     function::{Function, NativeFunction},
     number::RuaNumber,
+    string::RuaString,
     table::Table,
 };
 
@@ -22,7 +26,7 @@ pub enum RuaVal {
     Bool(bool),
     Nil,
     Function(Function),
-    String(Rc<str>),
+    String(RuaString),
     NativeFunction(NativeFunction),
     Table(Table),
 }
@@ -47,7 +51,7 @@ pub enum StmtResult {
 }
 
 pub trait RuaCallable {
-    fn call(&self, args: &[RuaVal]) -> RuaResult;
+    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult;
 }
 
 impl RuaVal {
@@ -155,27 +159,38 @@ impl fmt::Display for TypeError {
     }
 }
 
-impl From<String> for RuaVal {
-    fn from(val: String) -> Self {
-        Self::String(val.into())
+pub trait IntoRuaVal {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal;
+}
+
+impl<T: Into<RuaVal>> IntoRuaVal for T {
+    fn into_rua(self, _: &mut Vm) -> RuaVal {
+        self.into()
     }
 }
 
-impl From<&str> for RuaVal {
-    fn from(val: &str) -> Self {
-        Self::String(val.into())
+impl IntoRuaVal for Rc<str> {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        RuaVal::String(vm.new_string(self))
     }
 }
 
-impl From<Rc<str>> for RuaVal {
-    fn from(val: Rc<str>) -> Self {
-        Self::String(val)
+impl IntoRuaVal for &str {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        RuaVal::String(vm.new_string(self.into()))
     }
 }
 
-impl From<Box<str>> for RuaVal {
-    fn from(val: Box<str>) -> Self {
-        Self::String(val.into())
+impl IntoRuaVal for String {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        RuaVal::String(vm.new_string(self.into()))
+    }
+}
+
+// TODO convert these into IntoRuaVal
+impl From<Table> for RuaVal {
+    fn from(val: Table) -> Self {
+        Self::Table(val)
     }
 }
 
@@ -188,6 +203,12 @@ impl From<f64> for RuaVal {
 impl From<bool> for RuaVal {
     fn from(val: bool) -> Self {
         Self::Bool(val)
+    }
+}
+
+impl From<RuaString> for RuaVal {
+    fn from(val: RuaString) -> Self {
+        Self::String(val)
     }
 }
 
@@ -224,7 +245,7 @@ impl TryInto<Rc<str>> for RuaVal {
 
     fn try_into(self) -> Result<Rc<str>, Self::Error> {
         match self {
-            Self::String(s) => Ok(s),
+            Self::String(s) => Ok(s.inner()),
             v => Err(TypeError(RuaType::String, v.get_type())),
         }
     }
@@ -239,12 +260,6 @@ impl TryInto<Box<dyn RuaCallable>> for RuaVal {
             Self::NativeFunction(f) => Ok(Box::new(f)),
             v => Err(TypeError(RuaType::Function, v.get_type())),
         }
-    }
-}
-
-impl From<Table> for RuaVal {
-    fn from(val: Table) -> Self {
-        Self::Table(val)
     }
 }
 
@@ -300,17 +315,5 @@ impl From<Option<Self>> for RuaVal {
             Some(v) => v,
             None => Self::Nil,
         }
-    }
-}
-
-impl From<f64> for RuaNumber {
-    fn from(val: f64) -> Self {
-        Self::new(val)
-    }
-}
-
-impl From<RuaNumber> for f64 {
-    fn from(value: RuaNumber) -> Self {
-        value.val()
     }
 }

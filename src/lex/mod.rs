@@ -8,27 +8,29 @@ use std::iter::Peekable;
 use once_cell::sync::Lazy;
 use regex_lite::Regex;
 
+use crate::eval::Vm;
+
 use self::tokens::{lookup_char, lookup_comparison, lookup_keyword, BinaryOp, Token, TokenType};
 use self::utils::take_while_peeking;
 use self::{
     chars::{is_alphabetic, is_numeric, is_space},
     utils::{eat_while_peeking, read_decimals},
 };
-use rua_identifiers::{Trie, TrieWalker};
+use rua_identifiers::TrieWalker;
 
 static STR_REPLACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
 
-pub struct Tokenizer<'ids, T>
+pub struct Tokenizer<'vm, T>
 where
     T: Iterator<Item = char> + Clone,
 {
     input: Peekable<T>,
-    identifiers: &'ids mut Trie<TokenType>,
+    vm: &'vm mut Vm,
     line: usize,
 }
 
-impl<'ids, T> Iterator for Tokenizer<'ids, T>
+impl<'vm, T> Iterator for Tokenizer<'vm, T>
 where
     T: Iterator<Item = char> + Clone,
 {
@@ -62,12 +64,12 @@ where
     }
 }
 
-impl<'ids, T> Tokenizer<'ids, T>
+impl<'vm, T> Tokenizer<'vm, T>
 where
     T: Iterator<Item = char> + Clone,
 {
-    pub fn new(input: T, identifiers: &'ids mut Trie<TokenType>) -> Self {
-        Self { input: input.peekable(), identifiers, line: 0 }
+    pub fn new(input: T, vm: &'vm mut Vm) -> Self {
+        Self { input: input.peekable(), vm, line: 0 }
     }
 
     fn read_comparison(&mut self) -> Token {
@@ -127,7 +129,7 @@ where
         let mut i = 0;
         let clone_it = self.input.clone();
 
-        let mut trie_walker = TrieWalker::new(self.identifiers);
+        let mut trie_walker = TrieWalker::new(self.vm.identifiers());
 
         while let Some(ch) = self.input.next_if(|ch: &char| is_alphabetic(*ch) || is_numeric(*ch)) {
             i += 1;
@@ -136,19 +138,21 @@ where
         let identifier = trie_walker.get_res();
         match identifier {
             Some(id) => Token { ttype: id, line: self.line },
-            None => Token {
-                ttype: self.identifiers.add_or_get(
-                    &clone_it.take(i).collect::<String>(),
-                    |id, s| {
-                        if let Some(token) = lookup_keyword(s) {
+            None => {
+                let s = clone_it.take(i).collect::<String>();
+                let id = self.vm.new_string(s.into());
+                Token {
+                    ttype: self.vm.identifiers().add_or_get(
+                        &id,
+                        if let Some(token) = lookup_keyword(&id) {
                             token
                         } else {
-                            TokenType::IDENTIFIER(id)
-                        }
-                    },
-                ),
-                line: self.line,
-            },
+                            TokenType::IDENTIFIER(id.clone())
+                        },
+                    ),
+                    line: self.line,
+                }
+            }
         }
     }
 
@@ -200,6 +204,6 @@ where
 
         let s = STR_REPLACE_RE.replace_all(&s, "$1");
 
-        Token { ttype: TokenType::STRING(s.into()), line: self.line }
+        Token { ttype: TokenType::STRING(self.vm.new_string(s.into())), line: self.line }
     }
 }

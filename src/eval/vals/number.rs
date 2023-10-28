@@ -24,3 +24,15 @@ impl RuaNumber {
         self.0
     }
 }
+
+impl From<f64> for RuaNumber {
+    fn from(val: f64) -> Self {
+        Self::new(val)
+    }
+}
+
+impl From<RuaNumber> for f64 {
+    fn from(value: RuaNumber) -> Self {
+        value.val()
+    }
+}

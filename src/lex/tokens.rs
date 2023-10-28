@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use rua_identifiers::Identifier;
+use crate::eval::vals::string::RuaString;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
@@ -8,8 +6,8 @@ pub enum TokenType {
     ILLEGAL(Box<str>),
 
     NUMBER(f64),
-    STRING(Rc<str>),
-    IDENTIFIER(Identifier),
+    STRING(RuaString),
+    IDENTIFIER(RuaString),
 
     BINARY_OP(BinaryOp),
     UNARY_OP(UnaryOp),
@@ -51,6 +49,8 @@ pub enum TokenType {
     TRUE,
     UNTIL,
     WHILE,
+
+    IDENTIFIER_DUMMY,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

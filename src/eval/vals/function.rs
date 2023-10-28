@@ -1,69 +1,69 @@
 #![allow(clippy::module_name_repetitions)]
 
-use crate::{
-    eval::{scope::Scope, statements::eval_block},
-    parser::ast::{FunctionArg, Statement},
-};
 use std::{
-    cell::RefCell,
     hash::{Hash, Hasher},
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{RuaCallable, RuaResult, RuaVal, StmtResult};
+use crate::eval::Vm;
+
+use super::{RuaCallable, RuaResult, RuaVal};
 
 #[derive(Clone)]
 pub struct Function {
-    args: Rc<[FunctionArg]>,
-    body: Rc<[Statement]>,
-    env: Rc<RefCell<Scope>>,
+    // args: Rc<[FunctionArg]>,
+    // body: Rc<[Statement]>,
+    // env: Rc<RefCell<Scope>>,
     id: usize,
 }
 
 #[derive(Clone)]
 pub struct NativeFunction {
-    func: Rc<dyn Fn(&FunctionContext) -> RuaResult>,
+    func: Rc<dyn Fn(&mut FunctionContext) -> RuaResult>,
     id: usize,
 }
 
-pub struct FunctionContext {
+pub struct FunctionContext<'vm> {
     pub args: Vec<RuaVal>,
+    pub vm: &'vm mut Vm,
 }
 
 impl Function {
-    pub fn new(args: Rc<[FunctionArg]>, body: Rc<[Statement]>, env: Rc<RefCell<Scope>>) -> Self {
+    pub fn new(/*args: Rc<[FunctionArg]>, body: Rc<[Statement]>, env: Rc<RefCell<Scope>>*/) -> Self
+    {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        Self { args, body, env, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
+        Self { /*args, body, env,*/ id: COUNTER.fetch_add(1, Ordering::Relaxed) }
     }
 }
 
 impl NativeFunction {
-    pub fn new(func: Rc<dyn Fn(&FunctionContext) -> RuaResult>) -> Self {
+    pub fn new(func: Rc<dyn Fn(&mut FunctionContext) -> RuaResult>) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self { func, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
     }
 }
 
 impl RuaCallable for Function {
-    fn call(&self, args: &[RuaVal]) -> RuaResult {
-        let mut new_env = Scope::extend(self.env.clone());
-        self.args.iter().zip(args).for_each(|(arg, val)| match arg {
-            FunctionArg::Identifier(id) => new_env.set(*id, val.clone()),
-            FunctionArg::Dotdotdot => todo!(),
-        });
+    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
+        // let mut new_env = Scope::extend(self.env.clone());
+        // self.args.iter().zip(args).for_each(|(arg, val)| match arg {
+        //     FunctionArg::Identifier(id) => new_env.set(*id, val.clone()),
+        //     FunctionArg::Dotdotdot => todo!(),
+        // });
 
-        match eval_block(&self.body, &RefCell::new(new_env).into())? {
-            StmtResult::None => Ok(RuaVal::Nil),
-            StmtResult::Return(v) => Ok(v),
-            StmtResult::Break => todo!(),
-        }
+        // match eval_block(&self.body, &RefCell::new(new_env).into())? {
+        //     StmtResult::None => Ok(RuaVal::Nil),
+        //     StmtResult::Return(v) => Ok(v),
+        //     StmtResult::Break => todo!(),
+        // }
+        Ok(RuaVal::Nil)
     }
 }
 
 impl RuaCallable for NativeFunction {
-    fn call(&self, args: &[RuaVal]) -> RuaResult {
-        (self.func)(&FunctionContext::new(args.to_vec()))
+    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
+        (self.func)(&mut FunctionContext::new(args.to_vec(), vm))
     }
 }
 
@@ -95,8 +95,8 @@ impl Hash for NativeFunction {
     }
 }
 
-impl FunctionContext {
-    pub fn new(args: Vec<RuaVal>) -> Self {
-        Self { args }
+impl<'vm> FunctionContext<'vm> {
+    pub fn new(args: Vec<RuaVal>, vm: &'vm mut Vm) -> Self {
+        Self { args, vm }
     }
 }

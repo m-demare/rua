@@ -131,15 +131,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::eval::vals::RuaVal;
+    use crate::{
+        eval::vals::{IntoRuaVal, RuaVal},
+        eval::Vm,
+    };
 
     use super::Table;
 
     #[test]
     fn test_insert() {
+        let mut vm = Vm::new();
         let mut table = Table::new();
-        table.insert(1.0.into(), "test".into());
-        table.insert(3.0.into(), "test2".into());
+        table.insert(1.0.into(), "test".into_rua(&mut vm));
+        table.insert(3.0.into(), "test2".into_rua(&mut vm));
         assert!(table.arr_size() == 1 || table.arr_size() == 3);
 
         let table2: RuaVal = Table::new().into();
@@ -147,9 +151,9 @@ mod tests {
         table.push(true.into());
 
         assert_eq!(table.arr_size(), 3);
-        assert_eq!(table.get(&1.0.into()), Some("test".into()));
+        assert_eq!(table.get(&1.0.into()), Some("test".into_rua(&mut vm)));
         assert_eq!(table.get(&2.0.into()), Some(true.into()));
-        assert_eq!(table.get(&3.0.into()), Some("test2".into()));
+        assert_eq!(table.get(&3.0.into()), Some("test2".into_rua(&mut vm)));
         assert_eq!(table.get(&table2), Some(5.0.into()));
         assert_eq!(table.get(&Table::new().into()), None);
     }
@@ -157,11 +161,12 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_remove() {
+        let mut vm = Vm::new();
         let vec: Vec<(RuaVal, RuaVal)> = vec![
             (0.0.into(), 50.0.into()),
             (1.0.into(), 51.0.into()),
             (2.0.into(), 52.0.into()),
-            ("hello".into(), "world".into()),
+            ("hello".into_rua(&mut vm), "world".into_rua(&mut vm)),
             (3.0.into(), 53.0.into()),
             (4.0.into(), 54.0.into()),
             (6.0.into(), 56.0.into()),
@@ -178,9 +183,9 @@ mod tests {
             None => panic!("There were items to pop"),
         };
 
-        assert_eq!(table.remove(&"foo".into()), None);
-        assert_eq!(table.remove(&"hello".into()), Some("world".into()));
-        assert_eq!(table.get(&"hello".into()), None);
+        assert_eq!(table.remove(&"foo".into_rua(&mut vm)), None);
+        assert_eq!(table.remove(&"hello".into_rua(&mut vm)), Some("world".into_rua(&mut vm)));
+        assert_eq!(table.get(&"hello".into_rua(&mut vm)), None);
 
         table.pop();
         assert!(table.arr_size() == 2 || table.arr_size() == 3 || table.arr_size() == 6);

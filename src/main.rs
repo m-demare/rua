@@ -1,20 +1,19 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::perf)]
+#![deny(unused_must_use)]
 #![allow(clippy::option_if_let_else)]
 #![feature(box_patterns)]
 #![feature(try_find)]
 #![feature(iterator_try_collect)]
 
-use std::{cell::RefCell, path::PathBuf};
+use std::path::PathBuf;
 
-use parser::ast::ParseError;
-
-use crate::eval::{eval, isolate::Isolate};
-use rua_identifiers::Trie;
+use compiler::{bytecode::ParseError, Compiler};
+use eval::Vm;
 
 mod cli;
+mod compiler;
 mod eval;
 mod lex;
-mod parser;
 mod repl;
 
 fn main() {
@@ -39,14 +38,13 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
     let contents = std::fs::read_to_string(path) // TODO maybe not read file all at once? Need some perf testing
         .expect("Error: input file does not exist");
 
-    let mut identifiers = Trie::new();
+    let mut vm = Vm::new();
 
-    let tokens = lex::Tokenizer::new(contents.chars(), &mut identifiers);
+    let tokens = lex::Tokenizer::new(contents.chars(), &mut vm);
 
-    let ast = parser::parse(tokens)?;
+    let prog = Compiler::new(tokens).compile()?;
 
-    let isolate = Isolate::new(identifiers);
-    let res = eval(&ast, RefCell::new(isolate).into());
+    let res = vm.interpret(prog);
     match res {
         Ok(_) => {}
         Err(eval_err) => {

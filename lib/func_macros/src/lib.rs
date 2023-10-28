@@ -43,7 +43,7 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
     let (parameters, validate_cant_args) = get_parameters(&func, &macro_args);
 
     let output = quote!(
-        #vis #constness fn #name(ctxt: &FunctionContext) -> RuaResult {
+        #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResult {
             let name_str = #name_str;
             #validate_cant_args
             #func
@@ -69,9 +69,9 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
         },
     };
     match wrap_output_with {
-        OutputWrappers::Resultify => quote!(Ok(res.into())),
+        OutputWrappers::Resultify => quote!(Ok(res.into_rua(ctxt.vm))),
         OutputWrappers::IntoResult => quote!(match res {
-            Ok(r) => Ok(r.into()),
+            Ok(r) => Ok(r.into_rua(ctxt.vm)),
             Err(e) => Err(e),
         }),
     }

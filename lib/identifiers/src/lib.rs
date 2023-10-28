@@ -1,9 +1,7 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::marker::PhantomData;
 
 pub struct Trie<T: Clone> {
     root: TrieNode<T>,
-    identifiers: HashMap<Identifier, Box<str>>, // TODO FxHashMap?
-    last_id: u32,
 }
 
 pub struct TrieNode<T: Clone> {
@@ -18,32 +16,19 @@ pub struct TrieWalker<'trie, T: Clone> {
     trie: PhantomData<&'trie Trie<T>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Copy)]
-pub struct Identifier(u32);
-
 impl<'trie, T: Clone> Trie<T> {
     pub fn new() -> Self {
-        Self { root: (TrieNode::new(None)), identifiers: HashMap::new(), last_id: 0 }
+        Self { root: (TrieNode::new(None)) }
     }
 
-    pub fn add_or_get<F: Fn(Identifier, &str) -> T>(&'trie mut self, s: &str, get_val: F) -> T {
+    pub fn add_or_get(&'trie mut self, s: &str, val: T) -> T {
         let mut node = &mut self.root;
 
         for ch in s.chars() {
             node = node.find_next_or_add(ch);
         }
 
-        node.val
-            .get_or_insert_with(|| {
-                self.last_id += 1;
-                self.identifiers.insert(Identifier(self.last_id), s.into());
-                get_val(Identifier(self.last_id), s)
-            })
-            .clone()
-    }
-
-    pub fn get(&self, id: Identifier) -> Option<Box<str>> {
-        self.identifiers.get(&id).cloned()
+        node.val.get_or_insert(val).clone()
     }
 
     #[cfg(test)]
@@ -106,19 +91,15 @@ impl<'trie, T: Clone> TrieNode<T> {
 mod tests {
     use super::*;
 
-    const fn identity2(id: Identifier, _: &str) -> Identifier {
-        id
-    }
-
     #[test]
-    fn test_identifiers() {
+    fn test_trie() {
         let mut trie = Trie::new();
         assert_eq!(None, trie.find("foooo"));
         assert_eq!(None, trie.find("foo"));
-        let foooo = trie.add_or_get("foooo", identity2);
-        assert_eq!(Identifier(trie.last_id), foooo);
-        let foo = trie.add_or_get("foo", identity2);
-        assert_eq!(Identifier(trie.last_id), foo);
+        let foooo = trie.add_or_get("foooo", 1);
+        assert_eq!(1, foooo);
+        let foo = trie.add_or_get("foo", 2);
+        assert_eq!(2, foo);
 
         assert_eq!(Some(foo), trie.find("foo"));
         assert_eq!(Some(foooo), trie.find("foooo"));
@@ -128,8 +109,8 @@ mod tests {
     fn test_walker() {
         let mut trie = Trie::new();
 
-        let foo = trie.add_or_get("foo", identity2);
-        let local = trie.add_or_get("local", identity2);
+        let foo = trie.add_or_get("foo", true);
+        let local = trie.add_or_get("local", false);
 
         let mut lukes_trie_walker = TrieWalker::new(&trie);
         "foo".chars().for_each(|ch| lukes_trie_walker.walk(ch));

@@ -1,19 +1,19 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::lex::utils::read_number_radix;
+use crate::{eval::Vm, lex::utils::read_number_radix};
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    EvalError, RuaResult, RuaVal, TryIntoOpt,
+    EvalError, IntoRuaVal, RuaResult, RuaVal, TryIntoOpt,
 };
 use rua_func_macros::rua_func;
 
 // Built in functions {{{
 
 #[rua_func]
-pub fn print(ctxt: &FunctionContext) {
+pub fn print(ctxt: &mut FunctionContext) {
     let s = ctxt.args.iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
 
     println!("{s}");
@@ -57,9 +57,9 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
 
 // TODO revise when I add returning multiple values
 #[rua_func]
-pub fn pcall(ctxt: &FunctionContext, func: RuaVal) -> RuaVal {
+pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func.as_func() {
-        Ok(f) => match f.call(&ctxt.args[1..]) {
+        Ok(f) => match f.call(&ctxt.args[1..], ctxt.vm) {
             Ok(v) => v,
             Err(_) => RuaVal::Bool(false),
         },
@@ -81,11 +81,12 @@ pub fn table_remove(mut table: Table) -> Option<RuaVal> {
 
 // Helpers {{{
 
-pub fn default_global() -> Table {
+pub fn default_global(vm: &mut Vm) -> Table {
     let table = [
         ("insert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_insert)))),
         ("remove", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_remove)))),
-    ];
+    ]
+    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
     let global = [
         ("print", RuaVal::NativeFunction(NativeFunction::new(Rc::new(print)))),
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tostring)))),
@@ -94,7 +95,9 @@ pub fn default_global() -> Table {
         ("assert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(assert)))),
         ("pcall", RuaVal::NativeFunction(NativeFunction::new(Rc::new(pcall)))),
         ("table", RuaVal::Table(Table::from_iter(table))),
-    ];
+    ]
+    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
+
     Table::from_iter(global)
 }
 

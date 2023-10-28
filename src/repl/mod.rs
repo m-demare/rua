@@ -1,29 +1,23 @@
-use std::{
-    cell::RefCell,
-    io::{self, Write},
-    rc::Rc,
-};
+use std::io::{self, Write};
 
-use crate::eval::{
-    eval,
-    isolate::Isolate,
-    vals::{EvalError, StmtResult},
-};
 use crate::lex::{
     tokens::{Token, TokenType},
     Tokenizer,
 };
-use crate::parser::{
-    ast::{ParseError, Program, Statement},
-    parse,
+use crate::{
+    compiler::{
+        bytecode::{ParseError, Program},
+        Compiler,
+    },
+    eval::{
+        vals::{EvalError, RuaVal},
+        Vm,
+    },
 };
-use rua_identifiers::Trie;
 
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
-    let identifiers = Trie::new();
-
-    let isolate = Rc::new(RefCell::new(Isolate::new(identifiers)));
+    let mut vm = Vm::new();
     loop {
         let mut input = String::new();
         let stdin = io::stdin();
@@ -31,24 +25,22 @@ pub fn run() -> io::Result<()> {
         io::stdout().flush()?;
         stdin.read_line(&mut input)?;
 
-        let ast = parse_chars(input.chars(), &isolate);
+        let prog = parse_chars(input.chars(), &mut vm);
 
-        match ast {
-            Ok(ref prog @ Program { ref statements, .. })
-                if statements.len() != 1
-                    || !matches!(statements.first(), Some(&Statement::Call(..))) =>
-            {
-                print_res(eval(prog, isolate.clone()));
+        match prog {
+            Ok(prog) => {
+                print_res(vm.interpret(prog));
             }
             Err(
                 ParseError::UnexpectedExpression
                 | ParseError::UnexpectedToken(box Token { ttype: TokenType::BINARY_OP(_), .. }, _)
                 | ParseError::UnexpectedEOF,
-            )
-            | Ok(Program { .. }) => {
-                let ast = parse_chars("return ".chars().chain(input.chars()), &isolate);
-                match ast {
-                    Ok(expr) => print_res(eval(&expr, isolate.clone())),
+            ) => {
+                let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
+                match prog {
+                    Ok(prog) => {
+                        print_res(vm.interpret(prog));
+                    }
                     Err(err) => println!("Error: {err}"),
                 }
             }
@@ -57,9 +49,8 @@ pub fn run() -> io::Result<()> {
     }
 }
 
-fn print_res(val: Result<StmtResult, EvalError>) {
+fn print_res(val: Result<RuaVal, EvalError>) {
     match val {
-        Ok(StmtResult::Return(v)) => println!("{v:?}"),
         Ok(..) => {}
         Err(e) => println!("{e}"),
     }
@@ -67,10 +58,8 @@ fn print_res(val: Result<StmtResult, EvalError>) {
 
 fn parse_chars<T: Iterator<Item = char> + Clone>(
     input: T,
-    isolate: &Rc<RefCell<Isolate>>,
+    vm: &mut Vm,
 ) -> Result<Program, ParseError> {
-    let mut isolate = isolate.borrow_mut();
-    let ids = isolate.identifiers_mut();
-    let tokens = Tokenizer::new(input, ids);
-    parse(tokens)
+    let tokens = Tokenizer::new(input, vm);
+    Compiler::new(tokens).compile()
 }
