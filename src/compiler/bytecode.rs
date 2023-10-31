@@ -28,11 +28,12 @@ pub enum Instruction {
     Ge,
     StrLen,
     StrConcat,
-    DefineLocal,
     GetGlobal,
     SetGlobal,
     Call(u16),
     Pop,
+    GetLocal(u8),
+    SetLocal(u8),
 }
 
 #[derive(PartialEq)]
@@ -110,4 +111,6 @@ pub enum ParseError {
     UnexpectedEOF,
     #[error("Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS")]
     InvalidAssignLHS,
+    #[error("Cannot have more than 256 local variables in a given scope")]
+    TooManyLocals,
 }

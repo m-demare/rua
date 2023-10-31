@@ -88,7 +88,7 @@ impl Vm {
                 Instruction::StrConcat => {
                     self.str_concat()?;
                 }
-                Instruction::SetGlobal | Instruction::DefineLocal => {
+                Instruction::SetGlobal => {
                     let val = self.peek(0);
                     let key = self.peek(1);
                     self.global.insert(key, val);
@@ -104,11 +104,18 @@ impl Vm {
                     for i in (0..nargs).rev() {
                         args.push(self.peek(i as usize))
                     }
-                    println!("{nargs}: {args:?}");
                     let val = self.peek(nargs as usize).as_func()?.call(&args, self)?;
 
                     self.drop(nargs as usize + 1);
                     self.push(val);
+                }
+                Instruction::SetLocal(idx) => {
+                    let val = self.pop();
+                    self.set_stack_at(idx as usize, val);
+                }
+                Instruction::GetLocal(idx) => {
+                    let val = self.stack_at(idx as usize);
+                    self.push(val)
                 }
             }
         }
@@ -157,6 +164,14 @@ impl Vm {
     fn drop(&mut self, n: usize) {
         debug_assert!(self.stack.len() >= n);
         self.stack.truncate(self.stack.len() - n)
+    }
+
+    fn stack_at(&self, idx: usize) -> RuaVal {
+        self.stack[idx].clone()
+    }
+
+    fn set_stack_at(&mut self, idx: usize, val: RuaVal) {
+        self.stack[idx] = val
     }
 
     fn curr_instr(&self, program: &Program) -> Instruction {

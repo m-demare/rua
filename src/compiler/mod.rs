@@ -2,16 +2,20 @@ use std::{fmt::Debug, iter::Peekable};
 
 use crate::{
     compiler::utils::{consume, debug_peek_token, peek_token_is},
-    eval::vals::RuaVal,
+    eval::vals::{string::RuaString, RuaVal},
     lex::{
         tokens::{BinaryOp, Token, TokenType as TT, UnaryOp},
         Tokenizer,
     },
 };
 
-use self::bytecode::{Constant, Instruction as I, Instruction, ParseError, Program};
+use self::{
+    bytecode::{Constant, Instruction as I, Instruction, ParseError, Program},
+    locals::Locals,
+};
 
 pub mod bytecode;
+mod locals;
 mod tests;
 mod utils;
 
@@ -20,6 +24,7 @@ pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
     code: Vec<Instruction>,
     constants: Vec<RuaVal>,
     lines: Vec<(usize, usize)>,
+    locals: Locals,
 }
 
 #[allow(unused_parens)]
@@ -30,6 +35,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             code: Vec::new(),
             constants: Vec::new(),
             lines: vec![(0, 0)],
+            locals: Locals::new(),
         }
     }
 
@@ -39,6 +45,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn block(&mut self) -> Result<(), ParseError> {
+        self.locals.begin_scope();
+        let mut end_line = 0;
         while let Some(token) = self.peek_token() {
             match token.clone() {
                 Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
@@ -46,7 +54,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::IDENTIFIER(..) | TT::LPAREN, line, .. } => {
                     self.assign_or_call_st(line)?
                 }
-                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. } => break,
+                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
+                    end_line = line;
+                    break;
+                }
                 t => {
                     return Err(ParseError::UnexpectedToken(
                         Box::new(t),
@@ -61,6 +72,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     ))
                 }
             }
+        }
+        let locals_in_scope = self.locals.end_scope();
+        for _ in 0..locals_in_scope {
+            self.instruction(I::Pop, end_line); // TODO popn?
         }
         Ok(())
     }
@@ -134,8 +149,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.instruction(I::Neg, line);
             }
             Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => {
-                self.emit_constant(id.into(), line);
-                self.instruction(I::GetGlobal, line);
+                self.named_variable(id, line);
             }
             Some(Token { ttype: TT::NUMBER(n), line, .. }) => {
                 self.emit_constant(n.into(), line);
@@ -157,6 +171,19 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             None => return Err(ParseError::UnexpectedEOF),
         }
         Ok(())
+    }
+
+    fn named_variable(&mut self, id: RuaString, line: usize) {
+        let local = self.locals.resolve(&id);
+        match local {
+            Some(local) => {
+                self.instruction(I::GetLocal(local), line);
+            }
+            None => {
+                self.emit_constant(id.into(), line);
+                self.instruction(I::GetGlobal, line);
+            }
+        }
     }
 
     fn instruction(&mut self, instr: Instruction, line: usize) {
@@ -236,22 +263,21 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::LOCAL);
         self.next_token();
 
-        self.identifier()?;
+        let id = self.identifier()?;
         if peek_token_is!(self, TT::ASSIGN) {
             self.next_token();
             self.expression(Precedence::Lowest)?;
         } else {
             self.instruction(I::Nil, line);
         }
-        self.instruction(I::DefineLocal, line);
+        self.locals.declare(id)?;
+
         Ok(())
     }
 
-    fn identifier(&mut self) -> Result<(), ParseError> {
+    fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
-            Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => {
-                Ok(self.emit_constant(id.into(), line))
-            }
+            Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => Ok(id),
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(t.into(), [TT::IDENTIFIER_DUMMY].into()))
             }
@@ -270,19 +296,25 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
         self.expression(Precedence::Lowest)?;
         match self.peek_token().cloned() {
-            Some(Token { ttype: TT::ASSIGN, line, .. }) => {
-                match self.code.last().expect("Just parsed an expression") {
-                    I::GetGlobal => {
-                        self.pop_instruction();
-                        debug_assert!(matches!(self.code.last(), Some(I::Constant(_))));
-                        let t = self.next_token();
-                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                        self.expression(Precedence::Lowest)?;
-                        self.instruction(I::SetGlobal, line);
-                    }
-                    _ => todo!("handle field access; return error if invalid"),
+            Some(Token { ttype: TT::ASSIGN, line, .. }) => match self.code.last().cloned() {
+                Some(I::GetGlobal) => {
+                    self.pop_instruction();
+                    debug_assert!(matches!(self.code.last(), Some(I::Constant(_))));
+                    let t = self.next_token();
+                    debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                    self.expression(Precedence::Lowest)?;
+                    self.instruction(I::SetGlobal, line)
                 }
-            }
+                Some(I::GetLocal(idx)) => {
+                    self.pop_instruction();
+                    let t = self.next_token();
+                    debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                    self.expression(Precedence::Lowest)?;
+                    self.instruction(I::SetLocal(idx), line)
+                }
+                Some(_) => todo!("handle field access; return error if invalid"),
+                None => unreachable!("Just parsed an expression"),
+            },
             _ => {
                 match self.code.last().expect("Just parsed an expression") {
                     I::Call(_) => {

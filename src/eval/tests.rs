@@ -33,9 +33,21 @@ fn test_global_vars() {
     test_interpret("
         foo = 5 + 8
         return foo", |_| Ok(13.0.into()));
+    test_interpret("return bar", |_| Ok(().into()));
     test_interpret("
-        local bar
-        return bar", |_| Ok(().into()));
+        a = 1
+        a = a + 1
+        return a", |_| Ok(2.0.into()));
+}
+
+#[test]
+fn test_local_vars() {
+    test_interpret("
+        local foo = 5 + 8
+        local bar = 3
+        local foo = foo + bar
+        return foo
+        ", |_| Ok(16.0.into()));
 }
 
 #[test]

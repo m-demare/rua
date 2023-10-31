@@ -50,24 +50,46 @@ fn test_arithmetic_exprs() {
 fn test_locals() {
     test_compile("
         local foo = 5 + 8
-        return foo", |vm| Ok(Program::new(
+        return foo", |_| Ok(Program::new(
         vec![
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
-            I::Constant(Constant(2)),
             I::Add,
-            I::DefineLocal,
-            I::Constant(Constant(3)),
-            I::GetGlobal,
+            I::GetLocal(0),
             I::Return,
+            I::Pop,
         ],
         vec![
-            "foo".into_rua(vm),
             5.0.into(),
             8.0.into(),
-            "foo".into_rua(vm),
     ],
-        vec![(0, 0), (1, 5), (2, 3)],
+        vec![(0, 0), (1, 3), (2, 2), (0, 1)],
+    )));
+    test_compile("
+        local foo = 5 + 8
+        local bar = 3
+        local foo = foo + bar
+        return foo", |_| Ok(Program::new(
+        vec![
+            I::Constant(Constant(0)),
+            I::Constant(Constant(1)),
+            I::Add,
+            I::Constant(Constant(2)),
+            I::GetLocal(0),
+            I::GetLocal(1),
+            I::Add,
+            I::GetLocal(2),
+            I::Return,
+            I::Pop,
+            I::Pop,
+            I::Pop,
+        ],
+        vec![
+            5.0.into(),
+            8.0.into(),
+            3.0.into(),
+    ],
+        vec![(0, 0), (1, 3), (2, 1), (3, 3), (4, 2), (0, 3)],
     )));
 }
 
