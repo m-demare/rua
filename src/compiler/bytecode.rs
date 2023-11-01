@@ -9,6 +9,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
     Return,
+    ReturnNil,
     Constant(Constant),
     Neg,
     Add,
@@ -34,6 +35,10 @@ pub enum Instruction {
     Pop,
     GetLocal(u8),
     SetLocal(u8),
+    JmpIfFalse(i32),
+    JmpIfTrue(i32),
+    Jmp(i32),
+    JmpIfFalsePop(i32),
 }
 
 #[derive(PartialEq)]
@@ -43,13 +48,8 @@ pub struct Program {
     pub(super) lines: Vec<(usize, usize)>, // in run-length encoding
 }
 
-#[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Constant(pub(super) u16);
-
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Constant(pub u16);
+pub struct Constant(pub(super) u32);
 
 impl Program {
     pub fn new(code: Vec<Instruction>, constants: Vec<RuaVal>, lines: Vec<(usize, usize)>) -> Self {
@@ -113,4 +113,6 @@ pub enum ParseError {
     InvalidAssignLHS,
     #[error("Cannot have more than 256 local variables in a given scope")]
     TooManyLocals,
+    #[error("Attempted to jmp too far")]
+    JmpTooFar,
 }

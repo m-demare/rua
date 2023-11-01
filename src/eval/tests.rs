@@ -12,6 +12,7 @@ fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalError>>(input: &str, 
 
     let res = vm.interpret(prog);
     assert_eq!(res, output(&mut vm));
+    // assert_eq!(vm.stack(), &Vec::new());
 }
 
 
@@ -33,7 +34,7 @@ fn test_global_vars() {
     test_interpret("
         foo = 5 + 8
         return foo", |_| Ok(13.0.into()));
-    test_interpret("return bar", |_| Ok(().into()));
+    test_interpret("return bar", |_| Ok(RuaVal::Nil));
     test_interpret("
         a = 1
         a = a + 1
@@ -57,7 +58,27 @@ fn test_native_functions() {
     test_interpret("return tostring(5) .. 'foo'", |vm| Ok("5foo".into_rua(vm)));
     test_interpret("return tonumber('110', 2)", |_| Ok(6.0.into()));
     test_interpret("assert(false, 'custom error')", |vm| Err(EvalError::AssertionFailed(Some("custom error".into_rua(vm)))));
-    test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(().into()));
+    test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
     test_interpret("return pcall(assert, false)", |_| Ok(false.into()));
 }
 
+#[test]
+fn test_if() {
+   test_interpret("if 5>=5 then return 1 end", |_| Ok(1.0.into()));
+   test_interpret("if 4>=5 then return 1 end", |_| Ok(RuaVal::Nil));
+   test_interpret("if 4>=5 then return 1 end return true", |_| Ok(true.into()));
+}
+
+#[test]
+fn test_if_else() {
+   test_interpret("if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
+   test_interpret("if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));
+}
+
+#[test]
+fn test_logic_operators() {
+   test_interpret("return false and nil + nil", |_| Ok(false.into()));
+   test_interpret("return true and 5", |_| Ok(5.0.into()));
+   test_interpret("return 2 or nil + nil", |_| Ok(2.0.into()));
+   test_interpret("return false or 'test'", |vm| Ok("test".into_rua(vm)));
+}

@@ -50,6 +50,8 @@ impl Vm {
 
     pub fn interpret(&mut self, program: Program) -> Result<RuaVal, EvalError> {
         self.ip = 0;
+        #[cfg(test)]
+        println!("Started tracing {program:?}");
         loop {
             #[cfg(test)]
             self.trace(&program);
@@ -58,6 +60,9 @@ impl Vm {
             match instr {
                 Instruction::Return => {
                     return Ok(self.pop());
+                }
+                Instruction::ReturnNil => {
+                    return Ok(RuaVal::Nil);
                 }
                 Instruction::Pop => {
                     self.pop();
@@ -117,6 +122,25 @@ impl Vm {
                     let val = self.stack_at(idx as usize);
                     self.push(val)
                 }
+                Instruction::JmpIfFalsePop(offset) => {
+                    let val = self.pop();
+                    if !val.truthy() {
+                        self.ip += offset as usize - 1
+                    }
+                }
+                Instruction::JmpIfFalse(offset) => {
+                    let val = self.peek(0);
+                    if !val.truthy() {
+                        self.ip += offset as usize - 1
+                    }
+                }
+                Instruction::JmpIfTrue(offset) => {
+                    let val = self.peek(0);
+                    if val.truthy() {
+                        self.ip += offset as usize - 1
+                    }
+                }
+                Instruction::Jmp(offset) => self.ip += offset as usize - 1,
             }
         }
     }
@@ -182,15 +206,6 @@ impl Vm {
         &mut self.identifiers
     }
 
-    #[cfg(test)]
-    fn trace(&self, program: &Program) {
-        for el in &self.stack {
-            println!("[ {el} ]");
-        }
-        // TODO add cfg
-        println!("{:?}", self.curr_instr(program));
-    }
-
     pub fn new_string(&mut self, s: Rc<str>) -> RuaString {
         let string_id = match self.strings.entry(s.clone()) {
             Entry::Occupied(v) => *v.get(),
@@ -200,6 +215,20 @@ impl Vm {
             }),
         };
         RuaString::new(s, string_id)
+    }
+
+    #[cfg(test)]
+    fn trace(&self, program: &Program) {
+        for el in &self.stack {
+            println!("[ {el} ]");
+        }
+        // TODO add cfg
+        println!("{} {:?}", self.ip, self.curr_instr(program));
+    }
+
+    #[cfg(test)]
+    fn stack(&self) -> &Vec<RuaVal> {
+        &self.stack
     }
 }
 

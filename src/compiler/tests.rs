@@ -33,6 +33,7 @@ fn test_arithmetic_exprs() {
             I::Mul,
             I::Sub,
             I::Return,
+            I::ReturnNil,
         ],
         vec![
             5.0.into(),
@@ -42,7 +43,7 @@ fn test_arithmetic_exprs() {
             3.0.into(),
             4.0.into(),
     ],
-        vec![(0, 14)],
+        vec![(0, 15)],
     )));
 }
 
@@ -58,12 +59,13 @@ fn test_locals() {
             I::GetLocal(0),
             I::Return,
             I::Pop,
+            I::ReturnNil,
         ],
         vec![
             5.0.into(),
             8.0.into(),
     ],
-        vec![(0, 0), (1, 3), (2, 2), (0, 1)],
+        vec![(0, 0), (1, 3), (2, 2), (0, 2)],
     )));
     test_compile("
         local foo = 5 + 8
@@ -83,13 +85,14 @@ fn test_locals() {
             I::Pop,
             I::Pop,
             I::Pop,
+            I::ReturnNil,
         ],
         vec![
             5.0.into(),
             8.0.into(),
             3.0.into(),
     ],
-        vec![(0, 0), (1, 3), (2, 1), (3, 3), (4, 2), (0, 3)],
+        vec![(0, 0), (1, 3), (2, 1), (3, 3), (4, 2), (0, 4)],
     )));
 }
 
@@ -105,12 +108,13 @@ fn test_assign() {
             I::Constant(Constant(2)),
             I::Add,
             I::SetGlobal,
+            I::ReturnNil,
         ],
         vec![
             "foo".into_rua(vm),
             5.0.into(),
             8.0.into(),
     ],
-        vec![(0, 0), (1, 5)],
+        vec![(0, 0), (1, 5), (0, 1)],
     )));
 }

@@ -41,6 +41,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     pub fn compile(mut self) -> Result<Program, ParseError> {
         self.block()?;
+        self.instruction(I::ReturnNil, 0);
         Ok(Program::new(self.code, self.constants, self.lines))
     }
 
@@ -58,6 +59,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     end_line = line;
                     break;
                 }
+                Token { ttype: TT::IF, line, .. } => self.if_st(line)?,
                 t => {
                     return Err(ParseError::UnexpectedToken(
                         Box::new(t),
@@ -109,35 +111,34 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         match op {
             UnaryOp::NOT => self.instruction(I::Not, line),
             UnaryOp::LEN => self.instruction(I::StrLen, line),
-        }
+        };
         Ok(())
     }
 
     fn binary(&mut self, op: BinaryOp, line: usize) -> Result<(), ParseError> {
         let precedence = precedence_of_binary(&op);
-        self.expression(precedence)?;
-        match op {
-            BinaryOp::PLUS => self.instruction(I::Add, line),
-            BinaryOp::TIMES => self.instruction(I::Mul, line),
-            BinaryOp::DIV => self.instruction(I::Div, line),
-            BinaryOp::MOD => todo!(),
-            BinaryOp::EXP => self.instruction(I::Pow, line),
-            BinaryOp::EQ => self.instruction(I::Eq, line),
-            BinaryOp::NEQ => {
-                self.instruction(I::Neq, line);
-            }
-            BinaryOp::LE => {
-                self.instruction(I::Le, line);
-            }
-            BinaryOp::GE => {
-                self.instruction(I::Ge, line);
-            }
-            BinaryOp::LT => self.instruction(I::Lt, line),
-            BinaryOp::GT => self.instruction(I::Gt, line),
-            BinaryOp::AND => todo!(),
-            BinaryOp::OR => todo!(),
-            BinaryOp::DOTDOT => self.instruction(I::StrConcat, line),
+        macro_rules! binary_operator {
+            ($compiler: expr, $precedence: expr, $instr: expr, $line: expr) => {{
+                $compiler.expression($precedence)?;
+                $compiler.instruction($instr, $line);
+            }};
         }
+        match op {
+            BinaryOp::PLUS => binary_operator!(self, precedence, I::Add, line),
+            BinaryOp::TIMES => binary_operator!(self, precedence, I::Mul, line),
+            BinaryOp::DIV => binary_operator!(self, precedence, I::Div, line),
+            BinaryOp::MOD => todo!(),
+            BinaryOp::EXP => binary_operator!(self, precedence, I::Pow, line),
+            BinaryOp::EQ => binary_operator!(self, precedence, I::Eq, line),
+            BinaryOp::NEQ => binary_operator!(self, precedence, I::Neq, line),
+            BinaryOp::LE => binary_operator!(self, precedence, I::Le, line),
+            BinaryOp::GE => binary_operator!(self, precedence, I::Ge, line),
+            BinaryOp::LT => binary_operator!(self, precedence, I::Lt, line),
+            BinaryOp::GT => binary_operator!(self, precedence, I::Gt, line),
+            BinaryOp::AND => self.and(line)?,
+            BinaryOp::OR => self.or(line)?,
+            BinaryOp::DOTDOT => binary_operator!(self, precedence, I::StrConcat, line),
+        };
         Ok(())
     }
 
@@ -186,7 +187,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
     }
 
-    fn instruction(&mut self, instr: Instruction, line: usize) {
+    fn instruction(&mut self, instr: Instruction, line: usize) -> usize {
         let (code, _, lines) = self.current_chunk();
         code.push(instr);
         // lines is always non-empty
@@ -196,10 +197,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         } else {
             lines.push((line, 1));
         }
+        code.len() - 1
     }
 
     fn pop_instruction(&mut self) -> Option<Instruction> {
         let (code, _, lines) = self.current_chunk();
+        debug_assert!(code.len() > 0 && lines.len() > 0);
         // lines is always non-empty
         let last_line = unsafe { lines.last_mut().unwrap_unchecked() };
         if last_line.1 > 1 {
@@ -249,12 +252,20 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         if peek_token_is!(self, TT::END | TT::ELSE | TT::ELSEIF | TT::SEMICOLON)
             || self.peek_token().is_none()
         {
-            self.instruction(I::Return, line);
+            self.instruction(I::ReturnNil, line);
             return Ok(());
         }
 
         self.expression(Precedence::Lowest)?;
-        consume!(self; allow_eof, (TT::END), (TT::ELSE), (TT::ELSEIF));
+        match self.peek_token() {
+            Some(Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. }) | None => {}
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    t.clone().into(),
+                    [TT::END, TT::ELSE, TT::ELSEIF].into(),
+                ))
+            }
+        }
         self.instruction(I::Return, line);
         Ok(())
     }
@@ -277,7 +288,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
-            Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => Ok(id),
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(id),
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(t.into(), [TT::IDENTIFIER_DUMMY].into()))
             }
@@ -303,14 +314,14 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     let t = self.next_token();
                     debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
                     self.expression(Precedence::Lowest)?;
-                    self.instruction(I::SetGlobal, line)
+                    self.instruction(I::SetGlobal, line);
                 }
                 Some(I::GetLocal(idx)) => {
                     self.pop_instruction();
                     let t = self.next_token();
                     debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
                     self.expression(Precedence::Lowest)?;
-                    self.instruction(I::SetLocal(idx), line)
+                    self.instruction(I::SetLocal(idx), line);
                 }
                 Some(_) => todo!("handle field access; return error if invalid"),
                 None => unreachable!("Just parsed an expression"),
@@ -362,6 +373,94 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::RPAREN);
         self.next_token();
         self.instruction(I::Call(cant_args), line);
+        Ok(())
+    }
+
+    fn if_st(&mut self, line: usize) -> Result<(), ParseError> {
+        debug_peek_token!(self, TT::IF);
+        self.next_token();
+        self.expression(Precedence::Lowest)?;
+        consume!(self, (TT::THEN));
+        let if_jmp = self.jmp_if_false_pop(i32::MAX, line);
+        self.block()?;
+
+        let else_jmp = self.jmp(0, line);
+        self.patch_jmp(if_jmp)?;
+
+        match self.next_token() {
+            Some(Token { ttype: TT::END, .. }) => {}
+            Some(Token { ttype: TT::ELSE, .. }) => {
+                self.block()?;
+                self.patch_jmp(else_jmp)?;
+                consume!(self, (TT::END));
+            }
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    t.clone().into(),
+                    [TT::END, TT::ELSE, TT::ELSEIF].into(),
+                ))
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        }
+
+        Ok(())
+    }
+
+    fn jmp(&mut self, to: i32, line: usize) -> usize {
+        self.instruction(I::Jmp(to), line)
+    }
+
+    fn jmp_if_false_pop(&mut self, to: i32, line: usize) -> usize {
+        self.instruction(I::JmpIfFalsePop(to), line)
+    }
+
+    fn jmp_if_false(&mut self, to: i32, line: usize) -> usize {
+        self.instruction(I::JmpIfFalse(to), line)
+    }
+
+    fn jmp_if_true(&mut self, to: i32, line: usize) -> usize {
+        self.instruction(I::JmpIfTrue(to), line)
+    }
+
+    fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
+        let (code, _, _) = self.current_chunk();
+        debug_assert!(matches!(
+            code[jmp],
+            I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
+        ));
+
+        let offset = code.len() - jmp;
+        let offset = offset.try_into().or(Err(ParseError::JmpTooFar))?;
+
+        match code[jmp] {
+            I::JmpIfFalsePop(_) => code[jmp] = I::JmpIfFalsePop(offset),
+            I::JmpIfFalse(_) => code[jmp] = I::JmpIfFalse(offset),
+            I::JmpIfTrue(_) => code[jmp] = I::JmpIfTrue(offset),
+            I::Jmp(_) => code[jmp] = I::Jmp(offset),
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    fn and(&mut self, line: usize) -> Result<(), ParseError> {
+        let jmp = self.jmp_if_false(0, line);
+        self.instruction(I::Pop, line);
+
+        self.expression(Precedence::And)?;
+
+        self.patch_jmp(jmp)?;
+        Ok(())
+    }
+
+    fn or(&mut self, line: usize) -> Result<(), ParseError> {
+        let jmp = self.jmp_if_true(0, line);
+        self.instruction(I::Pop, line);
+
+        self.expression(Precedence::Or)?;
+
+        self.patch_jmp(jmp)?;
+
         Ok(())
     }
 }
