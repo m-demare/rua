@@ -1,9 +1,6 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::perf)]
 #![deny(unused_must_use)]
 #![allow(clippy::option_if_let_else)]
-#![feature(box_patterns)]
-#![feature(try_find)]
-#![feature(iterator_try_collect)]
 
 use std::path::PathBuf;
 
