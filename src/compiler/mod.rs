@@ -60,6 +60,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     break;
                 }
                 Token { ttype: TT::IF, line, .. } => self.if_st(line)?,
+                Token { ttype: TT::WHILE, line, .. } => self.while_st(line)?,
                 t => {
                     return Err(ParseError::UnexpectedToken(
                         Box::new(t),
@@ -384,12 +385,13 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let if_jmp = self.jmp_if_false_pop(i32::MAX, line);
         self.block()?;
 
-        let else_jmp = self.jmp(0, line);
-        self.patch_jmp(if_jmp)?;
-
         match self.next_token() {
-            Some(Token { ttype: TT::END, .. }) => {}
+            Some(Token { ttype: TT::END, .. }) => {
+                self.patch_jmp(if_jmp)?;
+            }
             Some(Token { ttype: TT::ELSE, .. }) => {
+                let else_jmp = self.jmp(0, line);
+                self.patch_jmp(if_jmp)?;
                 self.block()?;
                 self.patch_jmp(else_jmp)?;
                 consume!(self, (TT::END));
@@ -406,8 +408,29 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
+    fn while_st(&mut self, line: usize) -> Result<(), ParseError> {
+        debug_peek_token!(self, TT::WHILE);
+        self.next_token();
+        let loop_start = self.current_chunk().0.len();
+        self.expression(Precedence::Lowest)?;
+        consume!(self, (TT::DO));
+        let exit_jmp = self.jmp_if_false_pop(i32::MAX, line);
+        self.block()?;
+
+        let offset = Self::offset(loop_start, self.current_chunk().0.len())?;
+        self.loop_to(offset, line);
+        self.patch_jmp(exit_jmp)?;
+        consume!(self, (TT::END));
+
+        Ok(())
+    }
+
     fn jmp(&mut self, to: i32, line: usize) -> usize {
         self.instruction(I::Jmp(to), line)
+    }
+
+    fn loop_to(&mut self, to: i32, line: usize) -> usize {
+        self.jmp(to, line)
     }
 
     fn jmp_if_false_pop(&mut self, to: i32, line: usize) -> usize {
@@ -422,6 +445,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.instruction(I::JmpIfTrue(to), line)
     }
 
+    fn offset(from: usize, to: usize) -> Result<i32, ParseError> {
+        let offset = from as isize - to as isize;
+        offset.try_into().or(Err(ParseError::JmpTooFar))
+    }
+
     fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
         let (code, _, _) = self.current_chunk();
         debug_assert!(matches!(
@@ -429,8 +457,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
         ));
 
-        let offset = code.len() - jmp;
-        let offset = offset.try_into().or(Err(ParseError::JmpTooFar))?;
+        let offset = Self::offset(code.len(), jmp)?;
 
         match code[jmp] {
             I::JmpIfFalsePop(_) => code[jmp] = I::JmpIfFalsePop(offset),

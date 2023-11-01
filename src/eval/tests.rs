@@ -82,3 +82,13 @@ fn test_logic_operators() {
    test_interpret("return 2 or nil + nil", |_| Ok(2.0.into()));
    test_interpret("return false or 'test'", |vm| Ok("test".into_rua(vm)));
 }
+
+
+#[test]
+fn test_while() {
+    test_interpret("local i = 0
+        while i < 42 do
+            i = i + 1
+        end
+        return i", |_| Ok(42.0.into()));
+}

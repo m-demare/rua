@@ -140,7 +140,9 @@ impl Vm {
                         self.ip += offset as usize - 1
                     }
                 }
-                Instruction::Jmp(offset) => self.ip += offset as usize - 1,
+                Instruction::Jmp(offset) => {
+                    self.ip = (self.ip as isize + offset as isize - 1) as usize
+                }
             }
         }
     }

@@ -26,7 +26,7 @@ impl Locals {
     pub fn end_scope(&mut self) -> usize {
         self.scope_depth -= 1;
 
-        let mut locals_in_scope = self.locals.len();
+        let mut locals_in_scope = 0;
         for (i, local) in self.locals.iter().rev().enumerate() {
             if local.depth > self.scope_depth {
                 locals_in_scope = i + 1;
