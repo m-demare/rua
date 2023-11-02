@@ -13,7 +13,7 @@ use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
 
 use crate::{
-    compiler::bytecode::{Instruction, Program},
+    compiler::bytecode::Instruction,
     eval::{
         native_functions::default_global,
         vals::{string::RuaString, table::Table, EvalError, RuaResult, RuaVal},
@@ -21,13 +21,16 @@ use crate::{
     lex::tokens::TokenType,
 };
 
+use self::{call_frame::CallFrame, vals::function::Function};
+
+mod call_frame;
 mod tests;
 
 const STACK_SIZE: usize = u8::MAX as usize;
 
 pub struct Vm {
-    ip: usize,
     stack: Vec<RuaVal>,
+    frames: Vec<CallFrame>,
     global: Table,
     identifiers: Trie<TokenType>,
     strings: WeakKeyHashMap<Weak<str>, StringId, BuildHasherDefault<FxHasher>>,
@@ -36,8 +39,8 @@ pub struct Vm {
 impl Vm {
     pub fn new() -> Self {
         let mut vm = Self {
-            ip: 0,
             stack: Vec::with_capacity(STACK_SIZE),
+            frames: Vec::new(),
             global: Table::new(),
             identifiers: Trie::new(),
             strings: WeakKeyHashMap::default(),
@@ -48,15 +51,14 @@ impl Vm {
         vm
     }
 
-    pub fn interpret(&mut self, program: Program) -> Result<RuaVal, EvalError> {
-        self.ip = 0;
+    pub fn interpret(&mut self, function: Function) -> Result<RuaVal, EvalError> {
+        let mut frame = CallFrame::new(function.clone(), 0);
         #[cfg(test)]
-        println!("Started tracing {program:?}");
+        println!("Started tracing {function:?}");
         loop {
             #[cfg(test)]
-            self.trace(&program);
-            let instr = self.curr_instr(&program);
-            self.ip += 1;
+            self.trace(&frame);
+            let instr = frame.curr_instr();
             match instr {
                 Instruction::Return => {
                     return Ok(self.pop());
@@ -67,7 +69,10 @@ impl Vm {
                 Instruction::Pop => {
                     self.pop();
                 }
-                Instruction::Constant(c) => self.push(program.read_constant(c)),
+                Instruction::Constant(c) => {
+                    let constant = frame.read_constant(c);
+                    self.push(constant)
+                }
                 Instruction::Neg => {
                     self.unary_op(|v| Ok((-v.into_number()?).into()))?;
                 }
@@ -116,32 +121,32 @@ impl Vm {
                 }
                 Instruction::SetLocal(idx) => {
                     let val = self.pop();
-                    self.set_stack_at(idx as usize, val);
+                    self.set_stack_at(frame.stack_start() + idx as usize, val);
                 }
                 Instruction::GetLocal(idx) => {
-                    let val = self.stack_at(idx as usize);
+                    let val = self.stack_at(frame.stack_start() + idx as usize);
                     self.push(val)
                 }
                 Instruction::JmpIfFalsePop(offset) => {
                     let val = self.pop();
                     if !val.truthy() {
-                        self.ip += offset as usize - 1
+                        frame.rel_jmp(offset as isize - 1);
                     }
                 }
                 Instruction::JmpIfFalse(offset) => {
                     let val = self.peek(0);
                     if !val.truthy() {
-                        self.ip += offset as usize - 1
+                        frame.rel_jmp(offset as isize - 1);
                     }
                 }
                 Instruction::JmpIfTrue(offset) => {
                     let val = self.peek(0);
                     if val.truthy() {
-                        self.ip += offset as usize - 1
+                        frame.rel_jmp(offset as isize - 1);
                     }
                 }
                 Instruction::Jmp(offset) => {
-                    self.ip = (self.ip as isize + offset as isize - 1) as usize
+                    frame.rel_jmp(offset as isize - 1);
                 }
             }
         }
@@ -200,10 +205,6 @@ impl Vm {
         self.stack[idx] = val
     }
 
-    fn curr_instr(&self, program: &Program) -> Instruction {
-        program.code.get(self.ip).expect("Invalid ip").clone()
-    }
-
     pub fn identifiers(&mut self) -> &mut Trie<TokenType> {
         &mut self.identifiers
     }
@@ -219,13 +220,12 @@ impl Vm {
         RuaString::new(s, string_id)
     }
 
-    #[cfg(test)]
-    fn trace(&self, program: &Program) {
+    #[cfg(test)] // TODO add cfg for tracing
+    fn trace(&self, frame: &CallFrame) {
         for el in &self.stack {
             println!("[ {el} ]");
         }
-        // TODO add cfg
-        println!("{} {:?}", self.ip, self.curr_instr(program));
+        frame.print_curr_instr();
     }
 
     #[cfg(test)]

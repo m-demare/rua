@@ -1,23 +1,29 @@
 #![cfg(test)]
 
-use crate::{compiler::bytecode::{Program, Instruction as I, Constant}, lex::Tokenizer, eval::{Vm, vals::IntoRuaVal}};
+use crate::{compiler::bytecode::{Chunk, Instruction as I, Constant}, lex::Tokenizer, eval::{Vm, vals::IntoRuaVal}};
 
 use pretty_assertions::assert_eq;
 use super::{Compiler, bytecode::ParseError};
 
-fn test_compile<F: FnOnce(&mut Vm) -> Result<Program, ParseError>>(input: &str, output: F){
+fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F){
     let mut vm = Vm::new();
-    let compiler = Compiler::new(Tokenizer::new(input.chars(), &mut vm));
+    let mut tokens = Tokenizer::new(input.chars(), &mut vm);
+    let compiler = Compiler::new(&mut tokens);
     let res = compiler.compile();
 
-    assert_eq!(res, output(&mut vm));
+    match (res, output(&mut vm)) {
+        (Ok(func), Ok(chunk)) => assert_eq!(func.chunk(), &chunk),
+        (Err(err), Ok(_)) => println!("Failed with error {err}"),
+        (Ok(func), Err(err)) => println!("Expedted {err}, got {func:?} instead"),
+        (Err(e1), Err(e2)) => assert_eq!(e1, e2),
+    }
 }
 
 #[test]
 fn test_arithmetic_exprs() {
     let input = "return -5 + 1 * -6 - 2 * (3 + 4)";
 
-    test_compile(input, |_| Ok(Program::new(
+    test_compile(input, |_| Ok(Chunk::new(
         vec![
             I::Constant(Constant(0)),
             I::Neg,
@@ -51,7 +57,7 @@ fn test_arithmetic_exprs() {
 fn test_locals() {
     test_compile("
         local foo = 5 + 8
-        return foo", |_| Ok(Program::new(
+        return foo", |_| Ok(Chunk::new(
         vec![
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
@@ -71,7 +77,7 @@ fn test_locals() {
         local foo = 5 + 8
         local bar = 3
         local foo = foo + bar
-        return foo", |_| Ok(Program::new(
+        return foo", |_| Ok(Chunk::new(
         vec![
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
@@ -101,7 +107,7 @@ fn test_locals() {
 fn test_assign() {
     test_compile("
         foo = 5 + 8
-        ", |vm| Ok(Program::new(
+        ", |vm| Ok(Chunk::new(
         vec![
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),

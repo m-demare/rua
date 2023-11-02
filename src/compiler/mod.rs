@@ -1,8 +1,7 @@
-use std::{fmt::Debug, iter::Peekable};
+use std::fmt::Debug;
 
 use crate::{
-    compiler::utils::{consume, debug_peek_token, peek_token_is},
-    eval::vals::{string::RuaString, RuaVal},
+    eval::vals::{function::Function, string::RuaString, RuaVal},
     lex::{
         tokens::{BinaryOp, Token, TokenType as TT, UnaryOp},
         Tokenizer,
@@ -10,8 +9,9 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Constant, Instruction as I, Instruction, ParseError, Program},
+    bytecode::{Chunk, Instruction as I, Instruction, ParseError},
     locals::Locals,
+    utils::{consume, debug_peek_token, match_token, peek_token_is},
 };
 
 pub mod bytecode;
@@ -19,30 +19,57 @@ mod locals;
 mod tests;
 mod utils;
 
+enum FnType {
+    Function(u8, RuaString),
+    Script,
+}
+
 pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
-    tokens: Peekable<Tokenizer<'vm, T>>,
-    code: Vec<Instruction>,
-    constants: Vec<RuaVal>,
-    lines: Vec<(usize, usize)>,
+    tokens: &'vm mut Tokenizer<'vm, T>,
+    current_chunk: Chunk,
     locals: Locals,
+    fn_type: FnType,
+    peeked: Option<Token>,
 }
 
 #[allow(unused_parens)]
 impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
-    pub fn new(tokens: Tokenizer<'vm, T>) -> Self {
+    pub fn new(tokens: &'vm mut Tokenizer<'vm, T>) -> Self {
+        let peeked = tokens.next();
         Self {
-            tokens: tokens.peekable(),
-            code: Vec::new(),
-            constants: Vec::new(),
-            lines: vec![(0, 0)],
+            tokens,
+            current_chunk: Chunk::default(),
             locals: Locals::new(),
+            fn_type: FnType::Script,
+            peeked,
         }
     }
 
-    pub fn compile(mut self) -> Result<Program, ParseError> {
+    fn for_function(
+        tokens: &'vm mut Tokenizer<'vm, T>,
+        locals: Locals,
+        name: RuaString,
+        arity: u8,
+    ) -> Self {
+        let peeked = tokens.next();
+        Self {
+            tokens,
+            current_chunk: Chunk::default(),
+            locals,
+            fn_type: FnType::Function(arity, name),
+            peeked,
+        }
+    }
+
+    pub fn compile(mut self) -> Result<Function, ParseError> {
         self.block()?;
         self.instruction(I::ReturnNil, 0);
-        Ok(Program::new(self.code, self.constants, self.lines))
+        Ok(match self.fn_type {
+            FnType::Function(arity, name) => Function::new(self.current_chunk, arity, name),
+            FnType::Script => {
+                Function::new(self.current_chunk, 0, self.tokens.vm().new_string("".into()))
+            }
+        })
     }
 
     fn block(&mut self) -> Result<(), ParseError> {
@@ -55,6 +82,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::IDENTIFIER(..) | TT::LPAREN, line, .. } => {
                     self.assign_or_call_st(line)?
                 }
+                Token { ttype: TT::FUNCTION, line, .. } => self.function_st(line, false)?,
                 Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
                     end_line = line;
                     break;
@@ -94,17 +122,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn current_chunk(
-        &mut self,
-    ) -> (&mut Vec<Instruction>, &mut Vec<RuaVal>, &mut Vec<(usize, usize)>) {
-        (&mut self.code, &mut self.constants, &mut self.lines)
+    fn current_chunk(&mut self) -> &mut Chunk {
+        &mut self.current_chunk
     }
 
     fn emit_constant(&mut self, val: RuaVal, line: usize) {
-        let c = Constant(self.constants.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        let (_, constants, _) = self.current_chunk();
-        constants.push(val); // TODO maybe reuse constants?
-        self.instruction(I::Constant(c), line);
+        self.current_chunk().add_constant(val, line);
     }
 
     fn unary(&mut self, op: UnaryOp, line: usize) -> Result<(), ParseError> {
@@ -189,29 +212,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn instruction(&mut self, instr: Instruction, line: usize) -> usize {
-        let (code, _, lines) = self.current_chunk();
-        code.push(instr);
-        // lines is always non-empty
-        let last_line = unsafe { lines.last_mut().unwrap_unchecked() };
-        if last_line.0 == line {
-            last_line.1 = last_line.1 + 1;
-        } else {
-            lines.push((line, 1));
-        }
-        code.len() - 1
+        self.current_chunk().add_instruction(instr, line)
     }
 
     fn pop_instruction(&mut self) -> Option<Instruction> {
-        let (code, _, lines) = self.current_chunk();
-        debug_assert!(code.len() > 0 && lines.len() > 0);
-        // lines is always non-empty
-        let last_line = unsafe { lines.last_mut().unwrap_unchecked() };
-        if last_line.1 > 1 {
-            last_line.1 = last_line.1 - 1;
-        } else {
-            lines.pop();
-        }
-        code.pop()
+        self.current_chunk().pop_instruction()
     }
 
     fn infix_exp(&mut self, precedence: Precedence) -> Result<(), ParseError> {
@@ -275,9 +280,18 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::LOCAL);
         self.next_token();
 
-        let id = self.identifier()?;
-        if peek_token_is!(self, TT::ASSIGN) {
-            self.next_token();
+        let id = match self.next_token() {
+            Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => id.clone(),
+            Some(t) => {
+                return Err(ParseError::UnexpectedToken(
+                    t.clone().into(),
+                    [TT::IDENTIFIER_DUMMY, TT::FUNCTION].into(),
+                ))
+            }
+            None => return Err(ParseError::UnexpectedEOF),
+        };
+        if match_token!(self, TT::ASSIGN) {
             self.expression(Precedence::Lowest)?;
         } else {
             self.instruction(I::Nil, line);
@@ -298,37 +312,44 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn peek_token(&mut self) -> Option<&Token> {
-        self.tokens.peek()
+        self.peeked.as_ref()
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        self.tokens.next()
+        let next = self.peeked.take();
+        self.peeked = self.tokens.next();
+        next
     }
 
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
         self.expression(Precedence::Lowest)?;
         match self.peek_token().cloned() {
-            Some(Token { ttype: TT::ASSIGN, line, .. }) => match self.code.last().cloned() {
-                Some(I::GetGlobal) => {
-                    self.pop_instruction();
-                    debug_assert!(matches!(self.code.last(), Some(I::Constant(_))));
-                    let t = self.next_token();
-                    debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                    self.expression(Precedence::Lowest)?;
-                    self.instruction(I::SetGlobal, line);
+            Some(Token { ttype: TT::ASSIGN, line, .. }) => {
+                match self.current_chunk().code().last().cloned() {
+                    Some(I::GetGlobal) => {
+                        self.pop_instruction();
+                        debug_assert!(matches!(
+                            self.current_chunk().code().last(),
+                            Some(I::Constant(_))
+                        ));
+                        let t = self.next_token();
+                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                        self.expression(Precedence::Lowest)?;
+                        self.instruction(I::SetGlobal, line);
+                    }
+                    Some(I::GetLocal(idx)) => {
+                        self.pop_instruction();
+                        let t = self.next_token();
+                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                        self.expression(Precedence::Lowest)?;
+                        self.instruction(I::SetLocal(idx), line);
+                    }
+                    Some(_) => todo!("handle field access; return error if invalid"),
+                    None => unreachable!("Just parsed an expression"),
                 }
-                Some(I::GetLocal(idx)) => {
-                    self.pop_instruction();
-                    let t = self.next_token();
-                    debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                    self.expression(Precedence::Lowest)?;
-                    self.instruction(I::SetLocal(idx), line);
-                }
-                Some(_) => todo!("handle field access; return error if invalid"),
-                None => unreachable!("Just parsed an expression"),
-            },
+            }
             _ => {
-                match self.code.last().expect("Just parsed an expression") {
+                match self.current_chunk().code().last().expect("Just parsed an expression") {
                     I::Call(_) => {
                         // It's a call statement, gotta pop the return value
                         self.instruction(I::Pop, line);
@@ -344,37 +365,23 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn call_expr(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::LPAREN);
         self.next_token();
-        let mut cant_args = 0;
-        loop {
-            match self.peek_token() {
-                Some(Token { ttype: TT::RPAREN, .. }) => break,
-                Some(_) => {
-                    if cant_args == u16::MAX {
-                        todo!("Return a parse error")
-                    }
-                    cant_args += 1;
-                    self.expression(Precedence::Lowest)?;
-                    match self.peek_token() {
-                        Some(Token { ttype: TT::RPAREN, .. }) => break,
-                        Some(Token { ttype: TT::COMMA, .. }) => {
-                            self.next_token();
-                        }
-                        Some(t) => {
-                            return Err(ParseError::UnexpectedToken(
-                                t.clone().into(),
-                                [TT::RPAREN, TT::COMMA].into(),
-                            ))
-                        }
-                        None => return Err(ParseError::UnexpectedEOF),
-                    };
-                }
-                None => return Err(ParseError::UnexpectedEOF),
-            }
-        }
-        debug_peek_token!(self, TT::RPAREN);
-        self.next_token();
+        let cant_args = self.arg_list()?;
         self.instruction(I::Call(cant_args), line);
         Ok(())
+    }
+
+    fn arg_list(&mut self) -> Result<u16, ParseError> {
+        let mut cant_args = 0;
+        if match_token!(self, TT::RPAREN) {
+            return Ok(cant_args);
+        }
+        while ({
+            cant_args += 1;
+            self.expression(Precedence::Lowest)?;
+            match_token!(self, TT::COMMA)
+        }) {}
+        consume!(self, (TT::RPAREN));
+        Ok(cant_args)
     }
 
     fn if_st(&mut self, line: usize) -> Result<(), ParseError> {
@@ -411,13 +418,13 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn while_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::WHILE);
         self.next_token();
-        let loop_start = self.current_chunk().0.len();
+        let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
         consume!(self, (TT::DO));
         let exit_jmp = self.jmp_if_false_pop(i32::MAX, line);
         self.block()?;
 
-        let offset = Self::offset(loop_start, self.current_chunk().0.len())?;
+        let offset = Chunk::offset(loop_start, self.current_chunk().code().len())?;
         self.loop_to(offset, line);
         self.patch_jmp(exit_jmp)?;
         consume!(self, (TT::END));
@@ -445,29 +452,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.instruction(I::JmpIfTrue(to), line)
     }
 
-    fn offset(from: usize, to: usize) -> Result<i32, ParseError> {
-        let offset = from as isize - to as isize;
-        offset.try_into().or(Err(ParseError::JmpTooFar))
-    }
-
     fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
-        let (code, _, _) = self.current_chunk();
-        debug_assert!(matches!(
-            code[jmp],
-            I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
-        ));
-
-        let offset = Self::offset(code.len(), jmp)?;
-
-        match code[jmp] {
-            I::JmpIfFalsePop(_) => code[jmp] = I::JmpIfFalsePop(offset),
-            I::JmpIfFalse(_) => code[jmp] = I::JmpIfFalse(offset),
-            I::JmpIfTrue(_) => code[jmp] = I::JmpIfTrue(offset),
-            I::Jmp(_) => code[jmp] = I::Jmp(offset),
-            _ => unreachable!(),
-        }
-
-        Ok(())
+        self.current_chunk().patch_jmp(jmp)
     }
 
     fn and(&mut self, line: usize) -> Result<(), ParseError> {
@@ -489,6 +475,48 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.patch_jmp(jmp)?;
 
         Ok(())
+    }
+
+    fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
+        let id = self.identifier()?;
+        let function = self.function(id.clone())?;
+
+        self.emit_constant(RuaVal::Function(function), line);
+        if local {
+            self.locals.declare(id.clone())?;
+        } else {
+            self.instruction(I::SetGlobal, line);
+        }
+        Ok(())
+    }
+
+    fn function(&mut self, id: RuaString) -> Result<Function, ParseError> {
+        // I'm not sure why it doesn't realize tokens has the correct lifetime,
+        // I may be doing something dumb here
+        consume!(self, (TT::LPAREN));
+        let mut locals = Locals::new();
+        let arity = self.parameter_list(&mut locals)?;
+        let tokens = unsafe {
+            std::mem::transmute::<&mut Tokenizer<'vm, T>, &'vm mut Tokenizer<'vm, T>>(self.tokens)
+        };
+        let compiler = Self::for_function(tokens, locals, id, arity);
+        let retval = compiler.compile();
+        consume!(self, (TT::END));
+        retval
+    }
+
+    fn parameter_list(&mut self, locals: &mut Locals) -> Result<u8, ParseError> {
+        let mut arity = 0;
+        if match_token!(self, TT::RPAREN) {
+            return Ok(arity);
+        }
+        while ({
+            arity += 1;
+            locals.declare(self.identifier()?)?;
+            match_token!(self, TT::COMMA)
+        }) {}
+        consume!(self, (TT::RPAREN));
+        Ok(arity)
     }
 }
 

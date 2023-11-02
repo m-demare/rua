@@ -7,7 +7,8 @@ use super::Vm;
 fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalError>>(input: &str, output: F){
     let mut vm = Vm::new();
 
-    let compiler = Compiler::new(Tokenizer::new(input.chars(), &mut vm));
+    let mut tokens = Tokenizer::new(input.chars(), &mut vm);
+    let compiler = Compiler::new(&mut tokens);
     let prog = compiler.compile().expect("Failed to compile program");
 
     let res = vm.interpret(prog);

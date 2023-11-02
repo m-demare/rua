@@ -17,6 +17,16 @@ macro_rules! debug_peek_token {
     };
 }
 
+macro_rules! match_token{
+    ($compiler: expr, $($args: pat),+) => ({
+        match $compiler.peek_token() {
+            $(
+                Some(Token{ttype: $args, ..}) => {$compiler.next_token(); true},
+            )+
+            _ => false,
+        }
+    });
+}
 macro_rules! consume {
     ($compiler: expr, $allow_eof: expr, $($args: tt),+) => {
         match $compiler.next_token() {
@@ -38,4 +48,5 @@ macro_rules! consume {
 
 pub(super) use consume;
 pub(super) use debug_peek_token;
+pub(super) use match_token;
 pub(super) use peek_token_is;

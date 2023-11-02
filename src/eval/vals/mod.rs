@@ -276,6 +276,7 @@ impl TryInto<Table> for RuaVal {
 
 impl From<Infallible> for EvalError {
     fn from(_: Infallible) -> Self {
+        // SAFETY: Infallible cannot be instantiated
         unsafe { unreachable_unchecked() }
     }
 }

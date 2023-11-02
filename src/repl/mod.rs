@@ -1,19 +1,13 @@
 use std::io::{self, Write};
 
-use crate::lex::{
-    tokens::{Token, TokenType},
-    Tokenizer,
-};
 use crate::{
-    compiler::{
-        bytecode::{ParseError, Program},
-        Compiler,
-    },
+    compiler::{bytecode::ParseError, Compiler},
     eval::{
         vals::{EvalError, RuaVal},
         Vm,
     },
 };
+use crate::{eval::vals::function::Function, lex::Tokenizer};
 
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
@@ -55,7 +49,7 @@ fn print_res(val: Result<RuaVal, EvalError>) {
 fn parse_chars<T: Iterator<Item = char> + Clone>(
     input: T,
     vm: &mut Vm,
-) -> Result<Program, ParseError> {
-    let tokens = Tokenizer::new(input, vm);
-    Compiler::new(tokens).compile()
+) -> Result<Function, ParseError> {
+    let mut tokens = Tokenizer::new(input, vm);
+    Compiler::new(&mut tokens).compile()
 }

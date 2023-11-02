@@ -37,9 +37,9 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
 
     let mut vm = Vm::new();
 
-    let tokens = lex::Tokenizer::new(contents.chars(), &mut vm);
+    let mut tokens = lex::Tokenizer::new(contents.chars(), &mut vm);
 
-    let prog = Compiler::new(tokens).compile()?;
+    let prog = Compiler::new(&mut tokens).compile()?;
 
     let res = vm.interpret(prog);
     match res {

@@ -55,3 +55,9 @@ impl Display for RuaString {
         write!(f, "{}", self.0.data)
     }
 }
+
+impl Into<Rc<str>> for RuaString {
+    fn into(self) -> Rc<str> {
+        self.0.data.clone()
+    }
+}

@@ -1,21 +1,27 @@
 #![allow(clippy::module_name_repetitions)]
 
+use std::fmt::Debug;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::Vm;
+use crate::{compiler::bytecode::Chunk, eval::Vm};
 
+use super::string::RuaString;
 use super::{RuaCallable, RuaResult, RuaVal};
+
+struct FunctionInner {
+    chunk: Chunk,
+    arity: u8,
+    name: RuaString,
+    id: usize,
+}
 
 #[derive(Clone)]
 pub struct Function {
-    // args: Rc<[FunctionArg]>,
-    // body: Rc<[Statement]>,
-    // env: Rc<RefCell<Scope>>,
-    id: usize,
+    inner: Rc<FunctionInner>,
 }
 
 #[derive(Clone)]
@@ -30,10 +36,20 @@ pub struct FunctionContext<'vm> {
 }
 
 impl Function {
-    pub fn new(/*args: Rc<[FunctionArg]>, body: Rc<[Statement]>, env: Rc<RefCell<Scope>>*/) -> Self
-    {
+    pub fn new(chunk: Chunk, arity: u8, name: RuaString) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        Self { /*args, body, env,*/ id: COUNTER.fetch_add(1, Ordering::Relaxed) }
+        Self {
+            inner: Rc::new(FunctionInner {
+                chunk,
+                arity,
+                name,
+                id: COUNTER.fetch_add(1, Ordering::Relaxed),
+            }),
+        }
+    }
+
+    pub fn chunk(&self) -> &Chunk {
+        &self.inner.chunk
     }
 }
 
@@ -69,7 +85,7 @@ impl RuaCallable for NativeFunction {
 
 impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.inner.id == other.inner.id
     }
 }
 
@@ -85,7 +101,7 @@ impl Eq for NativeFunction {}
 
 impl Hash for Function {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        self.inner.id.hash(state);
     }
 }
 
@@ -98,5 +114,12 @@ impl Hash for NativeFunction {
 impl<'vm> FunctionContext<'vm> {
     pub fn new(args: Vec<RuaVal>, vm: &'vm mut Vm) -> Self {
         Self { args, vm }
+    }
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "function {} (arity: {})", self.inner.name, self.inner.arity)?;
+        writeln!(f, "{:?}", self.inner.chunk)
     }
 }

@@ -206,4 +206,8 @@ where
 
         Token { ttype: TokenType::STRING(self.vm.new_string(s.into())), line: self.line }
     }
+
+    pub(crate) fn vm(&mut self) -> &mut Vm {
+        self.vm
+    }
 }

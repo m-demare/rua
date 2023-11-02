@@ -42,16 +42,22 @@ pub enum Instruction {
 }
 
 #[derive(PartialEq)]
-pub struct Program {
-    pub(crate) code: Vec<Instruction>,
-    pub(super) constants: Vec<RuaVal>,
-    pub(super) lines: Vec<(usize, usize)>, // in run-length encoding
+pub struct Chunk {
+    code: Vec<Instruction>,
+    constants: Vec<RuaVal>,
+    lines: Vec<(usize, usize)>, // in run-length encoding
 }
 
+#[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Constant(pub(super) u32);
+pub struct Constant(u32);
 
-impl Program {
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Constant(pub(crate) u32);
+
+impl Chunk {
+    #[cfg(test)]
     pub fn new(code: Vec<Instruction>, constants: Vec<RuaVal>, lines: Vec<(usize, usize)>) -> Self {
         debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() >= code.len());
         Self { code, constants, lines }
@@ -60,9 +66,73 @@ impl Program {
     pub fn read_constant(&self, c: Constant) -> RuaVal {
         self.constants.get(c.0 as usize).expect("Invalid constant").clone()
     }
+
+    pub fn code(&self) -> &Vec<Instruction> {
+        &self.code
+    }
+
+    pub fn add_constant(&mut self, val: RuaVal, line: usize) -> usize {
+        let c = Constant(self.constants.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
+        self.constants.push(val); // TODO maybe reuse constants?
+        self.add_instruction(Instruction::Constant(c), line)
+    }
+
+    pub fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
+        self.code.push(instr);
+        let last_line = self.lines.last_mut().expect("lines is always non-empty");
+        if last_line.0 == line {
+            last_line.1 = last_line.1 + 1;
+        } else {
+            self.lines.push((line, 1));
+        }
+        self.code.len() - 1
+    }
+
+    pub fn pop_instruction(&mut self) -> Option<Instruction> {
+        debug_assert!(self.code.len() > 0 && self.lines.len() > 0);
+        let last_line = self.lines.last_mut().expect("lines is always non-empty");
+        if last_line.1 > 1 {
+            last_line.1 = last_line.1 - 1;
+        } else {
+            self.lines.pop();
+        }
+        debug_assert!(self.lines.len() > 0);
+        self.code.pop()
+    }
+
+    pub fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
+        use Instruction as I;
+        debug_assert!(matches!(
+            self.code[jmp],
+            I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
+        ));
+
+        let offset = Self::offset(self.code.len(), jmp)?;
+
+        match self.code[jmp] {
+            I::JmpIfFalsePop(_) => self.code[jmp] = I::JmpIfFalsePop(offset),
+            I::JmpIfFalse(_) => self.code[jmp] = I::JmpIfFalse(offset),
+            I::JmpIfTrue(_) => self.code[jmp] = I::JmpIfTrue(offset),
+            I::Jmp(_) => self.code[jmp] = I::Jmp(offset),
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    pub fn offset(from: usize, to: usize) -> Result<i32, ParseError> {
+        let offset = from as isize - to as isize;
+        offset.try_into().or(Err(ParseError::JmpTooFar))
+    }
 }
 
-impl Debug for Program {
+impl Default for Chunk {
+    fn default() -> Self {
+        Self { code: Vec::new(), constants: Vec::new(), lines: vec![(0, 0)] }
+    }
+}
+
+impl Debug for Chunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut lines = self.lines.iter();
         let mut line = lines.next();
@@ -89,6 +159,8 @@ impl Debug for Program {
         for (i, c) in self.constants.iter().enumerate() {
             writeln!(f, "{i} {c}")?;
         }
+        writeln!(f, "Lines:")?;
+        writeln!(f, "{:?}", self.lines)?;
         Ok(())
     }
 }
