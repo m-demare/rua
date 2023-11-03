@@ -11,7 +11,7 @@ fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalError>>(input: &str, 
 
     let res = vm.interpret(prog);
     assert_eq!(res, output(&mut vm));
-    // assert_eq!(vm.stack(), &Vec::new());
+    assert_eq!(vm.stack(), &Vec::new());
 }
 
 
@@ -26,6 +26,7 @@ fn test_arithmetic_ops() {
 fn test_string_ops() {
     test_interpret("return 'hello' .. ' ' .. 'world'", |vm| Ok(vm.new_string("hello world".into()).into()));
     test_interpret("return 'foo' .. 'bar' ~= 'foobar'", |_| Ok(false.into()));
+    test_interpret("return #'foo' + 1", |_| Ok(4.0.into()));
 }
 
 #[test]
@@ -57,7 +58,7 @@ fn test_native_functions() {
     test_interpret("return tostring(5) .. 'foo'", |vm| Ok("5foo".into_rua(vm)));
     test_interpret("return tonumber('110', 2)", |_| Ok(6.0.into()));
     test_interpret("assert(false, 'custom error')", |vm| Err(EvalError::AssertionFailed(Some("custom error".into_rua(vm)))));
-    // test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
+    test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
     test_interpret("return pcall(assert, false)", |_| Ok(false.into()));
 }
 

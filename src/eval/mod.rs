@@ -52,33 +52,46 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, function: Function) -> Result<RuaVal, EvalError> {
-        let mut frame = CallFrame::new(function.clone(), 0);
         #[cfg(test)]
         println!("Started tracing {function:?}");
+        let frame_start = self.stack.len();
+        let frame = CallFrame::new(function, frame_start);
+        match self.interpret_error_boundary(frame) {
+            v @ Ok(_) => v,
+            e @ Err(_) => {
+                self.stack.truncate(frame_start);
+                e
+            }
+        }
+    }
+
+    fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> Result<RuaVal, EvalError> {
         loop {
             #[cfg(test)]
             self.trace(&frame);
             let instr = frame.curr_instr();
             match instr {
                 Instruction::Return => {
+                    let retval = self.pop();
+                    self.stack.truncate(frame.stack_start());
                     match self.frames.pop() {
                         Some(f) => {
-                            let retval = self.pop();
-                            self.stack.truncate(frame.stack_start());
                             self.push(retval);
                             frame = f;
                         }
-                        None => return Ok(self.pop()),
+                        None => return Ok(retval),
                     }
                 }
-                Instruction::ReturnNil => match self.frames.pop() {
-                    Some(f) => {
-                        self.stack.truncate(frame.stack_start());
-                        self.push(RuaVal::Nil);
-                        frame = f
+                Instruction::ReturnNil => {
+                    self.stack.truncate(frame.stack_start());
+                    match self.frames.pop() {
+                        Some(f) => {
+                            self.push(RuaVal::Nil);
+                            frame = f
+                        }
+                        None => return Ok(RuaVal::Nil),
                     }
-                    None => return Ok(RuaVal::Nil),
-                },
+                }
                 Instruction::Pop => {
                     self.pop();
                 }
@@ -104,9 +117,9 @@ impl Vm {
                 Instruction::Neq => self.binary_op(|a, b| Ok((a != b).into()))?,
                 Instruction::Le => self.number_binary_op(|a, b| a <= b)?,
                 Instruction::Ge => self.number_binary_op(|a, b| a >= b)?,
-                Instruction::StrLen => {
+                Instruction::Len => {
                     #[allow(clippy::cast_precision_loss)]
-                    self.unary_op(|v| Ok((v.into_str()?.len() as f64).into()))?;
+                    self.unary_op(|v| Ok((v.len()? as f64).into()))?;
                 }
                 Instruction::StrConcat => {
                     self.str_concat()?;

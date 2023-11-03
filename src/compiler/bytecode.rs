@@ -27,7 +27,7 @@ pub enum Instruction {
     Neq,
     Le,
     Ge,
-    StrLen,
+    Len,
     StrConcat,
     GetGlobal,
     SetGlobal,

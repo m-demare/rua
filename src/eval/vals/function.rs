@@ -7,7 +7,6 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::call_frame::CallFrame;
 use crate::{compiler::bytecode::Chunk, eval::Vm};
 
 use super::string::RuaString;

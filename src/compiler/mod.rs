@@ -135,7 +135,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.expression(Precedence::Prefix)?;
         match op {
             UnaryOp::NOT => self.instruction(I::Not, line),
-            UnaryOp::LEN => self.instruction(I::StrLen, line),
+            UnaryOp::LEN => self.instruction(I::Len, line),
         };
         Ok(())
     }

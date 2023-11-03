@@ -1,7 +1,13 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::{eval::Vm, lex::utils::read_number_radix};
+use crate::{
+    eval::{
+        vals::{RuaType, TypeError},
+        Vm,
+    },
+    lex::utils::read_number_radix,
+};
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
@@ -55,14 +61,15 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
     }
 }
 
-// TODO
+// TODO revise when I add returning multiple values
 #[rua_func]
 pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
-    // match func.call(&ctxt.args[1..], ctxt.vm) {
-    //     Ok(v) => v.into(),
-    //     Err(_) => RuaVal::Bool(false),
-    // }
-    RuaVal::Bool(false)
+    match func {
+        RuaVal::Function(f) => ctxt.vm.interpret(f),
+        RuaVal::NativeFunction(f) => f.call(&ctxt.args[1..], ctxt.vm),
+        v => Err(EvalError::TypeError(TypeError(RuaType::Function, v.get_type()))),
+    }
+    .map_or(RuaVal::Bool(false), |v| v)
 }
 
 #[rua_func]
