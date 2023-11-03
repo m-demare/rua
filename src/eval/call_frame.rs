@@ -1,8 +1,9 @@
 use crate::compiler::bytecode::{Constant, Instruction};
 
+use std::fmt::Debug;
+
 use super::vals::{function::Function, RuaVal};
 
-#[derive(Debug)]
 pub struct CallFrame {
     function: Function,
     ip: usize,
@@ -36,5 +37,17 @@ impl CallFrame {
 
     pub fn stack_start(&self) -> usize {
         self.start
+    }
+}
+
+impl Debug for CallFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Callframe with ip {}, starting at stack position {}, at function {}",
+            self.ip,
+            self.start,
+            self.function.pretty_name()
+        )
     }
 }

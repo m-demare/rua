@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use compiler::{bytecode::ParseError, Compiler};
+use compiler::{bytecode::ParseError, compile};
 use eval::Vm;
 
 mod cli;
@@ -37,9 +37,7 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
 
     let mut vm = Vm::new();
 
-    let mut tokens = lex::Tokenizer::new(contents.chars(), &mut vm);
-
-    let prog = Compiler::new(&mut tokens).compile()?;
+    let prog = compile(contents.chars(), &mut vm)?;
 
     let res = vm.interpret(prog);
     match res {

@@ -1,15 +1,13 @@
 #![cfg(test)]
 
-use crate::{compiler::bytecode::{Chunk, Instruction as I, Constant}, lex::Tokenizer, eval::{Vm, vals::IntoRuaVal}};
+use crate::{compiler::bytecode::{Chunk, Instruction as I, Constant}, eval::{Vm, vals::IntoRuaVal}};
 
 use pretty_assertions::assert_eq;
-use super::{Compiler, bytecode::ParseError};
+use super::{bytecode::ParseError, compile};
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F){
     let mut vm = Vm::new();
-    let mut tokens = Tokenizer::new(input.chars(), &mut vm);
-    let compiler = Compiler::new(&mut tokens);
-    let res = compiler.compile();
+    let res = compile(input.chars(), &mut vm);
 
     match (res, output(&mut vm)) {
         (Ok(func), Ok(chunk)) => assert_eq!(func.chunk(), &chunk),

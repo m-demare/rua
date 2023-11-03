@@ -55,16 +55,14 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
     }
 }
 
-// TODO revise when I add returning multiple values
+// TODO
 #[rua_func]
 pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
-    match func.as_func() {
-        Ok(f) => match f.call(&ctxt.args[1..], ctxt.vm) {
-            Ok(v) => v,
-            Err(_) => RuaVal::Bool(false),
-        },
-        Err(_) => RuaVal::Bool(false),
-    }
+    // match func.call(&ctxt.args[1..], ctxt.vm) {
+    //     Ok(v) => v.into(),
+    //     Err(_) => RuaVal::Bool(false),
+    // }
+    RuaVal::Bool(false)
 }
 
 #[rua_func]

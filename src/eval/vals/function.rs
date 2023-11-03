@@ -7,10 +7,11 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use crate::eval::call_frame::CallFrame;
 use crate::{compiler::bytecode::Chunk, eval::Vm};
 
 use super::string::RuaString;
-use super::{RuaCallable, RuaResult, RuaVal};
+use super::{RuaResult, RuaVal};
 
 struct FunctionInner {
     chunk: Chunk,
@@ -51,6 +52,14 @@ impl Function {
     pub fn chunk(&self) -> &Chunk {
         &self.inner.chunk
     }
+
+    pub fn pretty_name(&self) -> &str {
+        if self.inner.name.is_empty() {
+            "<anonymous>"
+        } else {
+            &self.inner.name
+        }
+    }
 }
 
 impl NativeFunction {
@@ -58,27 +67,8 @@ impl NativeFunction {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self { func, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
     }
-}
 
-impl RuaCallable for Function {
-    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
-        // let mut new_env = Scope::extend(self.env.clone());
-        // self.args.iter().zip(args).for_each(|(arg, val)| match arg {
-        //     FunctionArg::Identifier(id) => new_env.set(*id, val.clone()),
-        //     FunctionArg::Dotdotdot => todo!(),
-        // });
-
-        // match eval_block(&self.body, &RefCell::new(new_env).into())? {
-        //     StmtResult::None => Ok(RuaVal::Nil),
-        //     StmtResult::Return(v) => Ok(v),
-        //     StmtResult::Break => todo!(),
-        // }
-        Ok(RuaVal::Nil)
-    }
-}
-
-impl RuaCallable for NativeFunction {
-    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
+    pub fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
         (self.func)(&mut FunctionContext::new(args.to_vec(), vm))
     }
 }
@@ -119,7 +109,8 @@ impl<'vm> FunctionContext<'vm> {
 
 impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "function {} (arity: {})", self.inner.name, self.inner.arity)?;
+        let name = self.pretty_name();
+        writeln!(f, "function {} (arity: {})", name, self.inner.arity)?;
         writeln!(f, "{:?}", self.inner.chunk)
     }
 }

@@ -1,13 +1,13 @@
 use std::io::{self, Write};
 
+use crate::eval::vals::function::Function;
 use crate::{
-    compiler::{bytecode::ParseError, Compiler},
+    compiler::{bytecode::ParseError, compile},
     eval::{
         vals::{EvalError, RuaVal},
         Vm,
     },
 };
-use crate::{eval::vals::function::Function, lex::Tokenizer};
 
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
@@ -50,6 +50,5 @@ fn parse_chars<T: Iterator<Item = char> + Clone>(
     input: T,
     vm: &mut Vm,
 ) -> Result<Function, ParseError> {
-    let mut tokens = Tokenizer::new(input, vm);
-    Compiler::new(&mut tokens).compile()
+    compile(input, vm)
 }

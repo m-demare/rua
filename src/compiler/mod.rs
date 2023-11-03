@@ -1,7 +1,10 @@
 use std::fmt::Debug;
 
 use crate::{
-    eval::vals::{function::Function, string::RuaString, RuaVal},
+    eval::{
+        vals::{function::Function, string::RuaString, RuaVal},
+        Vm,
+    },
     lex::{
         tokens::{BinaryOp, Token, TokenType as TT, UnaryOp},
         Tokenizer,
@@ -25,39 +28,34 @@ enum FnType {
 }
 
 pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
-    tokens: &'vm mut Tokenizer<'vm, T>,
+    tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>,
     current_chunk: Chunk,
     locals: Locals,
     fn_type: FnType,
-    peeked: Option<Token>,
 }
 
 #[allow(unused_parens)]
 impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
-    pub fn new(tokens: &'vm mut Tokenizer<'vm, T>) -> Self {
-        let peeked = tokens.next();
+    fn new(tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>) -> Self {
         Self {
             tokens,
             current_chunk: Chunk::default(),
             locals: Locals::new(),
             fn_type: FnType::Script,
-            peeked,
         }
     }
 
     fn for_function(
-        tokens: &'vm mut Tokenizer<'vm, T>,
+        tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>,
         locals: Locals,
         name: RuaString,
         arity: u8,
     ) -> Self {
-        let peeked = tokens.next();
         Self {
             tokens,
             current_chunk: Chunk::default(),
             locals,
             fn_type: FnType::Function(arity, name),
-            peeked,
         }
     }
 
@@ -67,7 +65,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(match self.fn_type {
             FnType::Function(arity, name) => Function::new(self.current_chunk, arity, name),
             FnType::Script => {
-                Function::new(self.current_chunk, 0, self.tokens.vm().new_string("".into()))
+                Function::new(self.current_chunk, 0, self.tokens.inner().vm().new_string("".into()))
             }
         })
     }
@@ -82,7 +80,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::IDENTIFIER(..) | TT::LPAREN, line, .. } => {
                     self.assign_or_call_st(line)?
                 }
-                Token { ttype: TT::FUNCTION, line, .. } => self.function_st(line, false)?,
+                Token { ttype: TT::FUNCTION, line, .. } => {
+                    self.next_token();
+                    self.function_st(line, false)?
+                }
                 Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
                     end_line = line;
                     break;
@@ -312,13 +313,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn peek_token(&mut self) -> Option<&Token> {
-        self.peeked.as_ref()
+        self.tokens.peek()
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        let next = self.peeked.take();
-        self.peeked = self.tokens.next();
-        next
+        self.tokens.next()
     }
 
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
@@ -481,23 +480,30 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let id = self.identifier()?;
         let function = self.function(id.clone())?;
 
-        self.emit_constant(RuaVal::Function(function), line);
         if local {
-            self.locals.declare(id.clone())?;
+            self.emit_constant(RuaVal::Function(function), line);
+            self.locals.declare(id)?;
         } else {
+            self.emit_constant(id.into(), line);
+            self.emit_constant(RuaVal::Function(function), line);
             self.instruction(I::SetGlobal, line);
         }
         Ok(())
     }
 
     fn function(&mut self, id: RuaString) -> Result<Function, ParseError> {
-        // I'm not sure why it doesn't realize tokens has the correct lifetime,
-        // I may be doing something dumb here
         consume!(self, (TT::LPAREN));
         let mut locals = Locals::new();
+        locals.declare(id.clone())?;
         let arity = self.parameter_list(&mut locals)?;
+
+        // I'm not sure why it doesn't realize tokens has the correct lifetime,
+        // I may be doing something dumb here
         let tokens = unsafe {
-            std::mem::transmute::<&mut Tokenizer<'vm, T>, &'vm mut Tokenizer<'vm, T>>(self.tokens)
+            std::mem::transmute::<
+                &mut MyPeekable<Tokenizer<'vm, T>>,
+                &'vm mut MyPeekable<Tokenizer<'vm, T>>,
+            >(self.tokens)
         };
         let compiler = Self::for_function(tokens, locals, id, arity);
         let retval = compiler.compile();
@@ -518,6 +524,16 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         consume!(self, (TT::RPAREN));
         Ok(arity)
     }
+}
+
+pub fn compile<C: Iterator<Item = char> + Clone>(
+    chars: C,
+    vm: &mut Vm,
+) -> Result<Function, ParseError> {
+    let tokens = Tokenizer::new(chars, vm);
+    let mut tokens = MyPeekable::new(tokens);
+    let compiler = Compiler::new(&mut tokens);
+    compiler.compile()
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Copy)]
@@ -549,5 +565,35 @@ pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
         BinaryOp::PLUS => Precedence::Sum,
         BinaryOp::TIMES | BinaryOp::DIV | BinaryOp::MOD => Precedence::Product,
         BinaryOp::EXP => Precedence::Exp,
+    }
+}
+
+struct MyPeekable<It: Iterator> {
+    inner: It,
+    peeked: Option<It::Item>,
+}
+
+impl<It: Iterator> MyPeekable<It> {
+    fn new(mut inner: It) -> Self {
+        let peeked = inner.next();
+        Self { inner, peeked }
+    }
+
+    fn peek(&mut self) -> Option<&It::Item> {
+        self.peeked.as_ref()
+    }
+
+    fn inner(&mut self) -> &mut It {
+        &mut self.inner
+    }
+}
+
+impl<It: Iterator> Iterator for MyPeekable<It> {
+    type Item = It::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.peeked.take();
+        self.peeked = self.inner.next();
+        next
     }
 }

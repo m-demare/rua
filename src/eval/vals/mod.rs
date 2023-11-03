@@ -43,36 +43,13 @@ pub enum RuaType {
     Table,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum StmtResult {
-    None,
-    Return(RuaVal),
-    Break,
-}
-
-pub trait RuaCallable {
-    fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult;
-}
-
 impl RuaVal {
-    pub fn into_bool(self) -> Result<bool, TypeError> {
-        self.try_into()
-    }
-
     pub fn into_number(self) -> Result<f64, TypeError> {
         self.try_into()
     }
 
     pub fn into_table(self) -> Result<Table, TypeError> {
         self.try_into()
-    }
-
-    pub fn as_func(&self) -> Result<&dyn RuaCallable, TypeError> {
-        match self {
-            Self::Function(f) => Ok(f),
-            Self::NativeFunction(f) => Ok(f),
-            v => Err(TypeError(RuaType::Function, v.get_type())),
-        }
     }
 
     pub fn into_str(self) -> Result<Rc<str>, TypeError> {
@@ -247,18 +224,6 @@ impl TryInto<Rc<str>> for RuaVal {
         match self {
             Self::String(s) => Ok(s.inner()),
             v => Err(TypeError(RuaType::String, v.get_type())),
-        }
-    }
-}
-
-impl TryInto<Box<dyn RuaCallable>> for RuaVal {
-    type Error = TypeError;
-
-    fn try_into(self) -> Result<Box<dyn RuaCallable>, Self::Error> {
-        match self {
-            Self::Function(f) => Ok(Box::new(f)),
-            Self::NativeFunction(f) => Ok(Box::new(f)),
-            v => Err(TypeError(RuaType::Function, v.get_type())),
         }
     }
 }

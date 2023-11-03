@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::vals::IntoRuaVal;
+use crate::eval::vals::{IntoRuaVal, RuaType, TypeError};
 use rua_identifiers::Trie;
 use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
@@ -61,11 +61,24 @@ impl Vm {
             let instr = frame.curr_instr();
             match instr {
                 Instruction::Return => {
-                    return Ok(self.pop());
+                    match self.frames.pop() {
+                        Some(f) => {
+                            let retval = self.pop();
+                            self.stack.truncate(frame.stack_start());
+                            self.push(retval);
+                            frame = f;
+                        }
+                        None => return Ok(self.pop()),
+                    }
                 }
-                Instruction::ReturnNil => {
-                    return Ok(RuaVal::Nil);
-                }
+                Instruction::ReturnNil => match self.frames.pop() {
+                    Some(f) => {
+                        self.stack.truncate(frame.stack_start());
+                        self.push(RuaVal::Nil);
+                        frame = f
+                    }
+                    None => return Ok(RuaVal::Nil),
+                },
                 Instruction::Pop => {
                     self.pop();
                 }
@@ -110,14 +123,20 @@ impl Vm {
                     self.push(self.global.get(&key).into());
                 }
                 Instruction::Call(nargs) => {
-                    let mut args = Vec::with_capacity(nargs as usize);
-                    for i in (0..nargs).rev() {
-                        args.push(self.peek(i as usize))
+                    let func = self.peek(nargs as usize);
+                    match func {
+                        RuaVal::Function(f) => {
+                            self.frames.push(frame);
+                            frame = CallFrame::new(f, self.get_frame_start(nargs as usize));
+                        }
+                        RuaVal::NativeFunction(f) => {
+                            let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
+                            let retval = f.call(&args, self)?;
+                            self.drop(nargs as usize + 1); // drop args and function itself
+                            self.push(retval);
+                        }
+                        v => return Err(TypeError(RuaType::Function, v.get_type()).into()),
                     }
-                    let val = self.peek(nargs as usize).as_func()?.call(&args, self)?;
-
-                    self.drop(nargs as usize + 1);
-                    self.push(val);
                 }
                 Instruction::SetLocal(idx) => {
                     let val = self.pop();
@@ -150,6 +169,10 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn stack_peek_n(&mut self, nargs: usize) -> &[RuaVal] {
+        &self.stack[self.stack.len() - nargs..self.stack.len()]
     }
 
     fn unary_op<F: Fn(RuaVal) -> RuaResult>(&mut self, f: F) -> Result<(), EvalError> {
@@ -231,6 +254,10 @@ impl Vm {
     #[cfg(test)]
     fn stack(&self) -> &Vec<RuaVal> {
         &self.stack
+    }
+
+    fn get_frame_start(&self, nargs: usize) -> usize {
+        self.stack.len() - nargs - 1
     }
 }
 
