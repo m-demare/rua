@@ -57,13 +57,15 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
+    let fn_name = input_fn.sig.ident.to_string();
     let wrap_output_with = match input_fn.sig.output {
         syn::ReturnType::Default => OutputWrappers::Resultify,
         syn::ReturnType::Type(_, ref t) => match t {
             box Type::Path(p) => {
-                match p.path.segments.first().unwrap().ident.to_string().as_str() {
-                    "Result" | "RuaResult" => OutputWrappers::IntoResult,
-                    _ => OutputWrappers::Resultify,
+                if p.path.segments.first().unwrap().ident.to_string().contains("Result") {
+                    OutputWrappers::IntoResult
+                } else {
+                    OutputWrappers::Resultify
                 }
             }
             t => panic!("Invalid rua return type: {t:?}"),
@@ -73,7 +75,11 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
         OutputWrappers::Resultify => quote!(Ok(res.into_rua(ctxt.vm))),
         OutputWrappers::IntoResult => quote!(match res {
             Ok(r) => Ok(r.into_rua(ctxt.vm)),
-            Err(e) => Err(e),
+            Err(mut e) => {
+                let mut e: EvalErrorTraced = e.into();
+                e.push_stack_trace(#fn_name.into(), 0);
+                Err(e)
+            }
         }),
     }
 }

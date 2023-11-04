@@ -41,7 +41,7 @@ pub enum Instruction {
     JmpIfFalsePop(i32),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct Chunk {
     code: Vec<Instruction>,
     constants: Vec<RuaVal>,

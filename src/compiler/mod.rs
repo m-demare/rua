@@ -78,11 +78,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
                 Token { ttype: TT::LOCAL, line, .. } => self.local_st(line)?,
                 Token { ttype: TT::IDENTIFIER(..) | TT::LPAREN, line, .. } => {
-                    self.assign_or_call_st(line)?
+                    self.assign_or_call_st(line)?;
                 }
                 Token { ttype: TT::FUNCTION, line, .. } => {
                     self.next_token();
-                    self.function_st(line, false)?
+                    self.function_st(line, false)?;
                 }
                 Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
                     end_line = line;
@@ -201,14 +201,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn named_variable(&mut self, id: RuaString, line: usize) {
         let local = self.locals.resolve(&id);
-        match local {
-            Some(local) => {
-                self.instruction(I::GetLocal(local), line);
-            }
-            None => {
-                self.emit_constant(id.into(), line);
-                self.instruction(I::GetGlobal, line);
-            }
+        if let Some(local) = local {
+            self.instruction(I::GetLocal(local), line);
+        } else {
+            self.emit_constant(id.into(), line);
+            self.instruction(I::GetGlobal, line);
         }
     }
 
@@ -286,7 +283,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => id.clone(),
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
-                    t.clone().into(),
+                    t.into(),
                     [TT::IDENTIFIER_DUMMY, TT::FUNCTION].into(),
                 ))
             }
@@ -305,10 +302,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(id),
-            Some(t) => {
-                return Err(ParseError::UnexpectedToken(t.into(), [TT::IDENTIFIER_DUMMY].into()))
-            }
-            None => return Err(ParseError::UnexpectedEOF),
+            Some(t) => Err(ParseError::UnexpectedToken(t.into(), [TT::IDENTIFIER_DUMMY].into())),
+            None => Err(ParseError::UnexpectedEOF),
         }
     }
 

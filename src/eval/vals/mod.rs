@@ -32,6 +32,7 @@ pub enum RuaVal {
 }
 
 pub type RuaResult = Result<RuaVal, EvalErrorTraced>;
+pub type RuaResultUntraced = Result<RuaVal, EvalError>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuaType {
@@ -159,6 +160,12 @@ impl Display for EvalErrorTraced {
             writeln!(f, "{func} at {line}")?;
         }
         Ok(())
+    }
+}
+
+impl From<EvalError> for EvalErrorTraced {
+    fn from(err: EvalError) -> Self {
+        EvalErrorTraced::new(err, StackTrace::new())
     }
 }
 

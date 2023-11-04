@@ -56,8 +56,8 @@ impl Display for RuaString {
     }
 }
 
-impl Into<Rc<str>> for RuaString {
-    fn into(self) -> Rc<str> {
-        self.0.data.clone()
+impl From<RuaString> for Rc<str> {
+    fn from(val: RuaString) -> Self {
+        val.0.data.clone()
     }
 }

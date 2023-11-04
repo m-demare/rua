@@ -58,7 +58,7 @@ impl Locals {
 }
 
 impl Local {
-    pub(super) fn new(name: RuaString, depth: usize) -> Self {
+    pub(super) const fn new(name: RuaString, depth: usize) -> Self {
         Self { name, depth }
     }
 }

@@ -23,7 +23,7 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{function::Function, EvalErrorTraced, RuaResult},
+    vals::{function::Function, EvalErrorTraced, RuaResult, RuaResultUntraced},
 };
 
 mod call_frame;
@@ -221,16 +221,13 @@ impl Vm {
         &self.stack[self.stack.len() - nargs..self.stack.len()]
     }
 
-    fn unary_op<F: Fn(RuaVal) -> Result<RuaVal, EvalError>>(
-        &mut self,
-        f: F,
-    ) -> Result<(), EvalError> {
+    fn unary_op<F: Fn(RuaVal) -> RuaResultUntraced>(&mut self, f: F) -> Result<(), EvalError> {
         let a = self.pop();
         self.push(f(a)?);
         Ok(())
     }
 
-    fn binary_op<F: Fn(RuaVal, RuaVal) -> Result<RuaVal, EvalError>>(
+    fn binary_op<F: Fn(RuaVal, RuaVal) -> RuaResultUntraced>(
         &mut self,
         f: F,
     ) -> Result<(), EvalError> {
@@ -310,6 +307,12 @@ impl Vm {
 
     fn get_frame_start(&self, nargs: usize) -> usize {
         self.stack.len() - nargs - 1
+    }
+}
+
+impl Default for Vm {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
