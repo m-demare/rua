@@ -4,7 +4,7 @@ use crate::eval::vals::function::Function;
 use crate::{
     compiler::{bytecode::ParseError, compile},
     eval::{
-        vals::{EvalError, RuaVal},
+        vals::{EvalErrorTraced, RuaVal},
         Vm,
     },
 };
@@ -39,7 +39,7 @@ pub fn run() -> io::Result<()> {
     }
 }
 
-fn print_res(val: Result<RuaVal, EvalError>) {
+fn print_res(val: Result<RuaVal, EvalErrorTraced>) {
     match val {
         Ok(..) => {}
         Err(e) => println!("{e}"),

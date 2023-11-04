@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::vals::{IntoRuaVal, RuaType, TypeError};
+use crate::eval::vals::{IntoRuaVal, RuaType, StackTrace};
 use rua_identifiers::Trie;
 use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
@@ -16,12 +16,15 @@ use crate::{
     compiler::bytecode::Instruction,
     eval::{
         native_functions::default_global,
-        vals::{string::RuaString, table::Table, EvalError, RuaResult, RuaVal},
+        vals::{string::RuaString, table::Table, EvalError, RuaVal},
     },
     lex::tokens::TokenType,
 };
 
-use self::{call_frame::CallFrame, vals::function::Function};
+use self::{
+    call_frame::CallFrame,
+    vals::{function::Function, EvalErrorTraced, RuaResult},
+};
 
 mod call_frame;
 mod tests;
@@ -51,21 +54,38 @@ impl Vm {
         vm
     }
 
-    pub fn interpret(&mut self, function: Function) -> Result<RuaVal, EvalError> {
+    pub fn interpret(&mut self, function: Function) -> RuaResult {
+        let first_frame_start = self.stack.len().saturating_sub(1); // Top level function isn't pushed to the stack
         #[cfg(test)]
-        println!("Started tracing {function:?}");
-        let frame_start = self.stack.len();
-        let frame = CallFrame::new(function, frame_start);
+        println!("Started tracing {function:?}, starting at stack {first_frame_start}\n\n");
+        let frame = CallFrame::new(function, first_frame_start);
+        let first_frame_id = frame.id();
         match self.interpret_error_boundary(frame) {
-            v @ Ok(_) => v,
-            e @ Err(_) => {
-                self.stack.truncate(frame_start);
-                e
+            Ok(v) => Ok(v),
+            Err(mut e) => {
+                for _ in self.frames.iter().rev().take_while(|frame| {
+                    e.push_stack_trace(frame.func_name(), frame.curr_line());
+                    frame.id() != first_frame_id
+                }) {}
+                self.stack.truncate(first_frame_start);
+                Err(e)
             }
         }
     }
 
-    fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> Result<RuaVal, EvalError> {
+    fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResult {
+        macro_rules! catch {
+            ($res: expr) => {
+                match $res {
+                    Err(e) => {
+                        self.frames.push(frame);
+                        return Err(EvalErrorTraced::new(e, StackTrace::new()));
+                    }
+                    _ => {}
+                }
+            };
+        }
+        let first_frame_id = frame.id();
         loop {
             #[cfg(test)]
             self.trace(&frame);
@@ -74,6 +94,9 @@ impl Vm {
                 Instruction::Return => {
                     let retval = self.pop();
                     self.stack.truncate(frame.stack_start());
+                    if frame.id() == first_frame_id {
+                        return Ok(retval);
+                    }
                     match self.frames.pop() {
                         Some(f) => {
                             self.push(retval);
@@ -84,6 +107,9 @@ impl Vm {
                 }
                 Instruction::ReturnNil => {
                     self.stack.truncate(frame.stack_start());
+                    if frame.id() == first_frame_id {
+                        return Ok(RuaVal::Nil);
+                    }
                     match self.frames.pop() {
                         Some(f) => {
                             self.push(RuaVal::Nil);
@@ -100,30 +126,25 @@ impl Vm {
                     self.push(constant)
                 }
                 Instruction::Neg => {
-                    self.unary_op(|v| Ok((-v.into_number()?).into()))?;
+                    catch!(self.unary_op(|v| Ok((-v.into_number()?).into())));
                 }
-                Instruction::Add => self.number_binary_op(|a, b| a + b)?,
-                Instruction::Sub => self.number_binary_op(|a, b| a - b)?,
-                Instruction::Mul => self.number_binary_op(|a, b| a * b)?,
-                Instruction::Div => self.number_binary_op(|a, b| a / b)?,
-                Instruction::Pow => self.number_binary_op(|a, b| a.powf(b))?,
+                Instruction::Add => catch!(self.number_binary_op(|a, b| a + b)),
+                Instruction::Sub => catch!(self.number_binary_op(|a, b| a - b)),
+                Instruction::Mul => catch!(self.number_binary_op(|a, b| a * b)),
+                Instruction::Div => catch!(self.number_binary_op(|a, b| a / b)),
+                Instruction::Pow => catch!(self.number_binary_op(|a, b| a.powf(b))),
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),
                 Instruction::Nil => self.push(RuaVal::Nil),
-                Instruction::Not => self.unary_op(|v| Ok((!v.truthy()).into()))?,
-                Instruction::Eq => self.binary_op(|a, b| Ok((a == b).into()))?,
-                Instruction::Lt => self.number_binary_op(|a, b| a < b)?,
-                Instruction::Gt => self.number_binary_op(|a, b| a > b)?,
-                Instruction::Neq => self.binary_op(|a, b| Ok((a != b).into()))?,
-                Instruction::Le => self.number_binary_op(|a, b| a <= b)?,
-                Instruction::Ge => self.number_binary_op(|a, b| a >= b)?,
-                Instruction::Len => {
-                    #[allow(clippy::cast_precision_loss)]
-                    self.unary_op(|v| Ok((v.len()? as f64).into()))?;
-                }
-                Instruction::StrConcat => {
-                    self.str_concat()?;
-                }
+                Instruction::Not => catch!(self.unary_op(|v| Ok((!v.truthy()).into()))),
+                Instruction::Eq => catch!(self.binary_op(|a, b| Ok((a == b).into()))),
+                Instruction::Lt => catch!(self.number_binary_op(|a, b| a < b)),
+                Instruction::Gt => catch!(self.number_binary_op(|a, b| a > b)),
+                Instruction::Neq => catch!(self.binary_op(|a, b| Ok((a != b).into()))),
+                Instruction::Le => catch!(self.number_binary_op(|a, b| a <= b)),
+                Instruction::Ge => catch!(self.number_binary_op(|a, b| a >= b)),
+                Instruction::Len => catch!(self.unary_op(|v| Ok(((v.len())? as f64).into()))),
+                Instruction::StrConcat => catch!(self.str_concat()),
                 Instruction::SetGlobal => {
                     let val = self.peek(0);
                     let key = self.peek(1);
@@ -139,16 +160,28 @@ impl Vm {
                     let func = self.peek(nargs as usize);
                     match func {
                         RuaVal::Function(f) => {
+                            let stack_start_pos = self.get_frame_start(nargs as usize);
+                            #[cfg(test)]
+                            println!("Started tracing {f:?}, starting at stack {stack_start_pos}");
                             self.frames.push(frame);
-                            frame = CallFrame::new(f, self.get_frame_start(nargs as usize));
+                            frame = CallFrame::new(f, stack_start_pos);
                         }
                         RuaVal::NativeFunction(f) => {
                             let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
-                            let retval = f.call(&args, self)?;
+                            let retval = match f.call(&args, self) {
+                                Ok(v) => v,
+                                Err(mut e) => {
+                                    e.push_stack_trace(frame.func_name(), frame.curr_line());
+                                    return Err(e);
+                                }
+                            };
                             self.drop(nargs as usize + 1); // drop args and function itself
                             self.push(retval);
                         }
-                        v => return Err(TypeError(RuaType::Function, v.get_type()).into()),
+                        v => catch!(Err::<(), EvalError>(EvalError::TypeError {
+                            expected: RuaType::Function,
+                            got: v.get_type()
+                        })),
                     }
                 }
                 Instruction::SetLocal(idx) => {
@@ -188,13 +221,19 @@ impl Vm {
         &self.stack[self.stack.len() - nargs..self.stack.len()]
     }
 
-    fn unary_op<F: Fn(RuaVal) -> RuaResult>(&mut self, f: F) -> Result<(), EvalError> {
+    fn unary_op<F: Fn(RuaVal) -> Result<RuaVal, EvalError>>(
+        &mut self,
+        f: F,
+    ) -> Result<(), EvalError> {
         let a = self.pop();
         self.push(f(a)?);
         Ok(())
     }
 
-    fn binary_op<F: Fn(RuaVal, RuaVal) -> RuaResult>(&mut self, f: F) -> Result<(), EvalError> {
+    fn binary_op<F: Fn(RuaVal, RuaVal) -> Result<RuaVal, EvalError>>(
+        &mut self,
+        f: F,
+    ) -> Result<(), EvalError> {
         let b = self.pop();
         let a = self.pop();
         self.push(f(a, b)?);
@@ -259,7 +298,7 @@ impl Vm {
     #[cfg(test)] // TODO add cfg for tracing
     fn trace(&self, frame: &CallFrame) {
         for el in &self.stack {
-            println!("[ {el} ]");
+            println!("[ {el:?} ]");
         }
         frame.print_curr_instr();
     }

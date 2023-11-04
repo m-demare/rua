@@ -1,6 +1,10 @@
 use crate::compiler::bytecode::{Constant, Instruction};
 
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    rc::Rc,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use super::vals::{function::Function, RuaVal};
 
@@ -8,11 +12,13 @@ pub struct CallFrame {
     function: Function,
     ip: usize,
     start: usize,
+    id: usize,
 }
 
 impl CallFrame {
     pub fn new(function: Function, start: usize) -> Self {
-        Self { function, ip: 0, start }
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        Self { function, ip: 0, start, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
     }
 
     #[cfg(test)]
@@ -37,6 +43,18 @@ impl CallFrame {
 
     pub fn stack_start(&self) -> usize {
         self.start
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn func_name(&self) -> Rc<str> {
+        self.function.pretty_name()
+    }
+
+    pub fn curr_line(&self) -> usize {
+        self.function.chunk().line_at(self.ip)
     }
 }
 

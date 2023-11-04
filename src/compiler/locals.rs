@@ -41,7 +41,8 @@ impl Locals {
         if self.locals.len() == MAX_LOCALS as usize {
             return Err(ParseError::TooManyLocals);
         }
-        Ok(self.locals.push(Local::new(name, self.scope_depth)))
+        self.locals.push(Local::new(name, self.scope_depth));
+        Ok(())
     }
 
     pub fn resolve(&self, id: &RuaString) -> Option<u8> {

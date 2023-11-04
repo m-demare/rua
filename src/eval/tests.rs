@@ -1,16 +1,19 @@
 #![cfg(test)]
 
-use crate::{compiler::compile, eval::vals::{RuaVal, EvalError, IntoRuaVal}};
+use crate::compiler::compile;
 
-use super::Vm;
+use super::{Vm, vals::{RuaVal, EvalError, IntoRuaVal, EvalErrorTraced, RuaType}};
 
-fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalError>>(input: &str, output: F){
+use pretty_assertions::assert_eq;
+
+fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalErrorTraced>>(input: &str, output: F){
     let mut vm = Vm::new();
 
     let prog = compile(input.chars(), &mut vm).expect("Failed to compile program");
 
     let res = vm.interpret(prog);
-    assert_eq!(res, output(&mut vm));
+    let expected = output(&mut vm);
+    assert_eq!(res, expected);
     assert_eq!(vm.stack(), &Vec::new());
 }
 
@@ -57,7 +60,10 @@ fn test_native_functions() {
     test_interpret("return type(tonumber('5'))", |vm| Ok("number".into_rua(vm)));
     test_interpret("return tostring(5) .. 'foo'", |vm| Ok("5foo".into_rua(vm)));
     test_interpret("return tonumber('110', 2)", |_| Ok(6.0.into()));
-    test_interpret("assert(false, 'custom error')", |vm| Err(EvalError::AssertionFailed(Some("custom error".into_rua(vm)))));
+    test_interpret("assert(false, 'custom error')", |vm| Err(EvalErrorTraced::new(
+        EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
+        vec![("assert".into(), 0), ("<anonymous>".into(), 0)]
+    )));
     test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
     test_interpret("return pcall(assert, false)", |_| Ok(false.into()));
 }
@@ -123,3 +129,42 @@ fn test_recursion() {
     end
     return global_fact(5)", |_| Ok(120.0.into()));
 }
+
+#[test]
+fn test_stack_trace() {
+    test_interpret("
+    function bar()
+        return 1+nil
+    end
+    function foo()
+        bar()
+    end
+    foo()", |_| Err(EvalErrorTraced::new(
+        EvalError::TypeError { expected: RuaType::Number, got: RuaType::Nil },
+        vec![("bar".into(), 2), ("foo".into(), 5), ("<anonymous>".into(), 7)]
+    )));
+
+    test_interpret("function foo()
+        assert(false, 'custom error')
+    end
+    foo()", |vm| Err(EvalErrorTraced::new(
+        EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
+        vec![("assert".into(), 0), ("foo".into(), 1), ("<anonymous>".into(), 3)]
+    )));
+}
+
+#[test]
+fn test_native_non_native_nested() {
+    test_interpret("
+    function foo()
+        local function bar()
+            local function baz()
+                return 7
+            end
+            return baz()
+        end
+        return pcall(bar)
+    end
+    return foo()", |_| Ok(7.0.into()));
+}
+

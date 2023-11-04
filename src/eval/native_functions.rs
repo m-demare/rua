@@ -1,18 +1,12 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::{
-    eval::{
-        vals::{RuaType, TypeError},
-        Vm,
-    },
-    lex::utils::read_number_radix,
-};
+use crate::{eval::Vm, lex::utils::read_number_radix};
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    EvalError, IntoRuaVal, RuaResult, RuaVal, TryIntoOpt,
+    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaVal, TryIntoOpt,
 };
 use rua_func_macros::rua_func;
 
@@ -36,8 +30,9 @@ pub fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResult {
     let radix = radix.map_or(10.0, identity);
     let r: u32 = radix.round() as u32;
     if f64::from(r) != radix {
-        return Err(EvalError::Exception(
-            format!("Bad argument radix: {radix} is not an integer").into(),
+        return Err(EvalErrorTraced::new(
+            EvalError::Exception(format!("Bad argument radix: {radix} is not an integer").into()),
+            vec![("tonumber".into(), 0)],
         ));
     }
     Ok(match read_number_radix(s.to_string().chars().peekable().by_ref(), r) {
@@ -57,7 +52,7 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
     if assertion.truthy() {
         Ok(assertion)
     } else {
-        Err(EvalError::AssertionFailed(err))
+        Err(EvalErrorTraced::new(EvalError::AssertionFailed(err), vec![("assert".into(), 0)]))
     }
 }
 
@@ -67,7 +62,7 @@ pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func {
         RuaVal::Function(f) => ctxt.vm.interpret(f),
         RuaVal::NativeFunction(f) => f.call(&ctxt.args[1..], ctxt.vm),
-        v => Err(EvalError::TypeError(TypeError(RuaType::Function, v.get_type()))),
+        _ => return RuaVal::Bool(false),
     }
     .map_or(RuaVal::Bool(false), |v| v)
 }

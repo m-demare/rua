@@ -52,11 +52,11 @@ impl Function {
         &self.inner.chunk
     }
 
-    pub fn pretty_name(&self) -> &str {
+    pub fn pretty_name(&self) -> Rc<str> {
         if self.inner.name.is_empty() {
-            "<anonymous>"
+            "<anonymous>".into()
         } else {
-            &self.inner.name
+            self.inner.name.inner()
         }
     }
 }
@@ -110,6 +110,6 @@ impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.pretty_name();
         writeln!(f, "function {} (arity: {})", name, self.inner.arity)?;
-        writeln!(f, "{:?}", self.inner.chunk)
+        write!(f, "{:?}", self.inner.chunk)
     }
 }

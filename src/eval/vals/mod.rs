@@ -31,7 +31,7 @@ pub enum RuaVal {
     Table(Table),
 }
 
-pub type RuaResult = Result<RuaVal, EvalError>;
+pub type RuaResult = Result<RuaVal, EvalErrorTraced>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuaType {
@@ -44,15 +44,15 @@ pub enum RuaType {
 }
 
 impl RuaVal {
-    pub fn into_number(self) -> Result<f64, TypeError> {
+    pub fn into_number(self) -> Result<f64, EvalError> {
         self.try_into()
     }
 
-    pub fn into_table(self) -> Result<Table, TypeError> {
+    pub fn into_table(self) -> Result<Table, EvalError> {
         self.try_into()
     }
 
-    pub fn into_str(self) -> Result<Rc<str>, TypeError> {
+    pub fn into_str(self) -> Result<Rc<str>, EvalError> {
         self.try_into()
     }
 
@@ -72,11 +72,11 @@ impl RuaVal {
     }
 
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> Result<usize, TypeError> {
+    pub fn len(&self) -> Result<usize, EvalError> {
         match self {
             Self::String(s) => Ok(s.len()),
             Self::Table(t) => Ok(t.arr_size()),
-            v => Err(TypeError(v.get_type(), RuaType::Table)),
+            v => Err(EvalError::TypeError { expected: v.get_type(), got: RuaType::Table }),
         }
     }
 }
@@ -109,14 +109,33 @@ impl Display for RuaType {
 
 impl Debug for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
+        match self {
+            RuaVal::Function(func) => write!(f, "function ({})", func.pretty_name()),
+            RuaVal::NativeFunction(_) => write!(f, "native function"),
+            _ => write!(f, "{self}"),
+        }
+    }
+}
+
+pub type StackTrace = Vec<(Rc<str>, usize)>;
+
+#[derive(Error, PartialEq, Eq)]
+pub struct EvalErrorTraced(Box<(EvalError, StackTrace)>);
+
+impl EvalErrorTraced {
+    pub fn new(e: EvalError, stack_trace: StackTrace) -> EvalErrorTraced {
+        EvalErrorTraced(Box::new((e, stack_trace)))
+    }
+
+    pub fn push_stack_trace(&mut self, name: Rc<str>, line: usize) {
+        self.0 .1.push((name, line));
     }
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum EvalError {
-    #[error("TypeError: {0}")]
-    TypeError(#[from] TypeError),
+    #[error("TypeError: expected {expected}, got {got}")]
+    TypeError { expected: RuaType, got: RuaType },
     #[error("bad argument #{0} to '{1}' (value expected)")]
     ExpectedArgument(u8, Box<str>),
     #[error("Too many arguments ({0}) passed to '{1}'")]
@@ -127,12 +146,19 @@ pub enum EvalError {
     AssertionFailed(Option<RuaVal>),
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
-pub struct TypeError(pub RuaType, pub RuaType);
-
-impl fmt::Display for TypeError {
+impl Debug for EvalErrorTraced {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "expected {:?}, got {:?}", self.0, self.1)
+        write!(f, "{self}")
+    }
+}
+
+impl Display for EvalErrorTraced {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "error: {}", self.0 .0)?;
+        for (func, line) in &self.0 .1 {
+            writeln!(f, "{func} at {line}")?;
+        }
+        Ok(())
     }
 }
 
@@ -196,45 +222,45 @@ impl From<()> for RuaVal {
 }
 
 impl TryInto<f64> for RuaVal {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into(self) -> Result<f64, Self::Error> {
         match self {
             Self::Number(n) => Ok(n.val()),
-            v => Err(TypeError(RuaType::Number, v.get_type())),
+            v => Err(EvalError::TypeError { expected: RuaType::Number, got: v.get_type() }),
         }
     }
 }
 
 impl TryInto<bool> for RuaVal {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into(self) -> Result<bool, Self::Error> {
         match self {
             Self::Bool(b) => Ok(b),
-            v => Err(TypeError(RuaType::Bool, v.get_type())),
+            v => Err(EvalError::TypeError { expected: RuaType::Bool, got: v.get_type() }),
         }
     }
 }
 
 impl TryInto<Rc<str>> for RuaVal {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into(self) -> Result<Rc<str>, Self::Error> {
         match self {
             Self::String(s) => Ok(s.inner()),
-            v => Err(TypeError(RuaType::String, v.get_type())),
+            v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),
         }
     }
 }
 
 impl TryInto<Table> for RuaVal {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into(self) -> Result<Table, Self::Error> {
         match self {
             Self::Table(t) => Ok(t),
-            v => Err(TypeError(RuaType::Table, v.get_type())),
+            v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
         }
     }
 }
@@ -255,9 +281,9 @@ pub trait TryIntoOpt<T> {
 // conflicts with the default implementation of TryInto<Option<RuaVal>>
 impl<T> TryIntoOpt<T> for RuaVal
 where
-    Self: TryInto<T, Error = TypeError>,
+    Self: TryInto<T, Error = EvalError>,
 {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into_opt(self) -> Result<Option<T>, Self::Error> {
         Ok(match self {
@@ -268,7 +294,7 @@ where
 }
 
 impl TryIntoOpt<Self> for RuaVal {
-    type Error = TypeError;
+    type Error = EvalError;
 
     fn try_into_opt(self) -> Result<Option<Self>, Self::Error> {
         Ok(Some(self))

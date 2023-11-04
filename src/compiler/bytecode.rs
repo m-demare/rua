@@ -81,7 +81,7 @@ impl Chunk {
         self.code.push(instr);
         let last_line = self.lines.last_mut().expect("lines is always non-empty");
         if last_line.0 == line {
-            last_line.1 = last_line.1 + 1;
+            last_line.1 += 1;
         } else {
             self.lines.push((line, 1));
         }
@@ -89,14 +89,14 @@ impl Chunk {
     }
 
     pub fn pop_instruction(&mut self) -> Option<Instruction> {
-        debug_assert!(self.code.len() > 0 && self.lines.len() > 0);
+        debug_assert!(!self.code.is_empty() && !self.lines.is_empty());
         let last_line = self.lines.last_mut().expect("lines is always non-empty");
         if last_line.1 > 1 {
-            last_line.1 = last_line.1 - 1;
+            last_line.1 -= 1;
         } else {
             self.lines.pop();
         }
-        debug_assert!(self.lines.len() > 0);
+        debug_assert!(!self.lines.is_empty());
         self.code.pop()
     }
 
@@ -123,6 +123,16 @@ impl Chunk {
     pub fn offset(from: usize, to: usize) -> Result<i32, ParseError> {
         let offset = from as isize - to as isize;
         offset.try_into().or(Err(ParseError::JmpTooFar))
+    }
+
+    pub fn line_at(&self, mut ip: usize) -> usize {
+        self.lines
+            .iter()
+            .find(|(_, n)| {
+                ip = ip.saturating_sub(*n);
+                ip == 0
+            })
+            .map_or(0, |(line, _)| *line)
     }
 }
 

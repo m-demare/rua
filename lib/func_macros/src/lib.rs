@@ -46,6 +46,7 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
         #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResult {
             let name_str = #name_str;
             #validate_cant_args
+            // TODO test inlining?
             #func
             let res = #name(#(#parameters),*);
             #output_wrap
@@ -81,6 +82,7 @@ fn get_parameters(
     input_fn: &ItemFn,
     args: &MacroArgs,
 ) -> (Vec<proc_macro2::TokenStream>, proc_macro2::TokenStream) {
+    let fn_name = input_fn.sig.ident.to_string();
     let mut inputs = input_fn.sig.inputs.iter().peekable();
     let mut cant_params = inputs.len();
     let mut params = match inputs.peek() {
@@ -100,9 +102,9 @@ fn get_parameters(
             return (
                 Vec::new(),
                 quote!(if ctxt.args.len() > 0 {
-                    return Err(EvalError::TooManyArguments(
-                        ctxt.args.len() as u8,
-                        name_str.into(),
+                    return Err(EvalErrorTraced::new(
+                        EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()),
+                        vec![(#fn_name.into(), 0)],
                     ));
                 }),
             )
@@ -116,15 +118,15 @@ fn get_parameters(
                 params.push(quote!(
                     match ctxt.args.get(#i).cloned() {
                         None => None,
-                        Some(a) => a.try_into_opt()?,
+                        Some(a) => a.try_into_opt().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
                     }
                 ))
             }
             FnArg::Typed(PatType { ty: box Type::Path(TypePath { .. }), .. }) => {
                 params.push(quote!(
                     match ctxt.args.get(#i).cloned() {
-                        None => return Err(EvalError::ExpectedArgument(#i as u8, name_str.into())),
-                        Some(a) => a.try_into()?,
+                        None => return Err(EvalErrorTraced::new(EvalError::ExpectedArgument(#i as u8, name_str.into()), vec![(#fn_name.into(), 0)])),
+                        Some(a) => a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
                     }
                 ))
             }
@@ -135,7 +137,7 @@ fn get_parameters(
     let validate_cant_args = if args.exact_args {
         quote!(
         if ctxt.args.len() > #cant_params{
-            return Err(EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()))
+            return Err(EvalErrorTraced::new(EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()), vec![(#fn_name.into(), 0)]))
         })
     } else {
         quote!()
