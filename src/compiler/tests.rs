@@ -23,6 +23,7 @@ fn test_arithmetic_exprs() {
 
     test_compile(input, |_| Ok(Chunk::new(
         vec![
+            I::CheckStack(0),
             I::Constant(Constant(0)),
             I::Neg,
             I::Constant(Constant(1)),
@@ -37,6 +38,7 @@ fn test_arithmetic_exprs() {
             I::Mul,
             I::Sub,
             I::Return,
+            I::CheckStack(0),
             I::ReturnNil,
         ],
         vec![
@@ -47,7 +49,7 @@ fn test_arithmetic_exprs() {
             3.0.into(),
             4.0.into(),
     ],
-        vec![(0, 15)],
+        vec![(0, 17)],
     )));
 }
 
@@ -57,11 +59,14 @@ fn test_locals() {
         local foo = 5 + 8
         return foo", |_| Ok(Chunk::new(
         vec![
+            I::CheckStack(0),
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
             I::Add,
+            I::CheckStack(1),
             I::GetLocal(0),
             I::Return,
+            I::CheckStack(1),
             I::Pop,
             I::ReturnNil,
         ],
@@ -69,7 +74,7 @@ fn test_locals() {
             5.0.into(),
             8.0.into(),
     ],
-        vec![(0, 0), (1, 3), (2, 2), (0, 2)],
+        vec![(0, 1), (1, 3), (0, 1), (2, 2), (0, 3)],
     )));
     test_compile("
         local foo = 5 + 8
@@ -77,15 +82,20 @@ fn test_locals() {
         local foo = foo + bar
         return foo", |_| Ok(Chunk::new(
         vec![
+            I::CheckStack(0),
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
             I::Add,
+            I::CheckStack(1),
             I::Constant(Constant(2)),
+            I::CheckStack(2),
             I::GetLocal(0),
             I::GetLocal(1),
             I::Add,
+            I::CheckStack(3),
             I::GetLocal(2),
             I::Return,
+            I::CheckStack(3),
             I::Pop,
             I::Pop,
             I::Pop,
@@ -96,7 +106,7 @@ fn test_locals() {
             8.0.into(),
             3.0.into(),
     ],
-        vec![(0, 0), (1, 3), (2, 1), (3, 3), (4, 2), (0, 4)],
+        vec![(0, 1), (1, 3), (0, 1), (2, 1), (0, 1), (3, 3), (0, 1), (4, 2), (0, 5)],
     )));
 }
 
@@ -107,11 +117,13 @@ fn test_assign() {
         foo = 5 + 8
         ", |vm| Ok(Chunk::new(
         vec![
+            I::CheckStack(0),
             I::Constant(Constant(0)),
             I::Constant(Constant(1)),
             I::Constant(Constant(2)),
             I::Add,
             I::SetGlobal,
+            I::CheckStack(0),
             I::ReturnNil,
         ],
         vec![
@@ -119,6 +131,6 @@ fn test_assign() {
             5.0.into(),
             8.0.into(),
     ],
-        vec![(0, 0), (1, 5), (0, 1)],
+        vec![(0, 1), (1, 5), (0, 2)],
     )));
 }

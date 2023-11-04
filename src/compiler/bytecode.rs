@@ -39,6 +39,9 @@ pub enum Instruction {
     JmpIfTrue(i32),
     Jmp(i32),
     JmpIfFalsePop(i32),
+
+    #[cfg(debug_assertions)]
+    CheckStack(u8),
 }
 
 #[derive(PartialEq, Eq)]
@@ -67,7 +70,7 @@ impl Chunk {
         self.constants.get(c.0 as usize).expect("Invalid constant").clone()
     }
 
-    pub fn code(&self) -> &Vec<Instruction> {
+    pub const fn code(&self) -> &Vec<Instruction> {
         &self.code
     }
 

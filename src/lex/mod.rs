@@ -136,22 +136,21 @@ where
             trie_walker.walk(ch);
         }
         let identifier = trie_walker.get_res();
-        match identifier {
-            Some(id) => Token { ttype: id, line: self.line },
-            None => {
-                let s = clone_it.take(i).collect::<String>();
-                let id = self.vm.new_string(s.into());
-                Token {
-                    ttype: self.vm.identifiers().add_or_get(
-                        &id,
-                        if let Some(token) = lookup_keyword(&id) {
-                            token
-                        } else {
-                            TokenType::IDENTIFIER(id.clone())
-                        },
-                    ),
-                    line: self.line,
-                }
+        if let Some(id) = identifier {
+            Token { ttype: id, line: self.line }
+        } else {
+            let s = clone_it.take(i).collect::<String>();
+            let id = self.vm.new_string(s.into());
+            Token {
+                ttype: self.vm.identifiers().add_or_get(
+                    &id,
+                    if let Some(token) = lookup_keyword(&id) {
+                        token
+                    } else {
+                        TokenType::IDENTIFIER(id.clone())
+                    },
+                ),
+                line: self.line,
             }
         }
     }

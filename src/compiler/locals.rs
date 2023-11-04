@@ -55,6 +55,13 @@ impl Locals {
             .find(|(_, local)| &local.name == id)
             .map(|(i, _)| unsafe { i.try_into().unwrap_unchecked() })
     }
+
+    #[cfg(debug_assertions)]
+    #[must_use]
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.locals.len()
+    }
 }
 
 impl Local {

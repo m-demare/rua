@@ -34,18 +34,18 @@ impl CallFrame {
     }
 
     pub fn rel_jmp(&mut self, offset: isize) {
-        self.ip = (self.ip as isize + offset) as usize
+        self.ip = (self.ip as isize + offset) as usize;
     }
 
     pub fn read_constant(&self, c: Constant) -> RuaVal {
         self.function.chunk().read_constant(c)
     }
 
-    pub fn stack_start(&self) -> usize {
+    pub const fn stack_start(&self) -> usize {
         self.start
     }
 
-    pub fn id(&self) -> usize {
+    pub const fn id(&self) -> usize {
         self.id
     }
 

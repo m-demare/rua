@@ -73,6 +73,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn block(&mut self) -> Result<(), ParseError> {
         self.locals.begin_scope();
         let mut end_line = 0;
+        #[cfg(debug_assertions)]
+        self.instruction(I::CheckStack(self.locals.len() as u8), 0);
         while let Some(token) = self.peek_token() {
             match token.clone() {
                 Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
@@ -104,6 +106,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     ))
                 }
             }
+            #[cfg(debug_assertions)]
+            self.instruction(I::CheckStack(self.locals.len() as u8), 0);
         }
         let locals_in_scope = self.locals.end_scope();
         for _ in 0..locals_in_scope {
@@ -193,7 +197,13 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.instruction(I::Nil, line);
             }
             Some(Token { ttype: TT::LPAREN, .. }) => return self.group_expression(),
-            Some(t) => todo!("{t:?}"),
+            Some(Token { ttype: TT::FUNCTION, .. }) => todo!(),
+            Some(t) => {
+                return Err(ParseError::UnexpectedTokenWithErrorMsg(
+                    Box::new(t),
+                    "an expression".into(),
+                ))
+            }
             None => return Err(ParseError::UnexpectedEOF),
         }
         Ok(())
@@ -244,6 +254,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         break Ok(());
                     }
                 }
+                Some(Token { ttype: TT::DOT, .. }) => todo!(),
+                Some(Token { ttype: TT::LBRACK, .. }) => todo!(),
                 _ => break Ok(()),
             }
         }
@@ -280,7 +292,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
         let id = match self.next_token() {
             Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
-            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => id.clone(),
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => id,
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
                     t.into(),
@@ -323,7 +335,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     Some(I::GetGlobal) => {
                         self.pop_instruction();
                         debug_assert!(matches!(
-                            self.current_chunk().code().last(),
+                            self.current_chunk.code().last(),
                             Some(I::Constant(_))
                         ));
                         let t = self.next_token();
@@ -399,7 +411,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             }
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
-                    t.clone().into(),
+                    t.into(),
                     [TT::END, TT::ELSE, TT::ELSEIF].into(),
                 ))
             }
@@ -472,7 +484,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
-        let id = self.identifier()?;
+        let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt), Ok)?;
         let function = self.function(id.clone())?;
 
         if local {
@@ -546,7 +558,7 @@ pub enum Precedence {
     FieldAccess, // foo.bar, foo[bar]
 }
 
-pub(super) const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
+const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
     match op {
         BinaryOp::OR => Precedence::Or,
         BinaryOp::AND => Precedence::And,

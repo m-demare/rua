@@ -113,7 +113,7 @@ impl Vm {
                     match self.frames.pop() {
                         Some(f) => {
                             self.push(RuaVal::Nil);
-                            frame = f
+                            frame = f;
                         }
                         None => return Ok(RuaVal::Nil),
                     }
@@ -123,7 +123,7 @@ impl Vm {
                 }
                 Instruction::Constant(c) => {
                     let constant = frame.read_constant(c);
-                    self.push(constant)
+                    self.push(constant);
                 }
                 Instruction::Neg => {
                     catch!(self.unary_op(|v| Ok((-v.into_number()?).into())));
@@ -132,7 +132,7 @@ impl Vm {
                 Instruction::Sub => catch!(self.number_binary_op(|a, b| a - b)),
                 Instruction::Mul => catch!(self.number_binary_op(|a, b| a * b)),
                 Instruction::Div => catch!(self.number_binary_op(|a, b| a / b)),
-                Instruction::Pow => catch!(self.number_binary_op(|a, b| a.powf(b))),
+                Instruction::Pow => catch!(self.number_binary_op(f64::powf)),
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),
                 Instruction::Nil => self.push(RuaVal::Nil),
@@ -190,7 +190,7 @@ impl Vm {
                 }
                 Instruction::GetLocal(idx) => {
                     let val = self.stack_at(frame.stack_start() + idx as usize);
-                    self.push(val)
+                    self.push(val);
                 }
                 Instruction::JmpIfFalsePop(offset) => {
                     let val = self.pop();
@@ -212,6 +212,10 @@ impl Vm {
                 }
                 Instruction::Jmp(offset) => {
                     frame.rel_jmp(offset as isize - 1);
+                }
+                #[cfg(debug_assertions)]
+                Instruction::CheckStack(n_locals) => {
+                    debug_assert_eq!(frame.stack_start() + n_locals as usize, self.stack.len());
                 }
             }
         }
@@ -253,7 +257,7 @@ impl Vm {
     }
 
     fn push(&mut self, val: RuaVal) {
-        self.stack.push(val)
+        self.stack.push(val);
     }
 
     fn pop(&mut self) -> RuaVal {
@@ -266,7 +270,7 @@ impl Vm {
 
     fn drop(&mut self, n: usize) {
         debug_assert!(self.stack.len() >= n);
-        self.stack.truncate(self.stack.len() - n)
+        self.stack.truncate(self.stack.len() - n);
     }
 
     fn stack_at(&self, idx: usize) -> RuaVal {
@@ -274,7 +278,7 @@ impl Vm {
     }
 
     fn set_stack_at(&mut self, idx: usize, val: RuaVal) {
-        self.stack[idx] = val
+        self.stack[idx] = val;
     }
 
     pub fn identifiers(&mut self) -> &mut Trie<TokenType> {
@@ -301,7 +305,7 @@ impl Vm {
     }
 
     #[cfg(test)]
-    fn stack(&self) -> &Vec<RuaVal> {
+    const fn stack(&self) -> &Vec<RuaVal> {
         &self.stack
     }
 

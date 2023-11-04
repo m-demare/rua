@@ -111,8 +111,8 @@ impl Display for RuaType {
 impl Debug for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RuaVal::Function(func) => write!(f, "function ({})", func.pretty_name()),
-            RuaVal::NativeFunction(_) => write!(f, "native function"),
+            Self::Function(func) => write!(f, "function ({})", func.pretty_name()),
+            Self::NativeFunction(_) => write!(f, "native function"),
             _ => write!(f, "{self}"),
         }
     }
@@ -124,8 +124,8 @@ pub type StackTrace = Vec<(Rc<str>, usize)>;
 pub struct EvalErrorTraced(Box<(EvalError, StackTrace)>);
 
 impl EvalErrorTraced {
-    pub fn new(e: EvalError, stack_trace: StackTrace) -> EvalErrorTraced {
-        EvalErrorTraced(Box::new((e, stack_trace)))
+    pub fn new(e: EvalError, stack_trace: StackTrace) -> Self {
+        Self(Box::new((e, stack_trace)))
     }
 
     pub fn push_stack_trace(&mut self, name: Rc<str>, line: usize) {
@@ -165,7 +165,7 @@ impl Display for EvalErrorTraced {
 
 impl From<EvalError> for EvalErrorTraced {
     fn from(err: EvalError) -> Self {
-        EvalErrorTraced::new(err, StackTrace::new())
+        Self::new(err, StackTrace::new())
     }
 }
 
