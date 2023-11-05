@@ -33,7 +33,7 @@ pub enum Instruction {
     StrConcat,
     GetGlobal,
     SetGlobal,
-    Call(u16),
+    Call(u8),
     Pop,
     GetLocal(LocalHandle),
     SetLocal(LocalHandle),
@@ -204,6 +204,8 @@ pub enum ParseError {
     InvalidAssignLHS(usize),
     #[error("Cannot have more than 256 local variables in a given scope")]
     TooManyLocals,
+    #[error("Cannot pass more than 256 arguments to a function")]
+    TooManyArgs,
     #[error("Attempted to jmp too far (line {0})")]
     JmpTooFar(usize),
 }

@@ -204,3 +204,19 @@ fn test_table_field_access() {
         return a[false]",
         |_| Ok(RuaVal::Nil));
 }
+
+#[test]
+fn test_functions_with_different_nargs() {
+    test_interpret("
+    function foo(a, b, c)
+        return c
+    end
+    return foo()", |_| Ok(RuaVal::Nil));
+    test_interpret("
+    function foo(arg)
+        return arg
+    end
+    return foo(1, 2)", |_| Ok(1.0.into()));
+}
+
+

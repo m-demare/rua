@@ -160,7 +160,13 @@ impl Vm {
                     let func = self.peek(nargs as usize);
                     match func {
                         RuaVal::Function(f) => {
-                            let stack_start_pos = self.get_frame_start(nargs as usize);
+                            if f.arity() < nargs {
+                                self.drop((nargs - f.arity()) as usize);
+                            }
+                            for _ in 0..f.arity().saturating_sub(nargs) {
+                                self.push(RuaVal::Nil);
+                            }
+                            let stack_start_pos = self.get_frame_start(f.arity() as usize);
                             #[cfg(test)]
                             println!("Started tracing {f:?}, starting at stack {stack_start_pos}");
                             self.frames.push(frame);

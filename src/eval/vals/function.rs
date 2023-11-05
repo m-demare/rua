@@ -59,6 +59,10 @@ impl Function {
             self.inner.name.inner()
         }
     }
+
+    pub fn arity(&self) -> u8 {
+        self.inner.arity
+    }
 }
 
 impl NativeFunction {

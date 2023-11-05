@@ -400,12 +400,15 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn arg_list(&mut self) -> Result<u16, ParseError> {
+    fn arg_list(&mut self) -> Result<u8, ParseError> {
         let mut cant_args = 0;
         if match_token!(self, TT::RPAREN) {
             return Ok(cant_args);
         }
         while {
+            if cant_args == u8::MAX {
+                return Err(ParseError::TooManyArgs);
+            }
             cant_args += 1;
             self.expression(Precedence::Lowest)?;
             match_token!(self, TT::COMMA)
