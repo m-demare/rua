@@ -184,12 +184,12 @@ impl Vm {
                         })),
                     }
                 }
-                Instruction::SetLocal(idx) => {
+                Instruction::SetLocal(local) => {
                     let val = self.pop();
-                    self.set_stack_at(frame.stack_start() + idx as usize, val);
+                    self.set_stack_at(frame.stack_start() + local.pos(), val);
                 }
-                Instruction::GetLocal(idx) => {
-                    let val = self.stack_at(frame.stack_start() + idx as usize);
+                Instruction::GetLocal(local) => {
+                    let val = self.stack_at(frame.stack_start() + local.pos());
                     self.push(val);
                 }
                 Instruction::JmpIfFalsePop(offset) => {

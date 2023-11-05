@@ -6,6 +6,8 @@ use crate::{
     lex::tokens::{Token, TokenType},
 };
 
+use super::locals::LocalHandle;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
     Return,
@@ -33,8 +35,8 @@ pub enum Instruction {
     SetGlobal,
     Call(u16),
     Pop,
-    GetLocal(u8),
-    SetLocal(u8),
+    GetLocal(LocalHandle),
+    SetLocal(LocalHandle),
     JmpIfFalse(i32),
     JmpIfTrue(i32),
     Jmp(i32),
@@ -196,7 +198,9 @@ pub enum ParseError {
     UnexpectedExpression(usize),
     #[error("Unexpected end of file")]
     UnexpectedEOF,
-    #[error("Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS (line {0})")]
+    #[error(
+        "Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS (line {0})"
+    )]
     InvalidAssignLHS(usize),
     #[error("Cannot have more than 256 local variables in a given scope")]
     TooManyLocals,

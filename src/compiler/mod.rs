@@ -74,7 +74,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.locals.begin_scope();
         let mut end_line = 0;
         #[cfg(debug_assertions)]
-        self.instruction(I::CheckStack(self.locals.len() as u8), 0);
+        self.instruction(I::CheckStack(self.locals.len()), 0);
         while let Some(token) = self.peek_token() {
             match token.clone() {
                 Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
@@ -107,7 +107,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 }
             }
             #[cfg(debug_assertions)]
-            self.instruction(I::CheckStack(self.locals.len() as u8), 0);
+            self.instruction(I::CheckStack(self.locals.len()), 0);
         }
         let locals_in_scope = self.locals.end_scope();
         for _ in 0..locals_in_scope {
@@ -264,7 +264,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     } else {
                         break Ok(());
                     }
-                },
+                }
                 Some(Token { ttype: TT::LBRACK, line, .. }) => {
                     if precedence < Precedence::FieldAccess {
                         self.next_token();
@@ -454,7 +454,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let exit_jmp = self.jmp_if_false_pop(i32::MAX, line);
         self.block()?;
 
-        let offset = Chunk::offset(loop_start, self.current_chunk().code().len()).or(Err(ParseError::JmpTooFar(line)))?;
+        let offset = Chunk::offset(loop_start, self.current_chunk().code().len())
+            .or(Err(ParseError::JmpTooFar(line)))?;
         self.loop_to(offset, line);
         self.patch_jmp(exit_jmp, line)?;
         consume!(self; (TT::END));
@@ -593,7 +594,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                             I::GetLocal(idx) => {
                                 self.pop_instruction();
                                 let name = self.locals.get(idx);
-                                self.emit_constant(name.into(), line)
+                                self.emit_constant(name.into(), line);
                             }
                             I::Constant(c) => match self.current_chunk().read_constant(c) {
                                 RuaVal::String(_) => {}
@@ -609,15 +610,14 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Some(Token { ttype: TT::ASSIGN, .. }) => {
                     self.next_token();
                     self.expression(Precedence::Lowest)?;
-                    ops.push(I::InsertKeyVal)
+                    ops.push(I::InsertKeyVal);
                 }
-                Some(Token { ttype: TT::RBRACE, .. }) => {}
+                Some(Token { ttype: TT::RBRACE, .. }) | None => {}
                 Some(Token { line, .. }) => {
                     ops.push(I::InsertValKey);
                     arr_count += 1;
                     self.emit_constant((arr_count as f64).into(), line);
                 }
-                None => {}
             }
 
             match_token!(self, TT::COMMA, TT::SEMICOLON)

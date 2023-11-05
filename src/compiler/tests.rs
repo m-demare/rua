@@ -3,7 +3,7 @@
 use crate::{compiler::bytecode::{Chunk, Instruction as I, Constant}, eval::{Vm, vals::IntoRuaVal}};
 
 use pretty_assertions::assert_eq;
-use super::{bytecode::ParseError, compile};
+use super::{bytecode::ParseError, compile, locals::LocalHandle};
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F){
     let mut vm = Vm::new();
@@ -64,7 +64,7 @@ fn test_locals() {
             I::Constant(Constant(1)),
             I::Add,
             I::CheckStack(1),
-            I::GetLocal(0),
+            I::GetLocal(LocalHandle(0)),
             I::Return,
             I::CheckStack(1),
             I::Pop,
@@ -89,11 +89,11 @@ fn test_locals() {
             I::CheckStack(1),
             I::Constant(Constant(2)),
             I::CheckStack(2),
-            I::GetLocal(0),
-            I::GetLocal(1),
+            I::GetLocal(LocalHandle(0)),
+            I::GetLocal(LocalHandle(1)),
             I::Add,
             I::CheckStack(3),
-            I::GetLocal(2),
+            I::GetLocal(LocalHandle(2)),
             I::Return,
             I::CheckStack(3),
             I::Pop,

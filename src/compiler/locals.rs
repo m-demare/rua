@@ -14,6 +14,14 @@ pub(super) struct Locals {
     scope_depth: usize,
 }
 
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalHandle(u8);
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalHandle(pub u8);
+
 impl Locals {
     pub fn new() -> Self {
         Self { locals: Vec::with_capacity(MAX_LOCALS as usize), scope_depth: 0 }
@@ -45,7 +53,7 @@ impl Locals {
         Ok(())
     }
 
-    pub fn resolve(&self, id: &RuaString) -> Option<u8> {
+    pub fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
         // SAFETY: self.locals is only pushed to in `declare`, where
         // it is checked that it doesn't exceed u8::MAX
         self.locals
@@ -53,18 +61,25 @@ impl Locals {
             .enumerate()
             .rev()
             .find(|(_, local)| &local.name == id)
-            .map(|(i, _)| unsafe { i.try_into().unwrap_unchecked() })
+            .map(|(i, _)| LocalHandle(unsafe { i.try_into().unwrap_unchecked() }))
     }
 
-    pub fn get(&self, idx: u8) -> RuaString {
-        self.locals[idx as usize].name.clone()
+    pub fn get(&self, handle: LocalHandle) -> RuaString {
+        self.locals[handle.0 as usize].name.clone()
     }
 
     #[cfg(debug_assertions)]
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.locals.len()
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn len(&self) -> u8 {
+        self.locals.len() as u8
+    }
+}
+
+impl LocalHandle {
+    pub const fn pos(&self) -> usize {
+        self.0 as usize
     }
 }
 
