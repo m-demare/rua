@@ -38,7 +38,7 @@ macro_rules! consume {
             None => return Err(ParseError::UnexpectedEOF),
         }
     };
-    ($compiler: expr, $($args: tt),+) => {
+    ($compiler: expr; $($args: tt),+) => {
         consume!($compiler, false, $($args),+)
     };
     ($compiler: expr; allow_eof, $($args: tt),+) => {

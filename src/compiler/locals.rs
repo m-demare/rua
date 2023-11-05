@@ -56,6 +56,10 @@ impl Locals {
             .map(|(i, _)| unsafe { i.try_into().unwrap_unchecked() })
     }
 
+    pub fn get(&self, idx: u8) -> RuaString {
+        self.locals[idx as usize].name.clone()
+    }
+
     #[cfg(debug_assertions)]
     #[must_use]
     #[allow(clippy::len_without_is_empty)]

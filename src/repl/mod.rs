@@ -25,7 +25,7 @@ pub fn run() -> io::Result<()> {
             Ok(prog) => {
                 print_res(vm.interpret(prog));
             }
-            Err(ParseError::UnexpectedExpression | ParseError::UnexpectedEOF) => {
+            Err(ParseError::UnexpectedExpression(_) | ParseError::UnexpectedEOF) => {
                 let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
                 match prog {
                     Ok(prog) => {

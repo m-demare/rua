@@ -123,7 +123,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn group_expression(&mut self) -> Result<(), ParseError> {
         self.expression(Precedence::Lowest)?;
-        consume!(self, (TT::RPAREN));
+        consume!(self; (TT::RPAREN));
         Ok(())
     }
 
@@ -197,6 +197,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.instruction(I::Nil, line);
             }
             Some(Token { ttype: TT::LPAREN, .. }) => return self.group_expression(),
+            Some(Token { ttype: TT::LBRACE, line, .. }) => return self.table_literal(line),
             Some(Token { ttype: TT::FUNCTION, .. }) => todo!(),
             Some(t) => {
                 return Err(ParseError::UnexpectedTokenWithErrorMsg(
@@ -254,8 +255,26 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         break Ok(());
                     }
                 }
-                Some(Token { ttype: TT::DOT, .. }) => todo!(),
-                Some(Token { ttype: TT::LBRACK, .. }) => todo!(),
+                Some(Token { ttype: TT::DOT, line, .. }) => {
+                    if precedence < Precedence::FieldAccess {
+                        self.next_token();
+                        let id = self.identifier()?;
+                        self.emit_constant(id.into(), line);
+                        self.instruction(I::Index, line);
+                    } else {
+                        break Ok(());
+                    }
+                },
+                Some(Token { ttype: TT::LBRACK, line, .. }) => {
+                    if precedence < Precedence::FieldAccess {
+                        self.next_token();
+                        self.expression(Precedence::Lowest)?;
+                        self.instruction(I::Index, line);
+                        consume!(self; (TT::RBRACK));
+                    } else {
+                        break Ok(());
+                    }
+                }
                 _ => break Ok(()),
             }
         }
@@ -331,8 +350,14 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.expression(Precedence::Lowest)?;
         match self.peek_token().cloned() {
             Some(Token { ttype: TT::ASSIGN, line, .. }) => {
-                match self.current_chunk().code().last().cloned() {
-                    Some(I::GetGlobal) => {
+                match self
+                    .current_chunk()
+                    .code()
+                    .last()
+                    .cloned()
+                    .expect("Just parsed an expression")
+                {
+                    I::GetGlobal => {
                         self.pop_instruction();
                         debug_assert!(matches!(
                             self.current_chunk.code().last(),
@@ -343,15 +368,14 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         self.expression(Precedence::Lowest)?;
                         self.instruction(I::SetGlobal, line);
                     }
-                    Some(I::GetLocal(idx)) => {
+                    I::GetLocal(idx) => {
                         self.pop_instruction();
                         let t = self.next_token();
                         debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
                         self.expression(Precedence::Lowest)?;
                         self.instruction(I::SetLocal(idx), line);
                     }
-                    Some(_) => todo!("handle field access; return error if invalid"),
-                    None => unreachable!("Just parsed an expression"),
+                    _ => todo!("handle field access; return error if invalid"),
                 }
             }
             _ => {
@@ -360,7 +384,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         // It's a call statement, gotta pop the return value
                         self.instruction(I::Pop, line);
                     }
-                    _ => return Err(ParseError::UnexpectedExpression),
+                    _ => return Err(ParseError::UnexpectedExpression(line)),
                 }
             }
         }
@@ -381,12 +405,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         if match_token!(self, TT::RPAREN) {
             return Ok(cant_args);
         }
-        while ({
+        while {
             cant_args += 1;
             self.expression(Precedence::Lowest)?;
             match_token!(self, TT::COMMA)
-        }) {}
-        consume!(self, (TT::RPAREN));
+        } {}
+        consume!(self; (TT::RPAREN));
         Ok(cant_args)
     }
 
@@ -394,20 +418,20 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::IF);
         self.next_token();
         self.expression(Precedence::Lowest)?;
-        consume!(self, (TT::THEN));
+        consume!(self; (TT::THEN));
         let if_jmp = self.jmp_if_false_pop(i32::MAX, line);
         self.block()?;
 
         match self.next_token() {
             Some(Token { ttype: TT::END, .. }) => {
-                self.patch_jmp(if_jmp)?;
+                self.patch_jmp(if_jmp, line)?;
             }
-            Some(Token { ttype: TT::ELSE, .. }) => {
+            Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
                 let else_jmp = self.jmp(0, line);
-                self.patch_jmp(if_jmp)?;
+                self.patch_jmp(if_jmp, line)?;
                 self.block()?;
-                self.patch_jmp(else_jmp)?;
-                consume!(self, (TT::END));
+                self.patch_jmp(else_jmp, line_else)?;
+                consume!(self; (TT::END));
             }
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
@@ -426,14 +450,14 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.next_token();
         let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
-        consume!(self, (TT::DO));
+        consume!(self; (TT::DO));
         let exit_jmp = self.jmp_if_false_pop(i32::MAX, line);
         self.block()?;
 
-        let offset = Chunk::offset(loop_start, self.current_chunk().code().len())?;
+        let offset = Chunk::offset(loop_start, self.current_chunk().code().len()).or(Err(ParseError::JmpTooFar(line)))?;
         self.loop_to(offset, line);
-        self.patch_jmp(exit_jmp)?;
-        consume!(self, (TT::END));
+        self.patch_jmp(exit_jmp, line)?;
+        consume!(self; (TT::END));
 
         Ok(())
     }
@@ -458,8 +482,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.instruction(I::JmpIfTrue(to), line)
     }
 
-    fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
-        self.current_chunk().patch_jmp(jmp)
+    fn patch_jmp(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
+        self.current_chunk().patch_jmp(jmp, line)
     }
 
     fn and(&mut self, line: usize) -> Result<(), ParseError> {
@@ -468,7 +492,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
         self.expression(Precedence::And)?;
 
-        self.patch_jmp(jmp)?;
+        self.patch_jmp(jmp, line)?;
         Ok(())
     }
 
@@ -478,13 +502,13 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
         self.expression(Precedence::Or)?;
 
-        self.patch_jmp(jmp)?;
+        self.patch_jmp(jmp, line)?;
 
         Ok(())
     }
 
     fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
-        let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt), Ok)?;
+        let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt(line)), Ok)?;
         let function = self.function(id.clone())?;
 
         if local {
@@ -499,7 +523,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn function(&mut self, id: RuaString) -> Result<Function, ParseError> {
-        consume!(self, (TT::LPAREN));
+        consume!(self; (TT::LPAREN));
         let mut locals = Locals::new();
         locals.declare(id.clone())?;
         let arity = self.parameter_list(&mut locals)?;
@@ -514,7 +538,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         };
         let compiler = Self::for_function(tokens, locals, id, arity);
         let retval = compiler.compile();
-        consume!(self, (TT::END));
+        consume!(self; (TT::END));
         retval
     }
 
@@ -523,13 +547,91 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         if match_token!(self, TT::RPAREN) {
             return Ok(arity);
         }
-        while ({
+        while {
             arity += 1;
             locals.declare(self.identifier()?)?;
             match_token!(self, TT::COMMA)
-        }) {}
-        consume!(self, (TT::RPAREN));
+        } {}
+        consume!(self; (TT::RPAREN));
         Ok(arity)
+    }
+
+    fn table_literal(&mut self, line: usize) -> Result<(), ParseError> {
+        let mut ops = Vec::new();
+        let mut arr_count = 0;
+        while {
+            match self.peek_token().cloned() {
+                Some(Token { ttype: TT::LBRACK, .. }) => {
+                    self.next_token();
+                    self.expression(Precedence::Lowest)?;
+                    consume!(self; (TT::RBRACK));
+                    match self.peek_token() {
+                        Some(Token { ttype: TT::ASSIGN, .. }) => {}
+                        Some(t) => {
+                            return Err(ParseError::UnexpectedToken(
+                                t.clone().into(),
+                                [TT::ASSIGN].into(),
+                            ))
+                        }
+                        None => return Err(ParseError::UnexpectedEOF),
+                    }
+                }
+                Some(Token { ttype: TT::RBRACE, .. }) => {}
+                Some(Token { line, .. }) => {
+                    self.expression(Precedence::Lowest)?;
+                    if peek_token_is!(self, TT::ASSIGN) {
+                        match self
+                            .current_chunk()
+                            .code()
+                            .last()
+                            .cloned()
+                            .expect("Just parsed an expression")
+                        {
+                            I::GetGlobal => {
+                                self.pop_instruction();
+                            }
+                            I::GetLocal(idx) => {
+                                self.pop_instruction();
+                                let name = self.locals.get(idx);
+                                self.emit_constant(name.into(), line)
+                            }
+                            I::Constant(c) => match self.current_chunk().read_constant(c) {
+                                RuaVal::String(_) => {}
+                                _ => return Err(ParseError::InvalidAssignLHS(line)),
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+                None => return Err(ParseError::UnexpectedEOF),
+            }
+            match self.peek_token().cloned() {
+                Some(Token { ttype: TT::ASSIGN, .. }) => {
+                    self.next_token();
+                    self.expression(Precedence::Lowest)?;
+                    ops.push(I::InsertKeyVal)
+                }
+                Some(Token { ttype: TT::RBRACE, .. }) => {}
+                Some(Token { line, .. }) => {
+                    ops.push(I::InsertValKey);
+                    arr_count += 1;
+                    self.emit_constant((arr_count as f64).into(), line);
+                }
+                None => {}
+            }
+
+            match_token!(self, TT::COMMA, TT::SEMICOLON)
+        } {}
+        consume!(self; (TT::RBRACE));
+
+        // TODO table with reserved capacity,
+        // push multiple elements at once
+        self.instruction(I::NewTable, line);
+        for op in ops.into_iter().rev() {
+            self.instruction(op, line);
+        }
+
+        Ok(())
     }
 }
 

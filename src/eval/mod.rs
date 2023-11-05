@@ -81,7 +81,7 @@ impl Vm {
                         self.frames.push(frame);
                         return Err(EvalErrorTraced::new(e, StackTrace::new()));
                     }
-                    _ => {}
+                    Ok(val) => val,
                 }
             };
         }
@@ -212,6 +212,33 @@ impl Vm {
                 }
                 Instruction::Jmp(offset) => {
                     frame.rel_jmp(offset as isize - 1);
+                }
+                Instruction::NewTable => {
+                    self.push(RuaVal::Table(Table::new()));
+                }
+                Instruction::InsertKeyVal => {
+                    let table = self.peek(0);
+                    let val = self.peek(1);
+                    let key = self.peek(2);
+                    let mut table = catch!(table.into_table());
+                    table.insert(key, val);
+                    self.drop(3);
+                    self.push(table.into());
+                }
+                Instruction::InsertValKey => {
+                    let table = self.peek(0);
+                    let key = self.peek(1);
+                    let val = self.peek(2);
+                    let mut table = catch!(table.into_table());
+                    table.insert(key, val);
+                    self.drop(3);
+                    self.push(table.into());
+                }
+                Instruction::Index => {
+                    let key = self.pop();
+                    let table = self.pop();
+                    let table = catch!(table.into_table());
+                    self.push(table.get(&key).into());
                 }
                 #[cfg(debug_assertions)]
                 Instruction::CheckStack(n_locals) => {

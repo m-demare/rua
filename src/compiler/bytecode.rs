@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 use crate::{
@@ -42,6 +42,10 @@ pub enum Instruction {
 
     #[cfg(debug_assertions)]
     CheckStack(u8),
+    NewTable,
+    InsertKeyVal,
+    InsertValKey,
+    Index,
 }
 
 #[derive(PartialEq, Eq)]
@@ -103,14 +107,14 @@ impl Chunk {
         self.code.pop()
     }
 
-    pub fn patch_jmp(&mut self, jmp: usize) -> Result<(), ParseError> {
+    pub fn patch_jmp(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
         use Instruction as I;
         debug_assert!(matches!(
             self.code[jmp],
             I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
         ));
 
-        let offset = Self::offset(self.code.len(), jmp)?;
+        let offset = Self::offset(self.code.len(), jmp).or(Err(ParseError::JmpTooFar(line)))?;
 
         match self.code[jmp] {
             I::JmpIfFalsePop(_) => self.code[jmp] = I::JmpIfFalsePop(offset),
@@ -123,9 +127,9 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn offset(from: usize, to: usize) -> Result<i32, ParseError> {
+    pub fn offset(from: usize, to: usize) -> Result<i32, TryFromIntError> {
         let offset = from as isize - to as isize;
-        offset.try_into().or(Err(ParseError::JmpTooFar))
+        offset.try_into()
     }
 
     pub fn line_at(&self, mut ip: usize) -> usize {
@@ -184,20 +188,18 @@ pub enum ParseError {
     UnexpectedToken(Box<Token>, Box<[TokenType]>),
     #[error("Unexpected token. Got {:?}, expected {1}", .0.ttype)]
     UnexpectedTokenWithErrorMsg(Box<Token>, Box<str>),
-    // #[error("Cannot close block of type {0:?} with token {:?}", .1.ttype)]
-    // UnexpectedClose(Box<BlockType>, Box<Token>),
     #[error("Function expression cannot have a name (got {0:?})")]
     NamedFunctionExpr(RuaString),
-    #[error("Function statement must have a name")]
-    UnnamedFunctionSt,
-    #[error("Expected statement, got expression")]
-    UnexpectedExpression,
+    #[error("Function statement must have a name (line {0})")]
+    UnnamedFunctionSt(usize),
+    #[error("Expected statement, got expression (line {0})")]
+    UnexpectedExpression(usize),
     #[error("Unexpected end of file")]
     UnexpectedEOF,
-    #[error("Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS")]
-    InvalidAssignLHS,
+    #[error("Only Identifier, FieldAccess or Index exprssions are allowed as assignment LHS (line {0})")]
+    InvalidAssignLHS(usize),
     #[error("Cannot have more than 256 local variables in a given scope")]
     TooManyLocals,
-    #[error("Attempted to jmp too far")]
-    JmpTooFar,
+    #[error("Attempted to jmp too far (line {0})")]
+    JmpTooFar(usize),
 }

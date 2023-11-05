@@ -168,3 +168,39 @@ fn test_native_non_native_nested() {
     return foo()", |_| Ok(7.0.into()));
 }
 
+
+#[test]
+fn test_table_index() {
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[1]",
+        |_| Ok(1.0.into()));
+    test_interpret("
+        local a = {1, b = true, 3, [2+3] = false}
+        return a[2]",
+        |_| Ok(3.0.into()));
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a['b']",
+        |_| Ok(true.into()));
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[5]",
+        |_| Ok(false.into()));
+}
+
+#[test]
+fn test_table_field_access() {
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.b",
+        |_| Ok(true.into()));
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.c",
+        |_| Ok(RuaVal::Nil));
+    test_interpret("
+        local a = {1, b = true, 2, [2+3] = false}
+        return a[false]",
+        |_| Ok(RuaVal::Nil));
+}
