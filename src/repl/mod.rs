@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::eval::vals::function::Function;
+use crate::eval::vals::closure::Closure;
 use crate::{
     compiler::{bytecode::ParseError, compile},
     eval::{
@@ -23,13 +23,13 @@ pub fn run() -> io::Result<()> {
 
         match prog {
             Ok(prog) => {
-                print_res(vm.interpret(prog));
+                print_res(vm.interpret(prog.into()));
             }
             Err(ParseError::UnexpectedExpression(_) | ParseError::UnexpectedEOF) => {
                 let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
                 match prog {
                     Ok(prog) => {
-                        print_res(vm.interpret(prog));
+                        print_res(vm.interpret(prog.into()));
                     }
                     Err(err) => println!("Error: {err}"),
                 }
@@ -49,6 +49,6 @@ fn print_res(val: Result<RuaVal, EvalErrorTraced>) {
 fn parse_chars<T: Iterator<Item = char> + Clone>(
     input: T,
     vm: &mut Vm,
-) -> Result<Function, ParseError> {
+) -> Result<Closure, ParseError> {
     compile(input, vm)
 }

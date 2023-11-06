@@ -22,6 +22,7 @@ rua_func_macros = { path = "./lib/func_macros" }
 rua_identifiers = { path = "./lib/identifiers" }
 once_cell = "1.18.0"
 weak-table = "0.3.2"
+either = "1.9.0"
 
 [profile.release]
 opt-level = 3

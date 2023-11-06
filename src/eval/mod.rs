@@ -2,12 +2,14 @@ pub mod native_functions;
 pub mod vals;
 
 use std::{
+    cell::RefCell,
     hash::BuildHasherDefault,
     rc::{Rc, Weak},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::vals::{IntoRuaVal, RuaType, StackTrace};
+use crate::eval::vals::{closure::Closure, IntoRuaVal, RuaType, StackTrace};
+use either::Either::{self, Left, Right};
 use rua_identifiers::Trie;
 use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
@@ -23,7 +25,7 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{function::Function, EvalErrorTraced, RuaResult, RuaResultUntraced},
+    vals::{EvalErrorTraced, RuaResult, RuaResultUntraced, UpvalueObj},
 };
 
 mod call_frame;
@@ -37,6 +39,7 @@ pub struct Vm {
     global: Table,
     identifiers: Trie<TokenType>,
     strings: WeakKeyHashMap<Weak<str>, StringId, BuildHasherDefault<FxHasher>>,
+    open_upvalues: Vec<UpvalueObj>,
 }
 
 impl Vm {
@@ -47,6 +50,7 @@ impl Vm {
             global: Table::new(),
             identifiers: Trie::new(),
             strings: WeakKeyHashMap::default(),
+            open_upvalues: Vec::new(),
         };
         let mut global = default_global(&mut vm);
         global.insert(Into::<Rc<str>>::into("_G").into_rua(&mut vm), RuaVal::Table(global.clone()));
@@ -54,11 +58,14 @@ impl Vm {
         vm
     }
 
-    pub fn interpret(&mut self, function: Function) -> RuaResult {
+    pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
         let first_frame_start = self.stack.len().saturating_sub(1); // Top level function isn't pushed to the stack
         #[cfg(test)]
-        println!("Started tracing {function:?}, starting at stack {first_frame_start}\n\n");
-        let frame = CallFrame::new(function, first_frame_start);
+        println!(
+            "Started tracing {:?}, starting at stack {first_frame_start}\n\n",
+            closure.function()
+        );
+        let frame = CallFrame::new(closure, first_frame_start);
         let first_frame_id = frame.id();
         match self.interpret_error_boundary(frame) {
             Ok(v) => Ok(v),
@@ -92,6 +99,7 @@ impl Vm {
             let instr = frame.curr_instr();
             match instr {
                 Instruction::Return => {
+                    self.close_upvalues(frame.stack_start());
                     let retval = self.pop();
                     self.stack.truncate(frame.stack_start());
                     if frame.id() == first_frame_id {
@@ -106,6 +114,7 @@ impl Vm {
                     }
                 }
                 Instruction::ReturnNil => {
+                    self.close_upvalues(frame.stack_start());
                     self.stack.truncate(frame.stack_start());
                     if frame.id() == first_frame_id {
                         return Ok(RuaVal::Nil);
@@ -159,18 +168,22 @@ impl Vm {
                 Instruction::Call(nargs) => {
                     let func = self.peek(nargs as usize);
                     match func {
-                        RuaVal::Function(f) => {
-                            if f.arity() < nargs {
-                                self.drop((nargs - f.arity()) as usize);
+                        RuaVal::Closure(closure) => {
+                            if closure.function().arity() < nargs {
+                                self.drop((nargs - closure.function().arity()) as usize);
                             }
-                            for _ in 0..f.arity().saturating_sub(nargs) {
+                            for _ in 0..closure.function().arity().saturating_sub(nargs) {
                                 self.push(RuaVal::Nil);
                             }
-                            let stack_start_pos = self.get_frame_start(f.arity() as usize);
+                            let stack_start_pos =
+                                self.get_frame_start(closure.function().arity() as usize);
                             #[cfg(test)]
-                            println!("Started tracing {f:?}, starting at stack {stack_start_pos}");
+                            println!(
+                                "Started tracing {:?}, starting at stack {stack_start_pos}",
+                                closure.function()
+                            );
                             self.frames.push(frame);
-                            frame = CallFrame::new(f, stack_start_pos);
+                            frame = CallFrame::new(closure, stack_start_pos);
                         }
                         RuaVal::NativeFunction(f) => {
                             let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
@@ -246,9 +259,55 @@ impl Vm {
                     let table = catch!(table.into_table());
                     self.push(table.get(&key).into());
                 }
+                Instruction::Closure(c) => {
+                    let constant = frame.read_constant(c);
+                    if let RuaVal::Function(f) = constant {
+                        let upvalue_count = f.upvalue_count();
+                        let mut closure = Closure::new(f);
+                        for _ in 0..upvalue_count {
+                            if let Instruction::Upvalue(up) = frame.curr_instr() {
+                                match up.get() {
+                                    Left(local) => self.capture_upvalue(
+                                        &mut closure,
+                                        frame.stack_start() + local.pos(),
+                                    ),
+                                    Right(upvalue) => {
+                                        closure.push_upvalue(frame.closure().get_upvalue(upvalue));
+                                    }
+                                }
+                            } else {
+                                unreachable!(
+                                    "Expected {upvalue_count} upvalues after this closure"
+                                );
+                            }
+                        }
+                        self.push(RuaVal::Closure(closure.into()));
+                    } else {
+                        unreachable!(
+                            "Shouldn't try to create closure out of a non-function object"
+                        );
+                    }
+                }
+                Instruction::CloseUpvalue => {
+                    self.close_upvalues(self.stack.len() - 1);
+                    self.pop();
+                }
+                Instruction::GetUpvalue(up) => {
+                    let val = frame.closure().get_upvalue_val(self, up);
+                    self.push(val);
+                }
+                Instruction::SetUpvalue(up) => {
+                    let val = self.pop();
+                    frame.closure().set_upvalue(self, up, val);
+                }
+                Instruction::Upvalue(_) => unreachable!(),
                 #[cfg(debug_assertions)]
                 Instruction::CheckStack(n_locals) => {
-                    debug_assert_eq!(frame.stack_start() + n_locals as usize, self.stack.len());
+                    debug_assert_eq!(
+                        frame.stack_start() + n_locals as usize,
+                        self.stack.len(),
+                        "Stack invariant broken: statement had non-zero effect on stack. Expected size: {}",
+                        frame.stack_start() + n_locals as usize);
                 }
             }
         }
@@ -294,7 +353,7 @@ impl Vm {
     }
 
     fn pop(&mut self) -> RuaVal {
-        self.stack.pop().unwrap()
+        self.stack.pop().expect("Stack shouldn't be empty")
     }
 
     fn peek(&self, back: usize) -> RuaVal {
@@ -327,6 +386,40 @@ impl Vm {
             }),
         };
         RuaString::new(s, string_id)
+    }
+
+    fn capture_upvalue(&mut self, closure: &mut Closure, pos: usize) {
+        let existing = self.open_upvalues.iter().find(|up| {
+            let up: &Either<usize, RuaVal> = &up.borrow();
+            match up {
+                Left(up_pos) => *up_pos == pos,
+                Right(_) => unreachable!("upvalue in open_upvalues is closed"),
+            }
+        });
+        if let Some(up) = existing {
+            closure.push_upvalue(up.clone());
+        } else {
+            let up = Rc::new(RefCell::new(Left(pos)));
+            self.open_upvalues.push(up.clone());
+            closure.push_upvalue(up);
+        }
+    }
+
+    fn close_upvalues(&mut self, last: usize) {
+        self.open_upvalues.retain(|up| {
+            let up_pos = {
+                let up: &Either<usize, RuaVal> = &up.borrow();
+                match up {
+                    Left(up_pos) => *up_pos,
+                    Right(_) => unreachable!("upvalue in open_upvalues is closed"),
+                }
+            };
+            let close = up_pos >= last;
+            if close {
+                up.replace(Right(std::mem::replace(&mut self.stack[up_pos], RuaVal::Nil)));
+            }
+            !close
+        });
     }
 
     #[cfg(test)] // TODO add cfg for tracing

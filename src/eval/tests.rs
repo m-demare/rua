@@ -11,7 +11,7 @@ fn test_interpret<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalErrorTraced>>(input: 
 
     let prog = compile(input.chars(), &mut vm).expect("Failed to compile program");
 
-    let res = vm.interpret(prog);
+    let res = vm.interpret(prog.into());
     let expected = output(&mut vm);
     assert_eq!(res, expected);
     assert_eq!(vm.stack(), &Vec::new());
@@ -62,7 +62,7 @@ fn test_native_functions() {
     test_interpret("return tonumber('110', 2)", |_| Ok(6.0.into()));
     test_interpret("assert(false, 'custom error')", |vm| Err(EvalErrorTraced::new(
         EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
-        vec![("assert".into(), 0), ("<anonymous>".into(), 0)]
+        vec![("assert".into(), 0), ("<main>".into(), 0)]
     )));
     test_interpret("return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
     test_interpret("return pcall(assert, false)", |_| Ok(false.into()));
@@ -141,7 +141,7 @@ fn test_stack_trace() {
     end
     foo()", |_| Err(EvalErrorTraced::new(
         EvalError::TypeError { expected: RuaType::Number, got: RuaType::Nil },
-        vec![("bar".into(), 2), ("foo".into(), 5), ("<anonymous>".into(), 7)]
+        vec![("bar".into(), 2), ("foo".into(), 5), ("<main>".into(), 7)]
     )));
 
     test_interpret("function foo()
@@ -149,7 +149,7 @@ fn test_stack_trace() {
     end
     foo()", |vm| Err(EvalErrorTraced::new(
         EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
-        vec![("assert".into(), 0), ("foo".into(), 1), ("<anonymous>".into(), 3)]
+        vec![("assert".into(), 0), ("foo".into(), 1), ("<main>".into(), 3)]
     )));
 }
 
@@ -219,4 +219,97 @@ fn test_functions_with_different_nargs() {
     return foo(1, 2)", |_| Ok(1.0.into()));
 }
 
+#[test]
+fn test_closures() {
+    test_interpret("
+    local val = 1337
+    local function foo()
+        return val
+    end
+    return foo()", |_| Ok(1337.0.into()));
+    test_interpret("
+    local val = 1337
+    local function foo()
+        val = 123
+    end
+    foo()
+    return val", |_| Ok(123.0.into()));
+
+    test_interpret("
+    local function foo()
+        local val = 3
+        local function bar()
+            return val
+        end
+        local function baz()
+            val = val + 2
+            return val
+        end
+        local ret = bar()
+        ret = ret + baz()
+        ret = ret * bar()
+        return ret
+    end
+    return foo()", |_| Ok(40.0.into()));
+}
+
+#[test]
+fn test_closures_that_outlive_values() {
+    test_interpret("
+    local function foo()
+        local func
+        if true then
+            local val = 1337
+            local function bar()
+                return val
+            end
+            func = bar
+        end
+        return func()
+    end
+    return foo()", |_| Ok(1337.0.into()));
+
+    test_interpret("
+    local function foo()
+        local val = 1337
+        local function bar()
+            return val
+        end
+        return bar
+    end
+    local b = foo()
+    return b()", |_| Ok(1337.0.into()));
+
+    test_interpret("
+    local function foo()
+        local val = 1
+        local function create_set_and_get()
+            local function set(v)
+                val = v
+            end
+            local function get()
+                return val
+            end
+            return {set, get}
+        end
+        return create_set_and_get()
+    end
+    local t = foo()
+    set = t[1]
+    get = t[2]
+    local res = get()
+    set(5)
+    res = res + get()
+    return res", |_| Ok(6.0.into()));
+
+    test_interpret("
+    local function foo(n)
+        local function bar(m)
+            return n * n + m
+        end
+        return bar
+    end
+    local f = foo(3)
+    return f(5)", |_| Ok(14.0.into()));
+}
 

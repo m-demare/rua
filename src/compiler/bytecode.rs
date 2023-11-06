@@ -2,17 +2,21 @@ use std::{fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 use crate::{
-    eval::vals::{string::RuaString, RuaVal},
+    eval::vals::{function::Function, string::RuaString, RuaVal},
     lex::tokens::{Token, TokenType},
 };
 
-use super::locals::LocalHandle;
+use super::{
+    locals::LocalHandle,
+    upvalues::{Upvalue, UpvalueHandle, Upvalues},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
     Return,
     ReturnNil,
     Constant(Constant),
+    Closure(Constant),
     Neg,
     Add,
     Sub,
@@ -48,6 +52,10 @@ pub enum Instruction {
     InsertKeyVal,
     InsertValKey,
     Index,
+    GetUpvalue(UpvalueHandle),
+    SetUpvalue(UpvalueHandle),
+    Upvalue(Upvalue),
+    CloseUpvalue,
 }
 
 #[derive(PartialEq, Eq)]
@@ -78,6 +86,15 @@ impl Chunk {
 
     pub const fn code(&self) -> &Vec<Instruction> {
         &self.code
+    }
+
+    pub fn add_closure(&mut self, func: Function, upvalues: Upvalues, line: usize) {
+        let c = Constant(self.constants.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
+        self.constants.push(RuaVal::Function(func));
+        self.add_instruction(Instruction::Closure(c), line);
+        for up in upvalues {
+            self.add_instruction(Instruction::Upvalue(up), line);
+        }
     }
 
     pub fn add_constant(&mut self, val: RuaVal, line: usize) -> usize {

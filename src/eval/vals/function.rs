@@ -16,6 +16,7 @@ struct FunctionInner {
     chunk: Chunk,
     arity: u8,
     name: RuaString,
+    upvalue_count: u8,
     id: usize,
 }
 
@@ -36,13 +37,14 @@ pub struct FunctionContext<'vm> {
 }
 
 impl Function {
-    pub fn new(chunk: Chunk, arity: u8, name: RuaString) -> Self {
+    pub fn new(chunk: Chunk, arity: u8, name: RuaString, upvalue_count: u8) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self {
             inner: Rc::new(FunctionInner {
                 chunk,
                 arity,
                 name,
+                upvalue_count,
                 id: COUNTER.fetch_add(1, Ordering::Relaxed),
             }),
         }
@@ -62,6 +64,10 @@ impl Function {
 
     pub fn arity(&self) -> u8 {
         self.inner.arity
+    }
+
+    pub fn upvalue_count(&self) -> u8 {
+        self.inner.upvalue_count
     }
 }
 

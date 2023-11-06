@@ -11,8 +11,8 @@ macro_rules! peek_token_is {
 
 macro_rules! debug_peek_token {
     ($compiler: expr, $($args: pat),+) => {
-        if !peek_token_is!($compiler, $($args)+) {
-            debug_assert!(false);
+        if cfg!(debug_assertions) && !peek_token_is!($compiler, $($args)+) {
+            panic!("debug_peek_token failed");
         }
     };
 }

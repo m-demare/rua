@@ -7,6 +7,7 @@ const MAX_LOCALS: u8 = u8::MAX;
 pub(super) struct Local {
     name: RuaString,
     depth: usize,
+    is_captured: bool,
 }
 
 pub(super) struct Locals {
@@ -15,11 +16,11 @@ pub(super) struct Locals {
 }
 
 #[cfg(not(test))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalHandle(u8);
 
 #[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalHandle(pub u8);
 
 impl Locals {
@@ -31,18 +32,20 @@ impl Locals {
         self.scope_depth += 1;
     }
 
-    pub fn end_scope(&mut self) -> usize {
+    pub fn end_scope<F: FnMut(&Local)>(&mut self, mut applying: F) {
         self.scope_depth -= 1;
 
         let mut locals_in_scope = 0;
         for (i, local) in self.locals.iter().rev().enumerate() {
             if local.depth > self.scope_depth {
                 locals_in_scope = i + 1;
+                applying(local);
+            } else {
+                break;
             }
         }
 
         self.locals.truncate(self.locals.len() - locals_in_scope);
-        locals_in_scope
     }
 
     pub fn declare(&mut self, name: RuaString) -> Result<(), ParseError> {
@@ -75,16 +78,30 @@ impl Locals {
     pub fn len(&self) -> u8 {
         self.locals.len() as u8
     }
+
+    pub fn capture(&mut self, local: LocalHandle) {
+        self.locals[local.0 as usize].is_captured = true;
+    }
 }
 
 impl LocalHandle {
-    pub const fn pos(&self) -> usize {
+    pub const fn pos(self) -> usize {
         self.0 as usize
     }
 }
 
 impl Local {
-    pub(super) const fn new(name: RuaString, depth: usize) -> Self {
-        Self { name, depth }
+    const fn new(name: RuaString, depth: usize) -> Self {
+        Self { name, depth, is_captured: false }
+    }
+
+    pub const fn is_captured(&self) -> bool {
+        self.is_captured
+    }
+}
+
+impl Default for Locals {
+    fn default() -> Self {
+        Self::new()
     }
 }

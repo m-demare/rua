@@ -39,7 +39,7 @@ fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
 
     let prog = compile(contents.chars(), &mut vm)?;
 
-    let res = vm.interpret(prog);
+    let res = vm.interpret(prog.into());
     match res {
         Ok(_) => {}
         Err(eval_err) => {

@@ -10,9 +10,9 @@ fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, ou
     let res = compile(input.chars(), &mut vm);
 
     match (res, output(&mut vm)) {
-        (Ok(func), Ok(chunk)) => assert_eq!(func.chunk(), &chunk),
+        (Ok(closure), Ok(chunk)) => assert_eq!(closure.function().chunk(), &chunk),
         (Err(err), Ok(_)) => println!("Failed with error {err}"),
-        (Ok(func), Err(err)) => println!("Expedted {err}, got {func:?} instead"),
+        (Ok(closure), Err(err)) => println!("Expedted {err}, got {:?} instead", closure.function()),
         (Err(e1), Err(e2)) => assert_eq!(e1, e2),
     }
 }

@@ -1,9 +1,12 @@
+pub mod closure;
 pub mod function;
 pub mod number;
 pub mod string;
 pub mod table;
 
+use either::Either;
 use std::{
+    cell::RefCell,
     convert::Infallible,
     fmt::{self, Debug, Display},
     hint::unreachable_unchecked,
@@ -14,6 +17,7 @@ use thiserror::Error;
 use crate::eval::Vm;
 
 use self::{
+    closure::Closure,
     function::{Function, NativeFunction},
     number::RuaNumber,
     string::RuaString,
@@ -26,10 +30,13 @@ pub enum RuaVal {
     Bool(bool),
     Nil,
     Function(Function),
+    Closure(Rc<Closure>),
     String(RuaString),
     NativeFunction(NativeFunction),
     Table(Table),
 }
+
+pub type UpvalueObj = Rc<RefCell<Either<usize, RuaVal>>>;
 
 pub type RuaResult = Result<RuaVal, EvalErrorTraced>;
 pub type RuaResultUntraced = Result<RuaVal, EvalError>;
@@ -66,7 +73,7 @@ impl RuaVal {
             Self::Number(..) => RuaType::Number,
             Self::Bool(..) => RuaType::Bool,
             Self::Nil => RuaType::Nil,
-            Self::Function(..) | Self::NativeFunction(..) => RuaType::Function,
+            Self::Function(..) | Self::NativeFunction(..) | Self::Closure(..) => RuaType::Function,
             Self::String(..) => RuaType::String,
             Self::Table(..) => RuaType::Table,
         }
@@ -88,7 +95,9 @@ impl Display for RuaVal {
             Self::Number(n) => write!(f, "{}", n.val()),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
-            Self::Function(..) | Self::NativeFunction(..) => write!(f, "function"),
+            Self::Function(..) | Self::NativeFunction(..) | Self::Closure(..) => {
+                write!(f, "function")
+            }
             Self::String(s) => write!(f, "{s}"),
             Self::Table(t) => write!(f, "table: 0x{:x}", t.addr()),
         }
@@ -112,6 +121,7 @@ impl Debug for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Function(func) => write!(f, "function ({})", func.pretty_name()),
+            Self::Closure(closure) => write!(f, "function ({})", closure.function().pretty_name()),
             Self::NativeFunction(_) => write!(f, "native function"),
             _ => write!(f, "{self}"),
         }

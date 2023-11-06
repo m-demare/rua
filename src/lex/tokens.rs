@@ -53,7 +53,7 @@ pub enum TokenType {
     IDENTIFIER_DUMMY,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum BinaryOp {
     // Arithmetic operators
@@ -78,7 +78,7 @@ pub enum BinaryOp {
     DOTDOT,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
 pub enum UnaryOp {
     NOT,

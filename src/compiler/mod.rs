@@ -1,8 +1,10 @@
 use std::fmt::Debug;
 
+use either::Either::{self, Left, Right};
+
 use crate::{
     eval::{
-        vals::{function::Function, string::RuaString, RuaVal},
+        vals::{closure::Closure, function::Function, string::RuaString, RuaVal},
         Vm,
     },
     lex::{
@@ -13,68 +15,60 @@ use crate::{
 
 use self::{
     bytecode::{Chunk, Instruction as I, Instruction, ParseError},
-    locals::Locals,
+    locals::{LocalHandle, Locals},
+    upvalues::{UpvalueHandle, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
 };
 
 pub mod bytecode;
 mod locals;
 mod tests;
+pub mod upvalues;
 mod utils;
 
-enum FnType {
-    Function(u8, RuaString),
-    Script,
-}
-
 pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
-    tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>,
-    current_chunk: Chunk,
-    locals: Locals,
-    fn_type: FnType,
+    tokens: MyPeekable<Tokenizer<'vm, T>>,
+    context: CompilerCtxt,
+    context_stack: Vec<CompilerCtxt>,
 }
 
 #[allow(unused_parens)]
 impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
-    fn new(tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>) -> Self {
-        Self {
-            tokens,
-            current_chunk: Chunk::default(),
-            locals: Locals::new(),
-            fn_type: FnType::Script,
-        }
+    fn new(mut tokens: MyPeekable<Tokenizer<'vm, T>>) -> Self {
+        let name = tokens.inner().vm().new_string("<main>".into());
+        Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new() }
     }
 
-    fn for_function(
-        tokens: &'vm mut MyPeekable<Tokenizer<'vm, T>>,
-        locals: Locals,
-        name: RuaString,
-        arity: u8,
-    ) -> Self {
-        Self {
-            tokens,
-            current_chunk: Chunk::default(),
-            locals,
-            fn_type: FnType::Function(arity, name),
+    fn compile_fn(&mut self) -> Result<(Function, Upvalues), ParseError> {
+        self.block()?;
+        self.instruction(I::ReturnNil, 0);
+        if let Some(ctxt) = self.context_stack.pop() {
+            let fn_ctxt = std::mem::replace(&mut self.context, ctxt);
+            let arity = fn_ctxt.arity;
+            let name = fn_ctxt.name;
+            let func = Function::new(fn_ctxt.chunk, arity, name, fn_ctxt.upvalues.len());
+            Ok((func, fn_ctxt.upvalues))
+        } else {
+            unreachable!("compile_fn must have a parent context")
         }
     }
 
     pub fn compile(mut self) -> Result<Function, ParseError> {
         self.block()?;
         self.instruction(I::ReturnNil, 0);
-        Ok(match self.fn_type {
-            FnType::Function(arity, name) => Function::new(self.current_chunk, arity, name),
-            FnType::Script => {
-                Function::new(self.current_chunk, 0, self.tokens.inner().vm().new_string("".into()))
-            }
-        })
+
+        debug_assert!(self.context_stack.is_empty());
+        let arity = self.context.arity;
+        let name = self.context.name;
+        let func = Function::new(self.context.chunk, arity, name, 0);
+        Ok(func)
     }
 
     fn block(&mut self) -> Result<(), ParseError> {
-        self.locals.begin_scope();
+        self.context.locals.begin_scope();
         let mut end_line = 0;
         #[cfg(debug_assertions)]
-        self.instruction(I::CheckStack(self.locals.len()), 0);
+        self.instruction(I::CheckStack(self.context.locals.len()), 0);
         while let Some(token) = self.peek_token() {
             match token.clone() {
                 Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
@@ -107,12 +101,15 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 }
             }
             #[cfg(debug_assertions)]
-            self.instruction(I::CheckStack(self.locals.len()), 0);
+            self.instruction(I::CheckStack(self.context.locals.len()), 0);
         }
-        let locals_in_scope = self.locals.end_scope();
-        for _ in 0..locals_in_scope {
-            self.instruction(I::Pop, end_line); // TODO popn?
-        }
+        self.context.locals.end_scope(|local| {
+            if local.is_captured() {
+                self.context.chunk.add_instruction(I::CloseUpvalue, end_line);
+            } else {
+                self.context.chunk.add_instruction(I::Pop, end_line);
+            }
+        });
         Ok(())
     }
 
@@ -128,11 +125,15 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.current_chunk
+        &mut self.context.chunk
     }
 
     fn emit_constant(&mut self, val: RuaVal, line: usize) {
         self.current_chunk().add_constant(val, line);
+    }
+
+    fn emit_closure(&mut self, val: Function, upvalues: Upvalues, line: usize) {
+        self.current_chunk().add_closure(val, upvalues, line);
     }
 
     fn unary(&mut self, op: UnaryOp, line: usize) -> Result<(), ParseError> {
@@ -179,7 +180,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.instruction(I::Neg, line);
             }
             Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => {
-                self.named_variable(id, line);
+                self.named_variable(id, line)?;
             }
             Some(Token { ttype: TT::NUMBER(n), line, .. }) => {
                 self.emit_constant(n.into(), line);
@@ -210,14 +211,16 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn named_variable(&mut self, id: RuaString, line: usize) {
-        let local = self.locals.resolve(&id);
-        if let Some(local) = local {
+    fn named_variable(&mut self, id: RuaString, line: usize) -> Result<(), ParseError> {
+        if let Some(local) = self.context.resolve_local(&id) {
             self.instruction(I::GetLocal(local), line);
+        } else if let Some(upvalue) = self.context.resolve_upvalue(&id, &mut self.context_stack)? {
+            self.instruction(I::GetUpvalue(upvalue), line);
         } else {
             self.emit_constant(id.into(), line);
             self.instruction(I::GetGlobal, line);
         }
+        Ok(())
     }
 
     fn instruction(&mut self, instr: Instruction, line: usize) -> usize {
@@ -230,8 +233,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn infix_exp(&mut self, precedence: Precedence) -> Result<(), ParseError> {
         loop {
-            match self.peek_token().cloned() {
+            match self.peek_token() {
                 Some(Token { ttype: TT::BINARY_OP(op), line, .. }) => {
+                    let line = *line;
+                    let op = *op;
                     if precedence < precedence_of_binary(&op) {
                         self.next_token();
                         self.binary(op, line)?;
@@ -240,6 +245,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: TT::MINUS, line, .. }) => {
+                    let line = *line;
                     if precedence < Precedence::Sum {
                         self.next_token();
                         self.expression(precedence)?;
@@ -249,6 +255,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: TT::LPAREN, line, .. }) => {
+                    let line = *line;
                     if precedence < Precedence::Call {
                         self.call_expr(line)?;
                     } else {
@@ -256,6 +263,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: TT::DOT, line, .. }) => {
+                    let line = *line;
                     if precedence < Precedence::FieldAccess {
                         self.next_token();
                         let id = self.identifier()?;
@@ -266,6 +274,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: TT::LBRACK, line, .. }) => {
+                    let line = *line;
                     if precedence < Precedence::FieldAccess {
                         self.next_token();
                         self.expression(Precedence::Lowest)?;
@@ -325,7 +334,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         } else {
             self.instruction(I::Nil, line);
         }
-        self.locals.declare(id)?;
+        self.context.locals.declare(id)?;
 
         Ok(())
     }
@@ -348,8 +357,9 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
         self.expression(Precedence::Lowest)?;
-        match self.peek_token().cloned() {
+        match self.peek_token() {
             Some(Token { ttype: TT::ASSIGN, line, .. }) => {
+                let line = *line;
                 match self
                     .current_chunk()
                     .code()
@@ -360,13 +370,20 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     I::GetGlobal => {
                         self.pop_instruction();
                         debug_assert!(matches!(
-                            self.current_chunk.code().last(),
+                            self.context.chunk.code().last(),
                             Some(I::Constant(_))
                         ));
                         let t = self.next_token();
                         debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
                         self.expression(Precedence::Lowest)?;
                         self.instruction(I::SetGlobal, line);
+                    }
+                    I::GetUpvalue(up) => {
+                        self.pop_instruction();
+                        let t = self.next_token();
+                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                        self.expression(Precedence::Lowest)?;
+                        self.instruction(I::SetUpvalue(up), line);
                     }
                     I::GetLocal(idx) => {
                         self.pop_instruction();
@@ -513,35 +530,29 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 
     fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
         let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt(line)), Ok)?;
-        let function = self.function(id.clone())?;
+        let (function, upvalues) = self.function(id.clone())?;
 
         if local {
-            self.emit_constant(RuaVal::Function(function), line);
-            self.locals.declare(id)?;
+            self.emit_closure(function, upvalues, line);
+            self.context.locals.declare(id)?;
         } else {
             self.emit_constant(id.into(), line);
-            self.emit_constant(RuaVal::Function(function), line);
+            self.emit_closure(function, upvalues, line);
             self.instruction(I::SetGlobal, line);
         }
         Ok(())
     }
 
-    fn function(&mut self, id: RuaString) -> Result<Function, ParseError> {
+    fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
         consume!(self; (TT::LPAREN));
         let mut locals = Locals::new();
         locals.declare(id.clone())?;
         let arity = self.parameter_list(&mut locals)?;
 
-        // I'm not sure why it doesn't realize tokens has the correct lifetime,
-        // I may be doing something dumb here
-        let tokens = unsafe {
-            std::mem::transmute::<
-                &mut MyPeekable<Tokenizer<'vm, T>>,
-                &'vm mut MyPeekable<Tokenizer<'vm, T>>,
-            >(self.tokens)
-        };
-        let compiler = Self::for_function(tokens, locals, id, arity);
-        let retval = compiler.compile();
+        let old_ctxt =
+            std::mem::replace(&mut self.context, CompilerCtxt::for_function(locals, arity, id));
+        self.context_stack.push(old_ctxt);
+        let retval = self.compile_fn();
         consume!(self; (TT::END));
         retval
     }
@@ -563,8 +574,8 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn table_literal(&mut self, line: usize) -> Result<(), ParseError> {
         let mut ops = Vec::new();
         let mut arr_count = 0;
-        while {
-            match self.peek_token().cloned() {
+        loop {
+            match self.peek_token() {
                 Some(Token { ttype: TT::LBRACK, .. }) => {
                     self.next_token();
                     self.expression(Precedence::Lowest)?;
@@ -580,8 +591,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         None => return Err(ParseError::UnexpectedEOF),
                     }
                 }
-                Some(Token { ttype: TT::RBRACE, .. }) => {}
+                Some(Token { ttype: TT::RBRACE, .. }) => {
+                    break;
+                }
                 Some(Token { line, .. }) => {
+                    let line = *line;
                     self.expression(Precedence::Lowest)?;
                     if peek_token_is!(self, TT::ASSIGN) {
                         match self
@@ -594,9 +608,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                             I::GetGlobal => {
                                 self.pop_instruction();
                             }
+                            I::GetUpvalue(_) => todo!(),
                             I::GetLocal(idx) => {
                                 self.pop_instruction();
-                                let name = self.locals.get(idx);
+                                let name = self.context.locals.get(idx);
                                 self.emit_constant(name.into(), line);
                             }
                             I::Constant(c) => match self.current_chunk().read_constant(c) {
@@ -609,22 +624,26 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 }
                 None => return Err(ParseError::UnexpectedEOF),
             }
-            match self.peek_token().cloned() {
+
+            match self.peek_token() {
                 Some(Token { ttype: TT::ASSIGN, .. }) => {
                     self.next_token();
                     self.expression(Precedence::Lowest)?;
                     ops.push(I::InsertKeyVal);
                 }
-                Some(Token { ttype: TT::RBRACE, .. }) | None => {}
                 Some(Token { line, .. }) => {
+                    let line = *line;
                     ops.push(I::InsertValKey);
                     arr_count += 1;
                     self.emit_constant((arr_count as f64).into(), line);
                 }
+                None => {}
             }
 
-            match_token!(self, TT::COMMA, TT::SEMICOLON)
-        } {}
+            if !match_token!(self, TT::COMMA, TT::SEMICOLON) {
+                break;
+            }
+        }
         consume!(self; (TT::RBRACE));
 
         // TODO table with reserved capacity,
@@ -641,11 +660,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
 pub fn compile<C: Iterator<Item = char> + Clone>(
     chars: C,
     vm: &mut Vm,
-) -> Result<Function, ParseError> {
+) -> Result<Closure, ParseError> {
     let tokens = Tokenizer::new(chars, vm);
-    let mut tokens = MyPeekable::new(tokens);
-    let compiler = Compiler::new(&mut tokens);
-    compiler.compile()
+    let tokens = MyPeekable::new(tokens);
+    let compiler = Compiler::new(tokens);
+    compiler.compile().map(Closure::new)
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Copy)]
@@ -707,5 +726,64 @@ impl<It: Iterator> Iterator for MyPeekable<It> {
         let next = self.peeked.take();
         self.peeked = self.inner.next();
         next
+    }
+}
+
+struct CompilerCtxt {
+    locals: Locals,
+    chunk: Chunk,
+    upvalues: Upvalues,
+    arity: u8,
+    name: RuaString,
+}
+
+impl CompilerCtxt {
+    fn main(name: RuaString) -> Self {
+        Self {
+            locals: Locals::default(),
+            chunk: Chunk::default(),
+            upvalues: Upvalues::default(),
+            arity: 0,
+            name,
+        }
+    }
+
+    fn for_function(locals: Locals, arity: u8, name: RuaString) -> Self {
+        Self { locals, chunk: Chunk::default(), upvalues: Upvalues::default(), arity, name }
+    }
+
+    fn resolve_local(&self, id: &RuaString) -> Option<LocalHandle> {
+        self.locals.resolve(id)
+    }
+
+    fn resolve_upvalue(
+        &mut self,
+        id: &RuaString,
+        context_stack: &mut [Self],
+    ) -> Result<Option<UpvalueHandle>, ParseError> {
+        if let Some((parent, tail)) = context_stack.split_last_mut() {
+            if let Some(local) = parent.resolve_local(id) {
+                parent.capture(local);
+                Some(self.add_upvalue(Left(local))).transpose()
+            } else {
+                parent
+                    .resolve_upvalue(id, tail)?
+                    .map(|upvalue| self.add_upvalue(Right(upvalue)))
+                    .transpose()
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn add_upvalue(
+        &mut self,
+        upvalue: Either<LocalHandle, UpvalueHandle>,
+    ) -> Result<UpvalueHandle, ParseError> {
+        self.upvalues.find_or_add(upvalue)
+    }
+
+    fn capture(&mut self, local: LocalHandle) {
+        self.locals.capture(local);
     }
 }
