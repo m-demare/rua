@@ -21,7 +21,7 @@ use self::{
 };
 
 pub mod bytecode;
-mod locals;
+pub mod locals;
 mod tests;
 pub mod upvalues;
 mod utils;
@@ -263,7 +263,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     let line = *line;
                     if precedence < Precedence::Sum {
                         self.next_token();
-                        self.expression(precedence)?;
+                        self.expression(Precedence::Sum)?;
                         self.instruction(I::Sub, line);
                     } else {
                         break Ok(());
@@ -375,50 +375,18 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         match self.peek_token() {
             Some(Token { ttype: TT::ASSIGN, line, .. }) => {
                 let line = *line;
-                match self
-                    .current_chunk()
-                    .code()
-                    .last()
-                    .copied()
-                    .expect("Just parsed an expression")
-                {
-                    I::GetGlobal => {
-                        self.pop_instruction();
-                        debug_assert!(matches!(
-                            self.context.chunk.code().last(),
-                            Some(I::Constant(_))
-                        ));
-                        let t = self.next_token();
-                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                        self.expression(Precedence::Lowest)?;
-                        self.instruction(I::SetGlobal, line);
-                    }
-                    I::GetUpvalue(up) => {
-                        self.pop_instruction();
-                        let t = self.next_token();
-                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                        self.expression(Precedence::Lowest)?;
-                        self.instruction(I::SetUpvalue(up), line);
-                    }
-                    I::GetLocal(idx) => {
-                        self.pop_instruction();
-                        let t = self.next_token();
-                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                        self.expression(Precedence::Lowest)?;
-                        self.instruction(I::SetLocal(idx), line);
-                    }
-                    I::Index => {
-                        self.pop_instruction();
-                        let t = self.next_token();
-                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
-                        self.expression(Precedence::Lowest)?;
-                        self.instruction(I::Peek(2), line);
-                        self.instruction(I::InsertKeyVal, line);
-                        self.instruction(I::Pop, line);
-                        self.instruction(I::Pop, line);
-                    }
-                    _ => return Err(ParseError::InvalidAssignLHS(line)),
+                let instr = self.current_chunk().code().last();
+                if instr == Some(&I::Index) {
+                    return self.multiassign(line);
                 }
+                self.next_token();
+                let op = self.convert_to_assign(line)?;
+                self.expression(Precedence::Lowest)?;
+                self.instruction(op, line);
+            }
+            Some(Token { ttype: TT::COMMA, line, .. }) => {
+                let line = *line;
+                return self.multiassign(line);
             }
             _ => {
                 match self.current_chunk().code().last().expect("Just parsed an expression") {
@@ -432,6 +400,54 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
 
         Ok(())
+    }
+
+    fn multiassign(&mut self, line: usize) -> Result<(), ParseError> {
+        // The first lhs was already parsed by assign_or_call_st
+        let mut lhsnr = 1;
+        let mut rhsnr = 0;
+        let mut ops = Vec::new();
+        ops.push(self.convert_to_assign(line)?);
+        while match_token!(self, TT::COMMA) {
+            self.expression(Precedence::Lowest)?;
+            ops.push(self.convert_to_assign(line)?);
+            lhsnr += 1;
+        }
+        consume!(self; (TT::ASSIGN));
+        while {
+            self.expression(Precedence::Lowest)?;
+            rhsnr += 1;
+            match_token!(self, TT::COMMA)
+        } {}
+
+        while lhsnr < rhsnr {
+            self.instruction(I::Pop, line);
+            rhsnr -= 1;
+        }
+        while lhsnr > rhsnr {
+            self.instruction(I::Nil, line);
+            rhsnr += 1;
+        }
+
+        self.instruction(I::Multiassign(lhsnr), line);
+        for op in ops.iter().rev() {
+            self.instruction(*op, line);
+        }
+
+        Ok(())
+    }
+
+    fn convert_to_assign(&mut self, line: usize) -> Result<Instruction, ParseError> {
+        match self.pop_instruction().expect("Just parsed an expression") {
+            I::GetGlobal => {
+                debug_assert!(matches!(self.context.chunk.code().last(), Some(I::Constant(_))));
+                Ok(I::SetGlobal)
+            }
+            I::GetUpvalue(up) => Ok(I::SetUpvalue(up)),
+            I::GetLocal(idx) => Ok(I::SetLocal(idx)),
+            I::Index => Ok(I::InsertKeyVal),
+            _ => return Err(ParseError::InvalidAssignLHS(line)),
+        }
     }
 
     fn call_expr(&mut self, line: usize) -> Result<(), ParseError> {

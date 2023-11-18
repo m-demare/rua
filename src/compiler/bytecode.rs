@@ -57,7 +57,7 @@ pub enum Instruction {
     SetUpvalue(UpvalueHandle),
     Upvalue(Upvalue),
     CloseUpvalue,
-    Peek(u8),
+    Multiassign(u8),
 }
 
 #[derive(PartialEq, Eq)]
@@ -121,7 +121,7 @@ impl Chunk {
         let last_line = self.lines.last_mut().expect("lines is always non-empty");
         if last_line.1 > 1 {
             last_line.1 -= 1;
-        } else {
+        } else if self.lines.len() > 1 {
             self.lines.pop();
         }
         debug_assert!(!self.lines.is_empty());

@@ -8,7 +8,10 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::eval::vals::{closure::Closure, IntoRuaVal, RuaType, StackTrace};
+use crate::{
+    compiler::{locals::LocalHandle, upvalues::UpvalueHandle},
+    eval::vals::{closure::Closure, IntoRuaVal, RuaType, StackTrace},
+};
 use either::Either::{self, Left, Right};
 use rua_identifiers::Trie;
 use rustc_hash::FxHasher;
@@ -130,10 +133,6 @@ impl Vm {
                 Instruction::Pop => {
                     self.pop();
                 }
-                Instruction::Peek(n) => {
-                    let val = self.peek(n as usize);
-                    self.push(val);
-                }
                 Instruction::Constant(c) => {
                     let constant = frame.read_constant(c);
                     self.push(constant);
@@ -209,8 +208,7 @@ impl Vm {
                     }
                 }
                 Instruction::SetLocal(local) => {
-                    let val = self.pop();
-                    self.set_stack_at(frame.stack_start() + local.pos(), val);
+                    self.set_local(&frame, local);
                 }
                 Instruction::GetLocal(local) => {
                     let val = self.stack_at(frame.stack_start() + local.pos());
@@ -302,10 +300,39 @@ impl Vm {
                     self.push(val);
                 }
                 Instruction::SetUpvalue(up) => {
-                    let val = self.pop();
-                    frame.closure().set_upvalue(self, up, val);
+                    self.set_upvalue(&mut frame, up);
                 }
-                Instruction::Upvalue(_) => unreachable!(),
+                Instruction::Upvalue(_) => {
+                    unreachable!("Instruction::Upvalue must be handled by Instruction::Closure")
+                }
+                Instruction::Multiassign(n) => {
+                    let mut keys_in_stack = 0;
+                    let n = n as usize;
+                    for i in 0..n {
+                        match frame.curr_instr() {
+                            Instruction::SetLocal(local) => self.set_local(&frame, local),
+                            Instruction::SetUpvalue(up) => self.set_upvalue(&mut frame, up),
+                            Instruction::SetGlobal => {
+                                let val = self.peek(0);
+                                let key = self.peek(n - i + keys_in_stack);
+                                self.global.insert(key, val);
+                                self.pop();
+                                keys_in_stack += 1;
+                            }
+                            Instruction::InsertKeyVal => {
+                                let val = self.peek(0);
+                                let key = self.peek(n - i + keys_in_stack);
+                                let table = self.peek(n - i + keys_in_stack + 1);
+                                let mut table = catch!(table.into_table());
+                                table.insert(key, val);
+                                self.pop();
+                                keys_in_stack += 2;
+                            }
+                            i => unreachable!("{i:?} cannot be part of Instruction::Multiassign"),
+                        }
+                    }
+                    self.drop(keys_in_stack);
+                }
                 #[cfg(debug_assertions)]
                 Instruction::CheckStack(n_locals) => {
                     debug_assert_eq!(
@@ -316,6 +343,16 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn set_upvalue(&mut self, frame: &mut CallFrame, up: UpvalueHandle) {
+        let val = self.pop();
+        frame.closure().set_upvalue(self, up, val);
+    }
+
+    fn set_local(&mut self, frame: &CallFrame, local: LocalHandle) {
+        let val = self.pop();
+        self.set_stack_at(frame.stack_start() + local.pos(), val);
     }
 
     fn stack_peek_n(&mut self, nargs: usize) -> &[RuaVal] {

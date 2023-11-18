@@ -27,6 +27,7 @@ macro_rules! test_interpret {
     ($name: ident, $input: expr, $output: expr) => {
         #[test]
         fn $name() {
+            println!("Program:\n{}", $input);
             test_interpret_aux($input, $output);
         }
     };
@@ -36,6 +37,8 @@ test_interpret!(arithmetic_ops1, "return (5 + -2) * 4", |_| Ok(12.0.into()));
 test_interpret!(arithmetic_ops2, "return - -2 / 4 + 1", |_| Ok(1.5.into()));
 test_interpret!(arithmetic_ops3, "return 2+5 > 6", |_| Ok(true.into()));
 test_interpret!(arithmetic_ops4, "return 2+6 % 4", |_| Ok(4.0.into()));
+test_interpret!(arithmetic_ops5, "return 2 - 1 + 3", |_| Ok(4.0.into()));
+test_interpret!(arithmetic_ops6, "return 4 / 2 * 3", |_| Ok(6.0.into()));
 
 test_interpret!(string_concat, "return 'hello' .. ' ' .. 'world'", |vm| Ok(vm
     .new_string("hello world".into())
@@ -426,4 +429,82 @@ test_interpret!(
     return a['b']
 ",
     |_| Ok(9.0.into())
+);
+
+test_interpret!(
+    multiassign_globals,
+    "
+    a, b, c = 2, 5, 10
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
+
+test_interpret!(
+    multiassign_locals,
+    "
+    local a
+    local b
+    local c
+    a, b, c = 2, 5, 10
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
+
+test_interpret!(
+    multiassign_upvalues,
+    "
+    local a
+    local b
+    local c
+    function foo()
+        a, b, c = 2, 5, 10
+    end
+    foo()
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
+
+test_interpret!(
+    multiassign_fields,
+    "
+    local a = {}
+    a.a, a.b, a['c'] = 2, 5, 10
+    return a.a + a.c - a.b
+",
+    |_| Ok(7.0.into())
+);
+
+test_interpret!(
+    multiassign_mixed,
+    "
+    local a = {}
+    local d
+    a.a, b, a['c'], d = 2, 5, 10, 1
+    return a.a + a.c - b + d
+",
+    |_| Ok(8.0.into())
+);
+
+test_interpret!(
+    multiassign_more_lhs,
+    "
+    local a = {}
+    local d
+    a.a, b, a['c'], d, e = 2, 5, 10
+    return d
+",
+    |_| Ok(RuaVal::Nil)
+);
+
+test_interpret!(
+    multiassign_more_rhs,
+    "
+    local a = {}
+    a.a, b = 2, 5, 10
+    return a.a + b
+",
+    |_| Ok(7.0.into())
 );
