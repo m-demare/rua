@@ -508,3 +508,59 @@ test_interpret!(
 ",
     |_| Ok(7.0.into())
 );
+
+test_interpret!(
+    multilocal,
+    "
+    local a, b, c = 1, 2, 4
+    return a + b - c
+",
+    |_| Ok((-1.0).into())
+);
+
+test_interpret!(
+    multilocal_more_lhs,
+    "
+    local a, b, c = 1, 2
+    return c
+",
+    |_| Ok(RuaVal::Nil)
+);
+
+test_interpret!(
+    multilocal_more_rhs,
+    "
+    local a, b, c = 1, 2, 4, 3
+    return a + b - c
+",
+    |_| Ok((-1.0).into())
+);
+
+test_interpret!(
+    iterative_fib,
+    "
+    local n, i = 7, 3
+    local fib, last_fib = 1, 1
+    while i <= n do
+        last_fib, fib = fib, fib + last_fib
+        i = i + 1
+    end
+
+    return fib",
+    |_| Ok(13.0.into())
+);
+
+test_interpret!(
+    dynamic_prog_fib,
+    "
+    local fibo_mem = {}
+    local function fibo(n)
+        if n<3 then return 1 end
+        if fibo_mem[n] then return fibo_mem[n] end
+
+        fibo_mem[n] = fibo(n-1) + fibo(n-2)
+        return fibo_mem[n]
+    end
+    return fibo(8)",
+    |_| Ok(21.0.into())
+);

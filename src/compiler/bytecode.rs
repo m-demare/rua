@@ -227,4 +227,6 @@ pub enum ParseError {
     TooManyArgs,
     #[error("Attempted to jmp too far (line {0})")]
     JmpTooFar(usize),
+    #[error("Too many items in lhs of assignment (line {0})")]
+    TooManyAssignLhs(usize),
 }

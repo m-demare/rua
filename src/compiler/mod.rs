@@ -333,9 +333,9 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::LOCAL);
         self.next_token();
 
-        let id = match self.next_token() {
+        let mut locals = match self.next_token() {
             Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
-            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => id,
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => vec![id],
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
                     t.into(),
@@ -344,14 +344,37 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             }
             None => return Err(ParseError::UnexpectedEOF),
         };
-        if match_token!(self, TT::ASSIGN) {
-            self.expression(Precedence::Lowest)?;
-        } else {
-            self.instruction(I::Nil, line);
+
+        while match_token!(self, TT::COMMA) {
+            locals.push(self.identifier()?);
         }
-        self.context.locals.declare(id)?;
+        let mut rhsnr = 0;
+        if match_token!(self, TT::ASSIGN) {
+            while {
+                self.expression(Precedence::Lowest)?;
+                rhsnr += 1;
+                match_token!(self, TT::COMMA)
+            } {}
+        }
+
+        self.match_lhs_rhs(locals.len(), rhsnr, line);
+
+        for id in locals {
+            self.context.locals.declare(id)?;
+        }
 
         Ok(())
+    }
+
+    fn match_lhs_rhs(&mut self, lhsnr: usize, mut rhsnr: usize, line: usize) {
+        while lhsnr < rhsnr {
+            self.instruction(I::Pop, line);
+            rhsnr -= 1;
+        }
+        while lhsnr > rhsnr {
+            self.instruction(I::Nil, line);
+            rhsnr += 1;
+        }
     }
 
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
@@ -420,16 +443,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             match_token!(self, TT::COMMA)
         } {}
 
-        while lhsnr < rhsnr {
-            self.instruction(I::Pop, line);
-            rhsnr -= 1;
-        }
-        while lhsnr > rhsnr {
-            self.instruction(I::Nil, line);
-            rhsnr += 1;
-        }
+        self.match_lhs_rhs(lhsnr, rhsnr, line);
 
-        self.instruction(I::Multiassign(lhsnr), line);
+        self.instruction(
+            I::Multiassign(lhsnr.try_into().or(Err(ParseError::TooManyAssignLhs(line)))?),
+            line,
+        );
         for op in ops.iter().rev() {
             self.instruction(*op, line);
         }
