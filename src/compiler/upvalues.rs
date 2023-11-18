@@ -4,7 +4,7 @@ use super::{bytecode::ParseError, locals::LocalHandle};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Upvalue {
-    parent: Either<LocalHandle, UpvalueHandle>,
+    location: Either<LocalHandle, UpvalueHandle>,
 }
 
 #[derive(Default)]
@@ -25,7 +25,8 @@ impl Upvalues {
         &mut self,
         upvalue: Either<LocalHandle, UpvalueHandle>,
     ) -> Result<UpvalueHandle, ParseError> {
-        if let Some((i, _)) = self.upvalues.iter().enumerate().find(|(_, up)| up.parent == upvalue)
+        if let Some((i, _)) =
+            self.upvalues.iter().enumerate().find(|(_, up)| up.location == upvalue)
         {
             // SAFETY: self.upvalues is only pushed to in `find_or_add`, where
             // it is checked that it doesn't exceed u8::MAX
@@ -35,9 +36,13 @@ impl Upvalues {
         if len == u8::MAX {
             return Err(ParseError::TooManyLocals);
         }
-        let up = Upvalue { parent: upvalue };
+        let up = Upvalue { location: upvalue };
         self.upvalues.push(up);
         Ok(UpvalueHandle(len))
+    }
+
+    pub fn get(&self, up: UpvalueHandle) -> Upvalue {
+        self.upvalues[up.0 as usize]
     }
 
     #[allow(clippy::len_without_is_empty)]
@@ -49,8 +54,8 @@ impl Upvalues {
 }
 
 impl Upvalue {
-    pub const fn get(self) -> Either<LocalHandle, UpvalueHandle> {
-        self.parent
+    pub const fn location(self) -> Either<LocalHandle, UpvalueHandle> {
+        self.location
     }
 }
 

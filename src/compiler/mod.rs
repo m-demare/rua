@@ -630,7 +630,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                             I::GetGlobal => {
                                 self.pop_instruction();
                             }
-                            I::GetUpvalue(_) => todo!(),
+                            I::GetUpvalue(up) => {
+                                self.pop_instruction();
+                                let name =
+                                    self.context.resolve_upvalue_name(up, &self.context_stack);
+                                self.emit_constant(name.into(), line);
+                            }
                             I::GetLocal(idx) => {
                                 self.pop_instruction();
                                 let name = self.context.locals.get(idx);
@@ -807,5 +812,24 @@ impl CompilerCtxt {
 
     fn capture(&mut self, local: LocalHandle) {
         self.locals.capture(local);
+    }
+
+    fn resolve_upvalue_name(&self, up: UpvalueHandle, context_stack: &[Self]) -> RuaString {
+        match self.upvalues.get(up).location() {
+            Left(local) => {
+                if let Some((parent, _)) = context_stack.split_last() {
+                    parent.locals.get(local)
+                } else {
+                    unreachable!("Should've found upvalue before getting to the top")
+                }
+            }
+            Right(upvalue) => {
+                if let Some((parent, tail)) = context_stack.split_last() {
+                    parent.resolve_upvalue_name(upvalue, tail)
+                } else {
+                    unreachable!("Should've found upvalue before getting to the top")
+                }
+            }
+        }
     }
 }

@@ -166,6 +166,21 @@ test_interpret!(field_access2, "
     return a.c",
     |_| Ok(RuaVal::Nil));
 
+test_interpret!(table_with_local_key, "
+    local b = 'test'
+    local a = {1, b = true, 2, [2+3] = false}
+    return a.b",
+    |_| Ok(RuaVal::Bool(true)));
+
+test_interpret!(table_with_upvalue_key, "
+    local b = 'test'
+    function foo()
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.b
+    end
+    return foo()",
+    |_| Ok(RuaVal::Bool(true)));
+
 test_interpret!(call_with_less_args, "
 function foo(a, b, c)
     return c

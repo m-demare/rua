@@ -267,7 +267,7 @@ impl Vm {
                         let mut closure = Closure::new(f);
                         for _ in 0..upvalue_count {
                             if let Instruction::Upvalue(up) = frame.curr_instr() {
-                                match up.get() {
+                                match up.location() {
                                     Left(local) => self.capture_upvalue(
                                         &mut closure,
                                         frame.stack_start() + local.pos(),
