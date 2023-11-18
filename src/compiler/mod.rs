@@ -146,7 +146,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn binary(&mut self, op: BinaryOp, line: usize) -> Result<(), ParseError> {
-        let precedence = precedence_of_binary(&op);
+        let precedence = precedence_of_binary(op);
         macro_rules! binary_operator {
             ($compiler: expr, $precedence: expr, $instr: expr, $line: expr) => {{
                 $compiler.expression($precedence)?;
@@ -237,7 +237,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Some(Token { ttype: TT::BINARY_OP(op), line, .. }) => {
                     let line = *line;
                     let op = *op;
-                    if precedence < precedence_of_binary(&op) {
+                    if precedence < precedence_of_binary(op) {
                         self.next_token();
                         self.binary(op, line)?;
                     } else {
@@ -682,7 +682,7 @@ pub enum Precedence {
     FieldAccess, // foo.bar, foo[bar]
 }
 
-const fn precedence_of_binary(op: &BinaryOp) -> Precedence {
+const fn precedence_of_binary(op: BinaryOp) -> Precedence {
     match op {
         BinaryOp::OR => Precedence::Or,
         BinaryOp::AND => Precedence::And,

@@ -135,12 +135,12 @@ impl Chunk {
 
         let offset = Self::offset(self.code.len(), jmp).or(Err(ParseError::JmpTooFar(line)))?;
 
-        match self.code[jmp] {
-            I::JmpIfFalsePop(_) => self.code[jmp] = I::JmpIfFalsePop(offset),
-            I::JmpIfFalse(_) => self.code[jmp] = I::JmpIfFalse(offset),
-            I::JmpIfTrue(_) => self.code[jmp] = I::JmpIfTrue(offset),
-            I::Jmp(_) => self.code[jmp] = I::Jmp(offset),
-            _ => unreachable!(),
+        match self.code.get(jmp) {
+            Some(I::JmpIfFalsePop(_)) => self.code[jmp] = I::JmpIfFalsePop(offset),
+            Some(I::JmpIfFalse(_)) => self.code[jmp] = I::JmpIfFalse(offset),
+            Some(I::JmpIfTrue(_)) => self.code[jmp] = I::JmpIfTrue(offset),
+            Some(I::Jmp(_)) => self.code[jmp] = I::Jmp(offset),
+            _ => unreachable!("Tried to patch a non Jmp instruction"),
         }
 
         Ok(())
