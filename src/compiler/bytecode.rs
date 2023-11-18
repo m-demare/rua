@@ -209,8 +209,8 @@ pub enum ParseError {
     UnexpectedToken(Box<Token>, Box<[TokenType]>),
     #[error("Unexpected token. Got {:?}, expected {1}", .0.ttype)]
     UnexpectedTokenWithErrorMsg(Box<Token>, Box<str>),
-    #[error("Function expression cannot have a name (got {0:?})")]
-    NamedFunctionExpr(RuaString),
+    #[error("Function expression cannot have a name (got {0:?} at line {1})")]
+    NamedFunctionExpr(RuaString, usize),
     #[error("Function statement must have a name (line {0})")]
     UnnamedFunctionSt(usize),
     #[error("Expected statement, got expression (line {0})")]

@@ -569,6 +569,9 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn function_expr(&mut self, line: usize) -> Result<(), ParseError> {
+        if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
+            return Err(ParseError::NamedFunctionExpr(id.clone(), *line));
+        }
         let name = self.tokens.inner().vm().new_string("".into());
         let (function, upvalues) = self.function(name)?;
         self.emit_closure(function, upvalues, line);
