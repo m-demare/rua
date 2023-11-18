@@ -12,7 +12,7 @@ macro_rules! test_lex {
         #[allow(unused_macros)]
         macro_rules! id {
             ($s: expr) => (match vm.identifiers().add_or_get($s, TT::IDENTIFIER_DUMMY) {
-                TT::IDENTIFIER(i) => TT::IDENTIFIER(i),
+                TT::IDENTIFIER(i) => TT::IDENTIFIER(i.clone()),
                 t => panic!("Expected identifier, got {t:?}")
             })
         }

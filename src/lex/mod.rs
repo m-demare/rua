@@ -135,21 +135,25 @@ where
             i += 1;
             trie_walker.walk(ch);
         }
-        let identifier = trie_walker.get_res();
-        if let Some(id) = identifier {
-            Token { ttype: id, line: self.line }
+        let ttype = trie_walker.get_res();
+        if let Some(ttype) = ttype {
+            Token { ttype: ttype.clone(), line: self.line }
         } else {
             let s = clone_it.take(i).collect::<String>();
             let id = self.vm.new_string(s.into());
             Token {
-                ttype: self.vm.identifiers().add_or_get(
-                    &id,
-                    if let Some(token) = lookup_keyword(&id) {
-                        token
-                    } else {
-                        TokenType::IDENTIFIER(id.clone())
-                    },
-                ),
+                ttype: self
+                    .vm
+                    .identifiers()
+                    .add_or_get(
+                        &id,
+                        if let Some(token) = lookup_keyword(&id) {
+                            token
+                        } else {
+                            TokenType::IDENTIFIER(id.clone())
+                        },
+                    )
+                    .clone(),
                 line: self.line,
             }
         }

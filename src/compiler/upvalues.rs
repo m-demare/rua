@@ -2,7 +2,7 @@ use either::Either;
 
 use super::{bytecode::ParseError, locals::LocalHandle};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Upvalue {
     parent: Either<LocalHandle, UpvalueHandle>,
 }
@@ -49,7 +49,7 @@ impl Upvalues {
 }
 
 impl Upvalue {
-    pub const fn get(&self) -> Either<LocalHandle, UpvalueHandle> {
+    pub const fn get(self) -> Either<LocalHandle, UpvalueHandle> {
         self.parent
     }
 }

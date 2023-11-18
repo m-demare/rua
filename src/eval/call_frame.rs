@@ -28,7 +28,7 @@ impl CallFrame {
     }
 
     pub fn curr_instr(&mut self) -> Instruction {
-        let instr = self.closure.function().chunk().code()[self.ip].clone();
+        let instr = self.closure.function().chunk().code()[self.ip];
         self.ip += 1;
         instr
     }

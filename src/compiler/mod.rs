@@ -70,25 +70,40 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         #[cfg(debug_assertions)]
         self.instruction(I::CheckStack(self.context.locals.len()), 0);
         while let Some(token) = self.peek_token() {
-            match token.clone() {
-                Token { ttype: TT::RETURN, line, .. } => self.return_st(line)?,
-                Token { ttype: TT::LOCAL, line, .. } => self.local_st(line)?,
+            match token {
+                Token { ttype: TT::RETURN, line, .. } => {
+                    let line = *line;
+                    self.return_st(line)?;
+                }
+                Token { ttype: TT::LOCAL, line, .. } => {
+                    let line = *line;
+                    self.local_st(line)?;
+                }
                 Token { ttype: TT::IDENTIFIER(..) | TT::LPAREN, line, .. } => {
+                    let line = *line;
                     self.assign_or_call_st(line)?;
                 }
                 Token { ttype: TT::FUNCTION, line, .. } => {
+                    let line = *line;
                     self.next_token();
                     self.function_st(line, false)?;
                 }
                 Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
+                    let line = *line;
                     end_line = line;
                     break;
                 }
-                Token { ttype: TT::IF, line, .. } => self.if_st(line)?,
-                Token { ttype: TT::WHILE, line, .. } => self.while_st(line)?,
+                Token { ttype: TT::IF, line, .. } => {
+                    let line = *line;
+                    self.if_st(line)?;
+                }
+                Token { ttype: TT::WHILE, line, .. } => {
+                    let line = *line;
+                    self.while_st(line)?;
+                }
                 t => {
                     return Err(ParseError::UnexpectedToken(
-                        Box::new(t),
+                        Box::new(t.clone()),
                         Box::new([
                             TT::LOCAL,
                             TT::RETURN,
@@ -364,7 +379,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     .current_chunk()
                     .code()
                     .last()
-                    .cloned()
+                    .copied()
                     .expect("Just parsed an expression")
                 {
                     I::GetGlobal => {
@@ -602,7 +617,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                             .current_chunk()
                             .code()
                             .last()
-                            .cloned()
+                            .copied()
                             .expect("Just parsed an expression")
                         {
                             I::GetGlobal => {
