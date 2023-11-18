@@ -22,6 +22,7 @@ pub enum Instruction {
     Sub,
     Mul,
     Div,
+    Mod,
     Pow,
     True,
     False,

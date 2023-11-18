@@ -141,6 +141,7 @@ impl Vm {
                 Instruction::Sub => catch!(self.number_binary_op(|a, b| a - b)),
                 Instruction::Mul => catch!(self.number_binary_op(|a, b| a * b)),
                 Instruction::Div => catch!(self.number_binary_op(|a, b| a / b)),
+                Instruction::Mod => catch!(self.number_binary_op(|a, b| a % b)),
                 Instruction::Pow => catch!(self.number_binary_op(f64::powf)),
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),

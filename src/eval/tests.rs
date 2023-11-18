@@ -23,6 +23,7 @@ fn test_arithmetic_ops() {
     test_interpret("return (5 + -2) * 4", |_| Ok(12.0.into()));
     test_interpret("return - -2 / 4 + 1", |_| Ok(1.5.into()));
     test_interpret("return 2+5 > 6", |_| Ok(true.into()));
+    test_interpret("return 2+6 % 4", |_| Ok(4.0.into()));
 }
 
 #[test]
@@ -311,5 +312,14 @@ fn test_closures_that_outlive_values() {
     end
     local f = foo(3)
     return f(5)", |_| Ok(14.0.into()));
+
+    test_interpret("
+    local function sum(n)
+        return function(m)
+            return n + m
+        end
+    end
+    local sum41 = sum(41)
+    return sum41(1)", |_| Ok(42.0.into()));
 }
 

@@ -172,7 +172,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             BinaryOp::PLUS => binary_operator!(self, precedence, I::Add, line),
             BinaryOp::TIMES => binary_operator!(self, precedence, I::Mul, line),
             BinaryOp::DIV => binary_operator!(self, precedence, I::Div, line),
-            BinaryOp::MOD => todo!(),
+            BinaryOp::MOD => binary_operator!(self, precedence, I::Mod, line),
             BinaryOp::EXP => binary_operator!(self, precedence, I::Pow, line),
             BinaryOp::EQ => binary_operator!(self, precedence, I::Eq, line),
             BinaryOp::NEQ => binary_operator!(self, precedence, I::Neq, line),
@@ -214,7 +214,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             }
             Some(Token { ttype: TT::LPAREN, .. }) => return self.group_expression(),
             Some(Token { ttype: TT::LBRACE, line, .. }) => return self.table_literal(line),
-            Some(Token { ttype: TT::FUNCTION, .. }) => todo!(),
+            Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_expr(line),
             Some(t) => {
                 return Err(ParseError::UnexpectedTokenWithErrorMsg(
                     Box::new(t),
@@ -555,6 +555,13 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             self.emit_closure(function, upvalues, line);
             self.instruction(I::SetGlobal, line);
         }
+        Ok(())
+    }
+
+    fn function_expr(&mut self, line: usize) -> Result<(), ParseError> {
+        let name = self.tokens.inner().vm().new_string("".into());
+        let (function, upvalues) = self.function(name)?;
+        self.emit_closure(function, upvalues, line);
         Ok(())
     }
 
