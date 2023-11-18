@@ -407,7 +407,17 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         self.expression(Precedence::Lowest)?;
                         self.instruction(I::SetLocal(idx), line);
                     }
-                    _ => todo!("handle field access; return error if invalid"),
+                    I::Index => {
+                        self.pop_instruction();
+                        let t = self.next_token();
+                        debug_assert!(matches!(t, Some(Token { ttype: TT::ASSIGN, .. })));
+                        self.expression(Precedence::Lowest)?;
+                        self.instruction(I::Peek(2), line);
+                        self.instruction(I::InsertKeyVal, line);
+                        self.instruction(I::Pop, line);
+                        self.instruction(I::Pop, line);
+                    }
+                    _ => return Err(ParseError::InvalidAssignLHS(line)),
                 }
             }
             _ => {

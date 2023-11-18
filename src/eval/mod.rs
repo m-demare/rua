@@ -130,6 +130,10 @@ impl Vm {
                 Instruction::Pop => {
                     self.pop();
                 }
+                Instruction::Peek(n) => {
+                    let val = self.peek(n as usize);
+                    self.push(val);
+                }
                 Instruction::Constant(c) => {
                     let constant = frame.read_constant(c);
                     self.push(constant);

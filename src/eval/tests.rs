@@ -289,3 +289,14 @@ set(5)
 res = res + get()
 return res", |_| Ok(6.0.into()));
 
+test_interpret!(table_field_assignment1, "
+    local a = {}
+    a[3 + 2] = 8
+    return a[5]
+", |_| Ok(8.0.into()));
+
+test_interpret!(table_field_assignment2, "
+    local a = {}
+    a.b = 9
+    return a['b']
+", |_| Ok(9.0.into()));

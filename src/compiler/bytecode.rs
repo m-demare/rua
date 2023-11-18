@@ -57,6 +57,7 @@ pub enum Instruction {
     SetUpvalue(UpvalueHandle),
     Upvalue(Upvalue),
     CloseUpvalue,
+    Peek(u8),
 }
 
 #[derive(PartialEq, Eq)]
