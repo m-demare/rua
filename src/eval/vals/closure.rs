@@ -37,11 +37,11 @@ impl Closure {
     }
 
     pub fn get_upvalue(&self, up: UpvalueHandle) -> UpvalueObj {
-        self.upvalues[up.get() as usize].clone()
+        self.upvalues[up.get()].clone()
     }
 
     pub fn get_upvalue_val(&self, vm: &Vm, up: UpvalueHandle) -> RuaVal {
-        let location: &Either<usize, RuaVal> = &self.upvalues[up.get() as usize].borrow();
+        let location: &Either<usize, RuaVal> = &self.upvalues[up.get()].borrow();
         match location {
             Left(idx) => vm.stack_at(*idx),
             Right(v) => v.clone(),
@@ -50,7 +50,7 @@ impl Closure {
 
     pub fn set_upvalue(&self, vm: &mut Vm, up: UpvalueHandle, val: RuaVal) {
         {
-            let location: &Either<usize, RuaVal> = &self.upvalues[up.get() as usize].borrow();
+            let location: &Either<usize, RuaVal> = &self.upvalues[up.get()].borrow();
             match location {
                 Left(idx) => {
                     vm.set_stack_at(*idx, val);
@@ -61,6 +61,6 @@ impl Closure {
                 }
             }
         }
-        self.upvalues[up.get() as usize].replace(Right(val));
+        self.upvalues[up.get()].replace(Right(val));
     }
 }

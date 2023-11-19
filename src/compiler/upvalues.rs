@@ -60,8 +60,8 @@ impl Upvalue {
 }
 
 impl UpvalueHandle {
-    pub const fn get(self) -> u8 {
-        self.0
+    pub const fn get(self) -> usize {
+        self.0 as usize
     }
 }
 

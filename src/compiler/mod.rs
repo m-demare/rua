@@ -710,7 +710,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     let line = *line;
                     ops.push(I::InsertValKey);
                     arr_count += 1;
-                    self.emit_constant((arr_count as f64).into(), line);
+                    self.emit_constant((f64::from(arr_count)).into(), line);
                 }
                 None => {}
             }
