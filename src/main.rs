@@ -1,5 +1,6 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::perf)]
 #![deny(unused_must_use)]
+#![deny(clippy::mod_module_files)]
 #![allow(clippy::option_if_let_else)]
 
 use std::path::PathBuf;
