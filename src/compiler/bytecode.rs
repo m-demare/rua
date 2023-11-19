@@ -42,10 +42,11 @@ pub enum Instruction {
     Pop,
     GetLocal(LocalHandle),
     SetLocal(LocalHandle),
-    JmpIfFalse(i32),
-    JmpIfTrue(i32),
-    Jmp(i32),
-    JmpIfFalsePop(i32),
+    JmpIfFalse(u32),
+    JmpIfTrue(u32),
+    Jmp(u32),
+    Loop(u32),
+    JmpIfFalsePop(u32),
 
     #[cfg(debug_assertions)]
     CheckStack(u8),
@@ -148,8 +149,9 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn offset(from: usize, to: usize) -> Result<i32, TryFromIntError> {
-        let offset = from as isize - to as isize;
+    pub fn offset(from: usize, to: usize) -> Result<u32, TryFromIntError> {
+        debug_assert!(from >= to);
+        let offset = from - to;
         offset.try_into()
     }
 

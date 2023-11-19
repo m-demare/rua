@@ -156,7 +156,7 @@ impl Vm {
                 Instruction::Neq => catch!(self.binary_op(|a, b| Ok((a != b).into()))),
                 Instruction::Le => catch!(self.number_binary_op(|a, b| a <= b)),
                 Instruction::Ge => catch!(self.number_binary_op(|a, b| a >= b)),
-                Instruction::Len => catch!(self.unary_op(|v| Ok(((v.len())? as f64).into()))),
+                Instruction::Len => catch!(self.len_op()),
                 Instruction::StrConcat => catch!(self.str_concat()),
                 Instruction::SetGlobal => {
                     let val = self.peek(0);
@@ -217,23 +217,26 @@ impl Vm {
                 Instruction::JmpIfFalsePop(offset) => {
                     let val = self.pop();
                     if !val.truthy() {
-                        frame.rel_jmp(offset as isize - 1);
+                        frame.rel_jmp(offset - 1);
                     }
                 }
                 Instruction::JmpIfFalse(offset) => {
                     let val = self.peek(0);
                     if !val.truthy() {
-                        frame.rel_jmp(offset as isize - 1);
+                        frame.rel_jmp(offset - 1);
                     }
                 }
                 Instruction::JmpIfTrue(offset) => {
                     let val = self.peek(0);
                     if val.truthy() {
-                        frame.rel_jmp(offset as isize - 1);
+                        frame.rel_jmp(offset - 1);
                     }
                 }
                 Instruction::Jmp(offset) => {
-                    frame.rel_jmp(offset as isize - 1);
+                    frame.rel_jmp(offset - 1);
+                }
+                Instruction::Loop(offset) => {
+                    frame.rel_loop(offset + 1);
                 }
                 Instruction::NewTable => {
                     self.push(RuaVal::Table(Table::new()));
@@ -343,6 +346,11 @@ impl Vm {
                 }
             }
         }
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn len_op(&mut self) -> Result<(), EvalError> {
+        self.unary_op(|v| Ok(((v.len())? as f64).into()))
     }
 
     fn set_upvalue(&mut self, frame: &mut CallFrame, up: UpvalueHandle) {

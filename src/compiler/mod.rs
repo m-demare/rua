@@ -499,7 +499,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.next_token();
         self.expression(Precedence::Lowest)?;
         consume!(self; (TT::THEN));
-        let if_jmp = self.jmp_if_false_pop(i32::MAX, line);
+        let if_jmp = self.jmp_if_false_pop(u32::MAX, line);
         self.block()?;
 
         match self.next_token() {
@@ -531,10 +531,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
         consume!(self; (TT::DO));
-        let exit_jmp = self.jmp_if_false_pop(i32::MAX, line);
+        let exit_jmp = self.jmp_if_false_pop(u32::MAX, line);
         self.block()?;
 
-        let offset = Chunk::offset(loop_start, self.current_chunk().code().len())
+        let offset = Chunk::offset(self.current_chunk().code().len(), loop_start)
             .or(Err(ParseError::JmpTooFar(line)))?;
         self.loop_to(offset, line);
         self.patch_jmp(exit_jmp, line)?;
@@ -543,23 +543,23 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn jmp(&mut self, to: i32, line: usize) -> usize {
+    fn jmp(&mut self, to: u32, line: usize) -> usize {
         self.instruction(I::Jmp(to), line)
     }
 
-    fn loop_to(&mut self, to: i32, line: usize) -> usize {
-        self.jmp(to, line)
+    fn loop_to(&mut self, to: u32, line: usize) -> usize {
+        self.instruction(I::Loop(to), line)
     }
 
-    fn jmp_if_false_pop(&mut self, to: i32, line: usize) -> usize {
+    fn jmp_if_false_pop(&mut self, to: u32, line: usize) -> usize {
         self.instruction(I::JmpIfFalsePop(to), line)
     }
 
-    fn jmp_if_false(&mut self, to: i32, line: usize) -> usize {
+    fn jmp_if_false(&mut self, to: u32, line: usize) -> usize {
         self.instruction(I::JmpIfFalse(to), line)
     }
 
-    fn jmp_if_true(&mut self, to: i32, line: usize) -> usize {
+    fn jmp_if_true(&mut self, to: u32, line: usize) -> usize {
         self.instruction(I::JmpIfTrue(to), line)
     }
 

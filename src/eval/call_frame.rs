@@ -33,8 +33,12 @@ impl CallFrame {
         instr
     }
 
-    pub fn rel_jmp(&mut self, offset: isize) {
-        self.ip = (self.ip as isize + offset) as usize;
+    pub fn rel_jmp(&mut self, offset: u32) {
+        self.ip += offset as usize;
+    }
+
+    pub fn rel_loop(&mut self, offset: u32) {
+        self.ip -= offset as usize;
     }
 
     pub fn read_constant(&self, c: Constant) -> RuaVal {

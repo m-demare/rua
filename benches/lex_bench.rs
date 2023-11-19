@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::{lex::Tokenizer, eval::Vm};
+use rua::{eval::Vm, lex::Tokenizer};
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
