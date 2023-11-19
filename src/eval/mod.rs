@@ -13,7 +13,7 @@ use crate::{
     eval::vals::{closure::Closure, IntoRuaVal, RuaType, StackTrace},
 };
 use either::Either::{self, Left, Right};
-use rua_identifiers::Trie;
+use rua_trie::Trie;
 use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
 

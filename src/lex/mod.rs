@@ -16,7 +16,7 @@ use self::{
     chars::{is_alphabetic, is_numeric, is_space},
     utils::{eat_while_peeking, read_decimals},
 };
-use rua_identifiers::TrieWalker;
+use rua_trie::TrieWalker;
 
 static STR_REPLACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));

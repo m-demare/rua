@@ -498,7 +498,7 @@ dependencies = [
  "pretty_assertions",
  "regex-lite",
  "rua_func_macros",
- "rua_identifiers",
+ "rua_trie",
  "rustc-hash",
  "thiserror",
  "weak-table",
@@ -515,7 +515,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rua_identifiers"
+name = "rua_trie"
 version = "0.1.0"
 
 [[package]]
