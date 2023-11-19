@@ -2,7 +2,7 @@ use std::{fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 use crate::{
-    eval::vals::{function::Function, string::RuaString, RuaVal},
+    eval::vals::{function::Function, string::RuaString},
     lex::tokens::{Token, TokenType},
 };
 
@@ -16,7 +16,8 @@ pub enum Instruction {
     Return,
     ReturnNil,
 
-    Constant(Constant),
+    Number(NumberHandle),
+    String(StringHandle),
     True,
     False,
     Nil,
@@ -59,7 +60,7 @@ pub enum Instruction {
     InsertValKey,
     Index,
 
-    Closure(Constant),
+    Closure(FnHandle),
     Upvalue(Upvalue),
     CloseUpvalue,
     GetUpvalue(UpvalueHandle),
@@ -71,30 +72,62 @@ pub enum Instruction {
     CheckStack(u8),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq)]
 pub struct Chunk {
     code: Vec<Instruction>,
-    constants: Vec<RuaVal>,
+    numbers: Vec<f64>,
+    strings: Vec<RuaString>,
+    functions: Vec<Function>,
     lines: Vec<(usize, usize)>, // in run-length encoding
 }
 
 #[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Constant(u32);
+pub struct NumberHandle(u32);
+
+#[cfg(not(test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StringHandle(u32);
+
+#[cfg(not(test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FnHandle(u32);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Constant(pub(crate) u32);
+pub struct NumberHandle(pub(crate) u32);
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StringHandle(pub(crate) u32);
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FnHandle(pub(crate) u32);
 
 impl Chunk {
     #[cfg(all(test, debug_assertions))]
-    pub fn new(code: Vec<Instruction>, constants: Vec<RuaVal>, lines: Vec<(usize, usize)>) -> Self {
+    pub fn new(
+        code: Vec<Instruction>,
+        numbers: Vec<f64>,
+        strings: Vec<RuaString>,
+        functions: Vec<Function>,
+        lines: Vec<(usize, usize)>,
+    ) -> Self {
         debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() >= code.len());
-        Self { code, constants, lines }
+        Self { code, numbers, strings, functions, lines }
     }
 
-    pub fn read_constant(&self, c: Constant) -> RuaVal {
-        self.constants.get(c.0 as usize).expect("Invalid constant").clone()
+    pub fn read_number(&self, c: NumberHandle) -> f64 {
+        *self.numbers.get(c.0 as usize).expect("Invalid constant")
+    }
+
+    pub fn read_string(&self, c: StringHandle) -> RuaString {
+        self.strings.get(c.0 as usize).expect("Invalid constant").clone()
+    }
+
+    pub fn read_function(&self, c: FnHandle) -> Function {
+        self.functions.get(c.0 as usize).expect("Invalid constant").clone()
     }
 
     pub const fn code(&self) -> &Vec<Instruction> {
@@ -102,18 +135,26 @@ impl Chunk {
     }
 
     pub fn add_closure(&mut self, func: Function, upvalues: Upvalues, line: usize) {
-        let c = Constant(self.constants.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        self.constants.push(RuaVal::Function(func));
+        let c = FnHandle(self.functions.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
+        self.functions.push(func);
         self.add_instruction(Instruction::Closure(c), line);
         for up in upvalues {
             self.add_instruction(Instruction::Upvalue(up), line);
         }
     }
 
-    pub fn add_constant(&mut self, val: RuaVal, line: usize) -> usize {
-        let c = Constant(self.constants.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        self.constants.push(val); // TODO maybe reuse constants?
-        self.add_instruction(Instruction::Constant(c), line)
+    pub fn add_number(&mut self, val: f64, line: usize) -> usize {
+        let c =
+            NumberHandle(self.numbers.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
+        self.numbers.push(val); // TODO maybe reuse constants?
+        self.add_instruction(Instruction::Number(c), line)
+    }
+
+    pub fn add_string(&mut self, val: RuaString, line: usize) -> usize {
+        let c =
+            StringHandle(self.strings.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
+        self.strings.push(val); // TODO maybe reuse constants?
+        self.add_instruction(Instruction::String(c), line)
     }
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
@@ -178,7 +219,13 @@ impl Chunk {
 
 impl Default for Chunk {
     fn default() -> Self {
-        Self { code: Vec::new(), constants: Vec::new(), lines: vec![(0, 0)] }
+        Self {
+            code: Vec::new(),
+            numbers: Vec::new(),
+            strings: Vec::new(),
+            functions: Vec::new(),
+            lines: vec![(0, 0)],
+        }
     }
 }
 
@@ -205,9 +252,17 @@ impl Debug for Chunk {
                 count_in_line = 0;
             }
         }
-        writeln!(f, "Constants:")?;
-        for (i, c) in self.constants.iter().enumerate() {
+        writeln!(f, "Numbers:")?;
+        for (i, c) in self.numbers.iter().enumerate() {
             writeln!(f, "{i} {c}")?;
+        }
+        writeln!(f, "Strings:")?;
+        for (i, c) in self.strings.iter().enumerate() {
+            writeln!(f, "{i} {c}")?;
+        }
+        writeln!(f, "Functions:")?;
+        for (i, c) in self.functions.iter().enumerate() {
+            writeln!(f, "{i} {}", c.pretty_name())?;
         }
         writeln!(f, "Lines:")?;
         writeln!(f, "{:?}", self.lines)?;

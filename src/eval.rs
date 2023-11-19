@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    compiler::{bytecode::Constant, locals::LocalHandle, upvalues::UpvalueHandle},
+    compiler::{bytecode::FnHandle, locals::LocalHandle, upvalues::UpvalueHandle},
     eval::vals::{closure::Closure, IntoRuaVal, RuaType},
 };
 use either::Either::{self, Left, Right};
@@ -104,9 +104,13 @@ impl Vm {
                 Instruction::Pop => {
                     self.pop();
                 }
-                Instruction::Constant(c) => {
-                    let constant = frame.read_constant(c);
-                    self.push(constant);
+                Instruction::Number(c) => {
+                    let constant = frame.read_number(c);
+                    self.push(constant.into());
+                }
+                Instruction::String(c) => {
+                    let constant = frame.read_string(c);
+                    self.push(constant.into());
                 }
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),
@@ -290,29 +294,25 @@ impl Vm {
         }
     }
 
-    fn closure(&mut self, frame: &mut CallFrame, c: Constant) {
-        let constant = frame.read_constant(c);
-        if let RuaVal::Function(f) = constant {
-            let upvalue_count = f.upvalue_count();
-            let mut closure = Closure::new(f);
-            for _ in 0..upvalue_count {
-                if let Instruction::Upvalue(up) = frame.curr_instr() {
-                    match up.location() {
-                        Left(local) => {
-                            self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
-                        }
-                        Right(upvalue) => {
-                            closure.push_upvalue(frame.closure().get_upvalue(upvalue));
-                        }
+    fn closure(&mut self, frame: &mut CallFrame, f: FnHandle) {
+        let f = frame.read_function(f);
+        let upvalue_count = f.upvalue_count();
+        let mut closure = Closure::new(f);
+        for _ in 0..upvalue_count {
+            if let Instruction::Upvalue(up) = frame.curr_instr() {
+                match up.location() {
+                    Left(local) => {
+                        self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
                     }
-                } else {
-                    unreachable!("Expected {upvalue_count} upvalues after this closure");
+                    Right(upvalue) => {
+                        closure.push_upvalue(frame.closure().get_upvalue(upvalue));
+                    }
                 }
+            } else {
+                unreachable!("Expected {upvalue_count} upvalues after this closure");
             }
-            self.push(RuaVal::Closure(closure.into()));
-        } else {
-            unreachable!("Shouldn't try to create closure out of a non-function object");
         }
+        self.push(RuaVal::Closure(closure.into()));
     }
 
     fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {

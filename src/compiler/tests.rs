@@ -1,11 +1,12 @@
 #![cfg(all(test, debug_assertions))]
 
-use crate::{
-    compiler::bytecode::{Chunk, Constant, Instruction as I},
-    eval::{vals::IntoRuaVal, Vm},
-};
+use crate::eval::Vm;
 
-use super::{bytecode::ParseError, compile, locals::LocalHandle};
+use super::{
+    bytecode::{Chunk, Instruction as I, NumberHandle, ParseError, StringHandle},
+    compile,
+    locals::LocalHandle,
+};
 use pretty_assertions::assert_eq;
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F) {
@@ -28,16 +29,16 @@ fn test_arithmetic_exprs() {
         Ok(Chunk::new(
             vec![
                 I::CheckStack(0),
-                I::Constant(Constant(0)),
+                I::Number(NumberHandle(0)),
                 I::Neg,
-                I::Constant(Constant(1)),
-                I::Constant(Constant(2)),
+                I::Number(NumberHandle(1)),
+                I::Number(NumberHandle(2)),
                 I::Neg,
                 I::Mul,
                 I::Add,
-                I::Constant(Constant(3)),
-                I::Constant(Constant(4)),
-                I::Constant(Constant(5)),
+                I::Number(NumberHandle(3)),
+                I::Number(NumberHandle(4)),
+                I::Number(NumberHandle(5)),
                 I::Add,
                 I::Mul,
                 I::Sub,
@@ -45,7 +46,9 @@ fn test_arithmetic_exprs() {
                 I::CheckStack(0),
                 I::ReturnNil,
             ],
-            vec![5.0.into(), 1.0.into(), 6.0.into(), 2.0.into(), 3.0.into(), 4.0.into()],
+            vec![5.0, 1.0, 6.0, 2.0, 3.0, 4.0],
+            Vec::new(),
+            Vec::new(),
             vec![(0, 17)],
         ))
     });
@@ -61,8 +64,8 @@ fn test_locals() {
             Ok(Chunk::new(
                 vec![
                     I::CheckStack(0),
-                    I::Constant(Constant(0)),
-                    I::Constant(Constant(1)),
+                    I::Number(NumberHandle(0)),
+                    I::Number(NumberHandle(1)),
                     I::Add,
                     I::CheckStack(1),
                     I::GetLocal(LocalHandle(0)),
@@ -71,7 +74,9 @@ fn test_locals() {
                     I::Pop,
                     I::ReturnNil,
                 ],
-                vec![5.0.into(), 8.0.into()],
+                vec![5.0, 8.0],
+                Vec::new(),
+                Vec::new(),
                 vec![(0, 1), (1, 3), (0, 1), (2, 2), (0, 3)],
             ))
         },
@@ -86,11 +91,11 @@ fn test_locals() {
             Ok(Chunk::new(
                 vec![
                     I::CheckStack(0),
-                    I::Constant(Constant(0)),
-                    I::Constant(Constant(1)),
+                    I::Number(NumberHandle(0)),
+                    I::Number(NumberHandle(1)),
                     I::Add,
                     I::CheckStack(1),
-                    I::Constant(Constant(2)),
+                    I::Number(NumberHandle(2)),
                     I::CheckStack(2),
                     I::GetLocal(LocalHandle(0)),
                     I::GetLocal(LocalHandle(1)),
@@ -104,7 +109,9 @@ fn test_locals() {
                     I::Pop,
                     I::ReturnNil,
                 ],
-                vec![5.0.into(), 8.0.into(), 3.0.into()],
+                vec![5.0, 8.0, 3.0],
+                Vec::new(),
+                Vec::new(),
                 vec![(0, 1), (1, 3), (0, 1), (2, 1), (0, 1), (3, 3), (0, 1), (4, 2), (0, 5)],
             ))
         },
@@ -121,15 +128,17 @@ fn test_assign() {
             Ok(Chunk::new(
                 vec![
                     I::CheckStack(0),
-                    I::Constant(Constant(0)),
-                    I::Constant(Constant(1)),
-                    I::Constant(Constant(2)),
+                    I::String(StringHandle(0)),
+                    I::Number(NumberHandle(0)),
+                    I::Number(NumberHandle(1)),
                     I::Add,
                     I::SetGlobal,
                     I::CheckStack(0),
                     I::ReturnNil,
                 ],
-                vec!["foo".into_rua(vm), 5.0.into(), 8.0.into()],
+                vec![5.0, 8.0],
+                vec![vm.new_string("foo".into())],
+                Vec::new(),
                 vec![(0, 1), (1, 5), (0, 2)],
             ))
         },

@@ -4,7 +4,7 @@ use either::Either::{self, Left, Right};
 
 use crate::{
     eval::{
-        vals::{closure::Closure, function::Function, string::RuaString, RuaVal},
+        vals::{closure::Closure, function::Function, string::RuaString},
         Vm,
     },
     lex::{
@@ -143,8 +143,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         &mut self.context.chunk
     }
 
-    fn emit_constant(&mut self, val: RuaVal, line: usize) {
-        self.current_chunk().add_constant(val, line);
+    fn emit_number(&mut self, val: f64, line: usize) {
+        self.current_chunk().add_number(val, line);
+    }
+
+    fn emit_string(&mut self, val: RuaString, line: usize) {
+        self.current_chunk().add_string(val, line);
     }
 
     fn emit_closure(&mut self, val: Function, upvalues: Upvalues, line: usize) {
@@ -198,10 +202,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.named_variable(id, line)?;
             }
             Some(Token { ttype: TT::NUMBER(n), line, .. }) => {
-                self.emit_constant(n.into(), line);
+                self.emit_number(n, line);
             }
             Some(Token { ttype: TT::STRING(s), line, .. }) => {
-                self.emit_constant(s.into(), line);
+                self.emit_string(s, line);
             }
             Some(Token { ttype: TT::TRUE, line, .. }) => {
                 self.instruction(I::True, line);
@@ -232,7 +236,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         } else if let Some(upvalue) = self.context.resolve_upvalue(&id, &mut self.context_stack)? {
             self.instruction(I::GetUpvalue(upvalue), line);
         } else {
-            self.emit_constant(id.into(), line);
+            self.emit_string(id, line);
             self.instruction(I::GetGlobal, line);
         }
         Ok(())
@@ -282,7 +286,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     if precedence < Precedence::FieldAccess {
                         self.next_token();
                         let id = self.identifier()?;
-                        self.emit_constant(id.into(), line);
+                        self.emit_string(id, line);
                         self.instruction(I::Index, line);
                     } else {
                         break Ok(());
@@ -459,7 +463,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn convert_to_assign(&mut self, line: usize) -> Result<Instruction, ParseError> {
         match self.pop_instruction().expect("Just parsed an expression") {
             I::GetGlobal => {
-                debug_assert!(matches!(self.context.chunk.code().last(), Some(I::Constant(_))));
+                debug_assert!(matches!(self.context.chunk.code().last(), Some(I::String(_))));
                 Ok(I::SetGlobal)
             }
             I::GetUpvalue(up) => Ok(I::SetUpvalue(up)),
@@ -596,7 +600,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             self.emit_closure(function, upvalues, line);
             self.context.locals.declare(id)?;
         } else {
-            self.emit_constant(id.into(), line);
+            self.emit_string(id, line);
             self.emit_closure(function, upvalues, line);
             self.instruction(I::SetGlobal, line);
         }
@@ -682,18 +686,15 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                                 self.pop_instruction();
                                 let name =
                                     self.context.resolve_upvalue_name(up, &self.context_stack);
-                                self.emit_constant(name.into(), line);
+                                self.emit_string(name, line);
                             }
                             I::GetLocal(idx) => {
                                 self.pop_instruction();
                                 let name = self.context.locals.get(idx);
-                                self.emit_constant(name.into(), line);
+                                self.emit_string(name, line);
                             }
-                            I::Constant(c) => match self.current_chunk().read_constant(c) {
-                                RuaVal::String(_) => {}
-                                _ => return Err(ParseError::InvalidAssignLHS(line)),
-                            },
-                            _ => {}
+                            I::String(_) => {}
+                            _ => return Err(ParseError::InvalidAssignLHS(line)),
                         }
                     }
                 }
@@ -710,7 +711,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     let line = *line;
                     ops.push(I::InsertValKey);
                     arr_count += 1;
-                    self.emit_constant((f64::from(arr_count)).into(), line);
+                    self.emit_number(f64::from(arr_count), line);
                 }
                 None => {}
             }

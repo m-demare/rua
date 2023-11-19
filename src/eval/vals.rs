@@ -17,11 +17,7 @@ use thiserror::Error;
 use crate::eval::Vm;
 
 use self::{
-    closure::Closure,
-    function::{Function, NativeFunction},
-    number::RuaNumber,
-    string::RuaString,
-    table::Table,
+    closure::Closure, function::NativeFunction, number::RuaNumber, string::RuaString, table::Table,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -29,7 +25,6 @@ pub enum RuaVal {
     Number(RuaNumber),
     Bool(bool),
     Nil,
-    Function(Function),
     Closure(Rc<Closure>),
     String(RuaString),
     NativeFunction(NativeFunction),
@@ -73,7 +68,7 @@ impl RuaVal {
             Self::Number(..) => RuaType::Number,
             Self::Bool(..) => RuaType::Bool,
             Self::Nil => RuaType::Nil,
-            Self::Function(..) | Self::NativeFunction(..) | Self::Closure(..) => RuaType::Function,
+            Self::NativeFunction(..) | Self::Closure(..) => RuaType::Function,
             Self::String(..) => RuaType::String,
             Self::Table(..) => RuaType::Table,
         }
@@ -95,7 +90,7 @@ impl Display for RuaVal {
             Self::Number(n) => write!(f, "{}", n.val()),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Nil => write!(f, "nil"),
-            Self::Function(..) | Self::NativeFunction(..) | Self::Closure(..) => {
+            Self::NativeFunction(..) | Self::Closure(..) => {
                 write!(f, "function")
             }
             Self::String(s) => write!(f, "{s}"),
@@ -120,7 +115,6 @@ impl Display for RuaType {
 impl Debug for RuaVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Function(func) => write!(f, "function ({})", func.pretty_name()),
             Self::Closure(closure) => write!(f, "function ({})", closure.function().pretty_name()),
             Self::NativeFunction(_) => write!(f, "native function"),
             _ => write!(f, "{self}"),

@@ -59,7 +59,6 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
 #[rua_func]
 pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func {
-        RuaVal::Function(_) => todo!("Remove Function from RuaVal"),
         RuaVal::Closure(c) => ctxt.vm.interpret(c),
         RuaVal::NativeFunction(f) => f.call(&ctxt.args[1..], ctxt.vm),
         _ => return RuaVal::Bool(false),

@@ -1,4 +1,4 @@
-use crate::compiler::bytecode::{Constant, Instruction};
+use crate::compiler::bytecode::{FnHandle, Instruction, NumberHandle, StringHandle};
 
 use std::{
     fmt::Debug,
@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::vals::{closure::Closure, RuaVal};
+use super::vals::{closure::Closure, function::Function, string::RuaString};
 
 pub struct CallFrame {
     closure: Rc<Closure>,
@@ -41,8 +41,16 @@ impl CallFrame {
         self.ip -= offset as usize;
     }
 
-    pub fn read_constant(&self, c: Constant) -> RuaVal {
-        self.closure.function().chunk().read_constant(c)
+    pub fn read_number(&self, c: NumberHandle) -> f64 {
+        self.closure.function().chunk().read_number(c)
+    }
+
+    pub fn read_string(&self, c: StringHandle) -> RuaString {
+        self.closure.function().chunk().read_string(c)
+    }
+
+    pub fn read_function(&self, c: FnHandle) -> Function {
+        self.closure.function().chunk().read_function(c)
     }
 
     pub const fn stack_start(&self) -> usize {
