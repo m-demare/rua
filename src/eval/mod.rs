@@ -9,8 +9,8 @@ use std::{
 };
 
 use crate::{
-    compiler::{locals::LocalHandle, upvalues::UpvalueHandle},
-    eval::vals::{closure::Closure, IntoRuaVal, RuaType, StackTrace},
+    compiler::{bytecode::Constant, locals::LocalHandle, upvalues::UpvalueHandle},
+    eval::vals::{closure::Closure, IntoRuaVal, RuaType},
 };
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
@@ -83,18 +83,8 @@ impl Vm {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResult {
-        macro_rules! catch {
-            ($res: expr) => {
-                match $res {
-                    Err(e) => {
-                        self.frames.push(frame);
-                        return Err(EvalErrorTraced::new(e, StackTrace::new()));
-                    }
-                    Ok(val) => val,
-                }
-            };
-        }
         let first_frame_id = frame.id();
         loop {
             #[cfg(test)]
@@ -102,32 +92,13 @@ impl Vm {
             let instr = frame.curr_instr();
             match instr {
                 Instruction::Return => {
-                    self.close_upvalues(frame.stack_start());
-                    let retval = self.pop();
-                    self.stack.truncate(frame.stack_start());
-                    if frame.id() == first_frame_id {
-                        return Ok(retval);
-                    }
-                    match self.frames.pop() {
-                        Some(f) => {
-                            self.push(retval);
-                            frame = f;
-                        }
-                        None => return Ok(retval),
+                    if let Some(val) = self.return_op(&mut frame, false, first_frame_id) {
+                        return Ok(val);
                     }
                 }
                 Instruction::ReturnNil => {
-                    self.close_upvalues(frame.stack_start());
-                    self.stack.truncate(frame.stack_start());
-                    if frame.id() == first_frame_id {
-                        return Ok(RuaVal::Nil);
-                    }
-                    match self.frames.pop() {
-                        Some(f) => {
-                            self.push(RuaVal::Nil);
-                            frame = f;
-                        }
-                        None => return Ok(RuaVal::Nil),
+                    if let Some(val) = self.return_op(&mut frame, true, first_frame_id) {
+                        return Ok(val);
                     }
                 }
                 Instruction::Pop => {
@@ -137,27 +108,27 @@ impl Vm {
                     let constant = frame.read_constant(c);
                     self.push(constant);
                 }
-                Instruction::Neg => {
-                    catch!(self.unary_op(|v| Ok((-v.into_number()?).into())));
-                }
-                Instruction::Add => catch!(self.number_binary_op(|a, b| a + b)),
-                Instruction::Sub => catch!(self.number_binary_op(|a, b| a - b)),
-                Instruction::Mul => catch!(self.number_binary_op(|a, b| a * b)),
-                Instruction::Div => catch!(self.number_binary_op(|a, b| a / b)),
-                Instruction::Mod => catch!(self.number_binary_op(|a, b| a % b)),
-                Instruction::Pow => catch!(self.number_binary_op(f64::powf)),
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),
                 Instruction::Nil => self.push(RuaVal::Nil),
-                Instruction::Not => catch!(self.unary_op(|v| Ok((!v.truthy()).into()))),
-                Instruction::Eq => catch!(self.binary_op(|a, b| Ok((a == b).into()))),
-                Instruction::Lt => catch!(self.number_binary_op(|a, b| a < b)),
-                Instruction::Gt => catch!(self.number_binary_op(|a, b| a > b)),
-                Instruction::Neq => catch!(self.binary_op(|a, b| Ok((a != b).into()))),
-                Instruction::Le => catch!(self.number_binary_op(|a, b| a <= b)),
-                Instruction::Ge => catch!(self.number_binary_op(|a, b| a >= b)),
-                Instruction::Len => catch!(self.len_op()),
-                Instruction::StrConcat => catch!(self.str_concat()),
+                Instruction::Neg => {
+                    trace_err(self.unary_op(|v| Ok((-v.into_number()?).into())), &frame)?;
+                }
+                Instruction::Not => trace_err(self.unary_op(|v| Ok((!v.truthy()).into())), &frame)?,
+                Instruction::Len => trace_err(self.len_op(), &frame)?,
+                Instruction::Add => trace_err(self.number_binary_op(|a, b| a + b), &frame)?,
+                Instruction::Sub => trace_err(self.number_binary_op(|a, b| a - b), &frame)?,
+                Instruction::Mul => trace_err(self.number_binary_op(|a, b| a * b), &frame)?,
+                Instruction::Div => trace_err(self.number_binary_op(|a, b| a / b), &frame)?,
+                Instruction::Mod => trace_err(self.number_binary_op(|a, b| a % b), &frame)?,
+                Instruction::Pow => trace_err(self.number_binary_op(f64::powf), &frame)?,
+                Instruction::Eq => trace_err(self.binary_op(|a, b| Ok((a == b).into())), &frame)?,
+                Instruction::Lt => trace_err(self.number_binary_op(|a, b| a < b), &frame)?,
+                Instruction::Gt => trace_err(self.number_binary_op(|a, b| a > b), &frame)?,
+                Instruction::Neq => trace_err(self.binary_op(|a, b| Ok((a != b).into())), &frame)?,
+                Instruction::Le => trace_err(self.number_binary_op(|a, b| a <= b), &frame)?,
+                Instruction::Ge => trace_err(self.number_binary_op(|a, b| a >= b), &frame)?,
+                Instruction::StrConcat => trace_err(self.str_concat(), &frame)?,
                 Instruction::SetGlobal => {
                     let val = self.peek(0);
                     let key = self.peek(1);
@@ -169,47 +140,8 @@ impl Vm {
                     let key = self.pop();
                     self.push(self.global.get(&key).into());
                 }
-                Instruction::Call(nargs) => {
-                    let func = self.peek(nargs as usize);
-                    match func {
-                        RuaVal::Closure(closure) => {
-                            if closure.function().arity() < nargs {
-                                self.drop((nargs - closure.function().arity()) as usize);
-                            }
-                            for _ in 0..closure.function().arity().saturating_sub(nargs) {
-                                self.push(RuaVal::Nil);
-                            }
-                            let stack_start_pos =
-                                self.get_frame_start(closure.function().arity() as usize);
-                            #[cfg(test)]
-                            println!(
-                                "Started tracing {:?}, starting at stack {stack_start_pos}",
-                                closure.function()
-                            );
-                            self.frames.push(frame);
-                            frame = CallFrame::new(closure, stack_start_pos);
-                        }
-                        RuaVal::NativeFunction(f) => {
-                            let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
-                            let retval = match f.call(&args, self) {
-                                Ok(v) => v,
-                                Err(mut e) => {
-                                    e.push_stack_trace(frame.func_name(), frame.curr_line());
-                                    return Err(e);
-                                }
-                            };
-                            self.drop(nargs as usize + 1); // drop args and function itself
-                            self.push(retval);
-                        }
-                        v => catch!(Err::<(), EvalError>(EvalError::TypeError {
-                            expected: RuaType::Function,
-                            got: v.get_type()
-                        })),
-                    }
-                }
-                Instruction::SetLocal(local) => {
-                    self.set_local(&frame, local);
-                }
+                Instruction::Call(nargs) => self.call(nargs, &mut frame)?,
+                Instruction::SetLocal(local) => self.set_local(&frame, local),
                 Instruction::GetLocal(local) => {
                     let val = self.stack_at(frame.stack_start() + local.pos());
                     self.push(val);
@@ -232,12 +164,8 @@ impl Vm {
                         frame.rel_jmp(offset - 1);
                     }
                 }
-                Instruction::Jmp(offset) => {
-                    frame.rel_jmp(offset - 1);
-                }
-                Instruction::Loop(offset) => {
-                    frame.rel_loop(offset + 1);
-                }
+                Instruction::Jmp(offset) => frame.rel_jmp(offset - 1),
+                Instruction::Loop(offset) => frame.rel_loop(offset + 1),
                 Instruction::NewTable => {
                     self.push(RuaVal::Table(Table::new()));
                 }
@@ -245,7 +173,7 @@ impl Vm {
                     let table = self.peek(0);
                     let val = self.peek(1);
                     let key = self.peek(2);
-                    let mut table = catch!(table.into_table());
+                    let mut table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
                     self.push(table.into());
@@ -254,7 +182,7 @@ impl Vm {
                     let table = self.peek(0);
                     let key = self.peek(1);
                     let val = self.peek(2);
-                    let mut table = catch!(table.into_table());
+                    let mut table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
                     self.push(table.into());
@@ -262,37 +190,11 @@ impl Vm {
                 Instruction::Index => {
                     let key = self.pop();
                     let table = self.pop();
-                    let table = catch!(table.into_table());
+                    let table = trace_err(table.into_table(), &frame)?;
                     self.push(table.get(&key).into());
                 }
                 Instruction::Closure(c) => {
-                    let constant = frame.read_constant(c);
-                    if let RuaVal::Function(f) = constant {
-                        let upvalue_count = f.upvalue_count();
-                        let mut closure = Closure::new(f);
-                        for _ in 0..upvalue_count {
-                            if let Instruction::Upvalue(up) = frame.curr_instr() {
-                                match up.location() {
-                                    Left(local) => self.capture_upvalue(
-                                        &mut closure,
-                                        frame.stack_start() + local.pos(),
-                                    ),
-                                    Right(upvalue) => {
-                                        closure.push_upvalue(frame.closure().get_upvalue(upvalue));
-                                    }
-                                }
-                            } else {
-                                unreachable!(
-                                    "Expected {upvalue_count} upvalues after this closure"
-                                );
-                            }
-                        }
-                        self.push(RuaVal::Closure(closure.into()));
-                    } else {
-                        unreachable!(
-                            "Shouldn't try to create closure out of a non-function object"
-                        );
-                    }
+                    self.closure(&mut frame, c);
                 }
                 Instruction::CloseUpvalue => {
                     self.close_upvalues(self.stack.len() - 1);
@@ -309,32 +211,7 @@ impl Vm {
                     unreachable!("Instruction::Upvalue must be handled by Instruction::Closure")
                 }
                 Instruction::Multiassign(n) => {
-                    let mut keys_in_stack = 0;
-                    let n = n as usize;
-                    for i in 0..n {
-                        match frame.curr_instr() {
-                            Instruction::SetLocal(local) => self.set_local(&frame, local),
-                            Instruction::SetUpvalue(up) => self.set_upvalue(&mut frame, up),
-                            Instruction::SetGlobal => {
-                                let val = self.peek(0);
-                                let key = self.peek(n - i + keys_in_stack);
-                                self.global.insert(key, val);
-                                self.pop();
-                                keys_in_stack += 1;
-                            }
-                            Instruction::InsertKeyVal => {
-                                let val = self.peek(0);
-                                let key = self.peek(n - i + keys_in_stack);
-                                let table = self.peek(n - i + keys_in_stack + 1);
-                                let mut table = catch!(table.into_table());
-                                table.insert(key, val);
-                                self.pop();
-                                keys_in_stack += 2;
-                            }
-                            i => unreachable!("{i:?} cannot be part of Instruction::Multiassign"),
-                        }
-                    }
-                    self.drop(keys_in_stack);
+                    self.multiassign(n, &mut frame)?;
                 }
                 #[cfg(debug_assertions)]
                 Instruction::CheckStack(n_locals) => {
@@ -346,6 +223,126 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn call(&mut self, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
+        let func = self.peek(nargs as usize);
+        match func {
+            RuaVal::Closure(closure) => {
+                if closure.function().arity() < nargs {
+                    self.drop((nargs - closure.function().arity()) as usize);
+                }
+                for _ in 0..closure.function().arity().saturating_sub(nargs) {
+                    self.push(RuaVal::Nil);
+                }
+                let stack_start_pos = self.get_frame_start(closure.function().arity() as usize);
+                #[cfg(test)]
+                println!(
+                    "Started tracing {:?}, starting at stack {stack_start_pos}",
+                    closure.function()
+                );
+                let old_frame = std::mem::replace(frame, CallFrame::new(closure, stack_start_pos));
+                self.frames.push(old_frame);
+                Ok(())
+            }
+            RuaVal::NativeFunction(f) => {
+                let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
+                let retval = match f.call(&args, self) {
+                    Ok(v) => v,
+                    Err(mut e) => {
+                        e.push_stack_trace(frame.func_name(), frame.curr_line());
+                        return Err(e);
+                    }
+                };
+                self.drop(nargs as usize + 1); // drop args and function itself
+                self.push(retval);
+                Ok(())
+            }
+            v => {
+                let stack_trace = vec![(frame.func_name(), frame.curr_line())];
+                Err(EvalErrorTraced::new(
+                    EvalError::TypeError { expected: RuaType::Function, got: v.get_type() },
+                    stack_trace,
+                ))
+            }
+        }
+    }
+
+    fn return_op(
+        &mut self,
+        frame: &mut CallFrame,
+        is_nil: bool,
+        first_frame_id: usize,
+    ) -> Option<RuaVal> {
+        self.close_upvalues(frame.stack_start());
+        let retval = if is_nil { RuaVal::Nil } else { self.pop() };
+        self.stack.truncate(frame.stack_start());
+        if frame.id() == first_frame_id {
+            return Some(retval);
+        }
+        match self.frames.pop() {
+            Some(f) => {
+                self.push(retval);
+                *frame = f;
+                None
+            }
+            None => Some(retval),
+        }
+    }
+
+    fn closure(&mut self, frame: &mut CallFrame, c: Constant) {
+        let constant = frame.read_constant(c);
+        if let RuaVal::Function(f) = constant {
+            let upvalue_count = f.upvalue_count();
+            let mut closure = Closure::new(f);
+            for _ in 0..upvalue_count {
+                if let Instruction::Upvalue(up) = frame.curr_instr() {
+                    match up.location() {
+                        Left(local) => {
+                            self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
+                        }
+                        Right(upvalue) => {
+                            closure.push_upvalue(frame.closure().get_upvalue(upvalue));
+                        }
+                    }
+                } else {
+                    unreachable!("Expected {upvalue_count} upvalues after this closure");
+                }
+            }
+            self.push(RuaVal::Closure(closure.into()));
+        } else {
+            unreachable!("Shouldn't try to create closure out of a non-function object");
+        }
+    }
+
+    fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
+        let mut keys_in_stack = 0;
+        let n = n as usize;
+        for i in 0..n {
+            match frame.curr_instr() {
+                Instruction::SetLocal(local) => self.set_local(&*frame, local),
+                Instruction::SetUpvalue(up) => self.set_upvalue(frame, up),
+                Instruction::SetGlobal => {
+                    let val = self.peek(0);
+                    let key = self.peek(n - i + keys_in_stack);
+                    self.global.insert(key, val);
+                    self.pop();
+                    keys_in_stack += 1;
+                }
+                Instruction::InsertKeyVal => {
+                    let val = self.peek(0);
+                    let key = self.peek(n - i + keys_in_stack);
+                    let table = self.peek(n - i + keys_in_stack + 1);
+                    let mut table = trace_err(table.into_table(), &*frame)?;
+                    table.insert(key, val);
+                    self.pop();
+                    keys_in_stack += 2;
+                }
+                i => unreachable!("{i:?} cannot be part of Instruction::Multiassign"),
+            }
+        }
+        self.drop(keys_in_stack);
+        Ok(())
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -488,6 +485,13 @@ impl Vm {
     fn get_frame_start(&self, nargs: usize) -> usize {
         self.stack.len() - nargs - 1
     }
+}
+
+fn trace_err<T>(res: Result<T, EvalError>, frame: &CallFrame) -> Result<T, EvalErrorTraced> {
+    res.map_err(|e| {
+        let stack_trace = vec![(frame.func_name(), frame.curr_line())];
+        EvalErrorTraced::new(e, stack_trace)
+    })
 }
 
 impl Default for Vm {

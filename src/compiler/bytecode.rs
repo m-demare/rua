@@ -15,50 +15,60 @@ use super::{
 pub enum Instruction {
     Return,
     ReturnNil,
+
     Constant(Constant),
-    Closure(Constant),
+    True,
+    False,
+    Nil,
+
     Neg,
+    Not,
+    Len,
+
     Add,
     Sub,
     Mul,
     Div,
     Mod,
     Pow,
-    True,
-    False,
-    Nil,
-    Not,
     Eq,
     Lt,
     Gt,
     Neq,
     Le,
     Ge,
-    Len,
     StrConcat,
+
     GetGlobal,
     SetGlobal,
+
     Call(u8),
     Pop,
+
     GetLocal(LocalHandle),
     SetLocal(LocalHandle),
+
     JmpIfFalse(u32),
     JmpIfTrue(u32),
     Jmp(u32),
     Loop(u32),
     JmpIfFalsePop(u32),
 
-    #[cfg(debug_assertions)]
-    CheckStack(u8),
     NewTable,
     InsertKeyVal,
     InsertValKey,
     Index,
-    GetUpvalue(UpvalueHandle),
-    SetUpvalue(UpvalueHandle),
+
+    Closure(Constant),
     Upvalue(Upvalue),
     CloseUpvalue,
+    GetUpvalue(UpvalueHandle),
+    SetUpvalue(UpvalueHandle),
+
     Multiassign(u8),
+
+    #[cfg(debug_assertions)]
+    CheckStack(u8),
 }
 
 #[derive(PartialEq, Eq)]
