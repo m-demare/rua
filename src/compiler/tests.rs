@@ -1,4 +1,4 @@
-#![cfg(test)]
+#![cfg(all(test, debug_assertions))]
 
 use crate::{
     compiler::bytecode::{Chunk, Constant, Instruction as I},

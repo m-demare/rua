@@ -1,13 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::lex::Tokenizer;
-use rua_identifiers::Trie;
+use rua::{lex::Tokenizer, eval::Vm};
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
-    let mut identifiers = Trie::new();
     c.bench_function(name, |b| {
         b.iter(|| {
-            let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut identifiers));
+            let mut vm = Vm::new();
+            let tokens = Tokenizer::new(black_box(input.chars()), black_box(&mut vm));
             for t in tokens {
                 black_box(t);
             }

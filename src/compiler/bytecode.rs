@@ -76,7 +76,7 @@ pub struct Constant(u32);
 pub struct Constant(pub(crate) u32);
 
 impl Chunk {
-    #[cfg(test)]
+    #[cfg(all(test, debug_assertions))]
     pub fn new(code: Vec<Instruction>, constants: Vec<RuaVal>, lines: Vec<(usize, usize)>) -> Self {
         debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() >= code.len());
         Self { code, constants, lines }

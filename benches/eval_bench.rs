@@ -1,21 +1,13 @@
-use std::cell::RefCell;
-
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use rua::{
-    eval::{eval, isolate::Isolate},
-    lex::Tokenizer,
-    parser::parse,
-};
-use rua_identifiers::Trie;
+use rua::{compiler::compile, eval::Vm};
 
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
-            let mut identifiers = Trie::new();
-            let tokens = Tokenizer::new(input.chars(), black_box(&mut identifiers));
-            let prog = parse(tokens).unwrap();
-            black_box(eval(&prog, RefCell::new(Isolate::new(identifiers)).into()))
+            let mut vm = Vm::new();
+            let prog = compile(input.chars(), &mut vm).unwrap();
+            black_box(vm.interpret(prog.into()))
         })
     });
 }

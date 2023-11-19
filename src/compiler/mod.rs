@@ -465,7 +465,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             I::GetUpvalue(up) => Ok(I::SetUpvalue(up)),
             I::GetLocal(idx) => Ok(I::SetLocal(idx)),
             I::Index => Ok(I::InsertKeyVal),
-            _ => return Err(ParseError::InvalidAssignLHS(line)),
+            _ => Err(ParseError::InvalidAssignLHS(line)),
         }
     }
 
