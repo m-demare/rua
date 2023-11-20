@@ -10,23 +10,27 @@ use super::vals::{
 };
 use rua_func_macros::rua_func;
 
+mod io;
+mod math;
+mod table;
+
 // Built in functions {{{
 
 #[rua_func]
-pub fn print(ctxt: &mut FunctionContext) {
+fn print(ctxt: &FunctionContext) {
     let s = ctxt.args.iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
 
     println!("{s}");
 }
 
 #[rua_func]
-pub fn tostring(arg: RuaVal) -> String {
+fn tostring(arg: RuaVal) -> String {
     arg.to_string()
 }
 
 #[rua_func]
 #[allow(clippy::float_cmp, clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-pub fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
+fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
     let radix = radix.map_or(10.0, identity);
     let r: u32 = radix.round() as u32;
     if f64::from(r) != radix {
@@ -41,13 +45,13 @@ pub fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
 }
 
 #[rua_func(exact_args)]
-pub fn rua_type(val: RuaVal) -> String {
+fn rua_type(val: RuaVal) -> String {
     let t = val.get_type();
     t.to_string()
 }
 
 #[rua_func]
-pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
+fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
     if assertion.truthy() {
         Ok(assertion)
     } else {
@@ -57,7 +61,7 @@ pub fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
 
 // TODO revise when I add returning multiple values
 #[rua_func]
-pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
+fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func {
         RuaVal::Closure(c) => ctxt.vm.interpret(c),
         RuaVal::NativeFunction(f) => f.call(&ctxt.args[1..], ctxt.vm),
@@ -66,26 +70,11 @@ pub fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     .map_or(RuaVal::Bool(false), |v| v)
 }
 
-#[rua_func]
-pub fn table_insert(mut table: Table, val: RuaVal) {
-    table.push(val);
-}
-
-#[rua_func]
-pub fn table_remove(mut table: Table) -> Option<RuaVal> {
-    table.pop()
-}
-
 // }}}
 
 // Helpers {{{
 
 pub fn default_global(vm: &mut Vm) -> Table {
-    let table = [
-        ("insert", RuaVal::NativeFunction(NativeFunction::new(&table_insert).into())),
-        ("remove", RuaVal::NativeFunction(NativeFunction::new(&table_remove).into())),
-    ]
-    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
     let global = [
         ("print", RuaVal::NativeFunction(NativeFunction::new(&print).into())),
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(&tostring).into())),
@@ -93,11 +82,16 @@ pub fn default_global(vm: &mut Vm) -> Table {
         ("type", RuaVal::NativeFunction(NativeFunction::new(&rua_type).into())),
         ("assert", RuaVal::NativeFunction(NativeFunction::new(&assert).into())),
         ("pcall", RuaVal::NativeFunction(NativeFunction::new(&pcall).into())),
-        ("table", RuaVal::Table(Table::from_iter(table))),
+        ("table", RuaVal::Table(table::table(vm))),
+        ("math", RuaVal::Table(math::math(vm))),
+        ("io", RuaVal::Table(io::io(vm))),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
-    Table::from_iter(global)
+    let mut global = Table::from_iter(global);
+    global.insert(Into::<Rc<str>>::into("_G").into_rua(vm), RuaVal::Table(global.clone()));
+
+    global
 }
 
 // }}}

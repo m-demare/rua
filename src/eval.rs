@@ -55,9 +55,7 @@ impl Vm {
             strings: WeakKeyHashMap::default(),
             open_upvalues: Vec::new(),
         };
-        let mut global = default_global(&mut vm);
-        global.insert(Into::<Rc<str>>::into("_G").into_rua(&mut vm), RuaVal::Table(global.clone()));
-        vm.global = global;
+        vm.global = default_global(&mut vm);
         vm
     }
 
@@ -116,7 +114,7 @@ impl Vm {
                 Instruction::False => self.push(false.into()),
                 Instruction::Nil => self.push(RuaVal::Nil),
                 Instruction::Neg => {
-                    trace_err(self.unary_op(|v| Ok((-v.into_number()?).into())), &frame)?;
+                    trace_err(self.unary_op(|v| Ok((-v.as_number()?).into())), &frame)?;
                 }
                 Instruction::Not => trace_err(self.unary_op(|v| Ok((!v.truthy()).into())), &frame)?,
                 Instruction::Len => trace_err(self.len_op(), &frame)?,
@@ -384,7 +382,7 @@ impl Vm {
         &mut self,
         f: F,
     ) -> Result<(), EvalError> {
-        self.binary_op(|a, b| Ok(f(a.into_number()?, b.into_number()?).into()))
+        self.binary_op(|a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
     }
 
     fn str_concat(&mut self) -> Result<(), EvalError> {

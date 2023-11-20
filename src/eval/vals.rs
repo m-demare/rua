@@ -50,8 +50,11 @@ pub enum RuaType {
 }
 
 impl RuaVal {
-    pub fn into_number(self) -> Result<f64, EvalError> {
-        self.try_into()
+    pub const fn as_number(&self) -> Result<f64, EvalError> {
+        match self {
+            Self::Number(n) => Ok(n.val()),
+            v => Err(EvalError::TypeError { expected: RuaType::Number, got: v.get_type() }),
+        }
     }
 
     pub fn into_table(self) -> Result<Table, EvalError> {
@@ -211,12 +214,6 @@ impl From<Table> for RuaVal {
     }
 }
 
-impl From<f64> for RuaVal {
-    fn from(val: f64) -> Self {
-        Self::Number(RuaNumber::new(val))
-    }
-}
-
 impl From<bool> for RuaVal {
     fn from(val: bool) -> Self {
         Self::Bool(val)
@@ -239,10 +236,7 @@ impl TryInto<f64> for RuaVal {
     type Error = EvalError;
 
     fn try_into(self) -> Result<f64, Self::Error> {
-        match self {
-            Self::Number(n) => Ok(n.val()),
-            v => Err(EvalError::TypeError { expected: RuaType::Number, got: v.get_type() }),
-        }
+        self.as_number()
     }
 }
 
