@@ -19,21 +19,19 @@ pub fn run() -> io::Result<()> {
         io::stdout().flush()?;
         stdin.read_line(&mut input)?;
 
+        if input.lines().count() == 1 {
+            // Attempt to parse it as an expression
+            let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
+            if let Ok(prog) = prog {
+                print_res(vm.interpret(prog.into()));
+                continue;
+            }
+        }
+
         let prog = parse_chars(input.chars(), &mut vm);
 
         match prog {
-            Ok(prog) => {
-                print_res(vm.interpret(prog.into()));
-            }
-            Err(ParseError::UnexpectedExpression(_) | ParseError::UnexpectedEOF) => {
-                let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
-                match prog {
-                    Ok(prog) => {
-                        print_res(vm.interpret(prog.into()));
-                    }
-                    Err(err) => println!("Error: {err}"),
-                }
-            }
+            Ok(prog) => print_res(vm.interpret(prog.into())),
             Err(err) => println!("Error: {err}"),
         }
     }
@@ -41,7 +39,7 @@ pub fn run() -> io::Result<()> {
 
 fn print_res(val: Result<RuaVal, EvalErrorTraced>) {
     match val {
-        Ok(..) => {}
+        Ok(v) => println!("{v}"),
         Err(e) => println!("{e}"),
     }
 }
