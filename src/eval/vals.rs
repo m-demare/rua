@@ -27,9 +27,12 @@ pub enum RuaVal {
     Nil,
     Closure(Rc<Closure>),
     String(RuaString),
-    NativeFunction(NativeFunction),
+    NativeFunction(Rc<NativeFunction>),
     Table(Table),
 }
+
+#[cfg(target_arch = "x86_64")]
+static_assertions::assert_eq_size!(RuaVal, [u8; 16]);
 
 pub type UpvalueObj = Rc<RefCell<Either<usize, RuaVal>>>;
 

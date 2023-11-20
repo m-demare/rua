@@ -2,7 +2,6 @@ use std::{
     cell::RefCell,
     hash::{BuildHasherDefault, Hash, Hasher},
     rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use rustc_hash::FxHashMap;
@@ -12,7 +11,6 @@ use super::RuaVal;
 #[derive(Debug, Clone)]
 pub struct Table {
     inner: Rc<RefCell<FxHashMap<RuaVal, RuaVal>>>,
-    id: usize,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
@@ -23,14 +21,12 @@ impl Table {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self {
             inner: RefCell::new(FxHashMap::with_capacity_and_hasher(
                 capacity,
                 BuildHasherDefault::default(),
             ))
             .into(),
-            id: COUNTER.fetch_add(1, Ordering::Relaxed),
         }
     }
 
@@ -104,7 +100,7 @@ impl Default for Table {
 
 impl PartialEq for Table {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
@@ -112,7 +108,7 @@ impl Eq for Table {}
 
 impl Hash for Table {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        (Rc::as_ptr(&self.inner) as usize).hash(state);
     }
 }
 

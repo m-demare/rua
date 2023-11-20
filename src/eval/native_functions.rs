@@ -82,17 +82,17 @@ pub fn table_remove(mut table: Table) -> Option<RuaVal> {
 
 pub fn default_global(vm: &mut Vm) -> Table {
     let table = [
-        ("insert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_insert)))),
-        ("remove", RuaVal::NativeFunction(NativeFunction::new(Rc::new(table_remove)))),
+        ("insert", RuaVal::NativeFunction(NativeFunction::new(&table_insert).into())),
+        ("remove", RuaVal::NativeFunction(NativeFunction::new(&table_remove).into())),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
     let global = [
-        ("print", RuaVal::NativeFunction(NativeFunction::new(Rc::new(print)))),
-        ("tostring", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tostring)))),
-        ("tonumber", RuaVal::NativeFunction(NativeFunction::new(Rc::new(tonumber)))),
-        ("type", RuaVal::NativeFunction(NativeFunction::new(Rc::new(rua_type)))),
-        ("assert", RuaVal::NativeFunction(NativeFunction::new(Rc::new(assert)))),
-        ("pcall", RuaVal::NativeFunction(NativeFunction::new(Rc::new(pcall)))),
+        ("print", RuaVal::NativeFunction(NativeFunction::new(&print).into())),
+        ("tostring", RuaVal::NativeFunction(NativeFunction::new(&tostring).into())),
+        ("tonumber", RuaVal::NativeFunction(NativeFunction::new(&tonumber).into())),
+        ("type", RuaVal::NativeFunction(NativeFunction::new(&rua_type).into())),
+        ("assert", RuaVal::NativeFunction(NativeFunction::new(&assert).into())),
+        ("pcall", RuaVal::NativeFunction(NativeFunction::new(&pcall).into())),
         ("table", RuaVal::Table(Table::from_iter(table))),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));

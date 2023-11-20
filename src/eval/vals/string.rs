@@ -33,7 +33,7 @@ impl PartialEq for StringInner {
 impl Eq for StringInner {}
 
 impl RuaString {
-    pub fn new(data: Rc<str>, id: StringId) -> Self {
+    pub(crate) fn new(data: Rc<str>, id: StringId) -> Self {
         Self(Rc::new(StringInner { data, id }))
     }
 

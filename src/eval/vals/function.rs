@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::{compiler::bytecode::Chunk, eval::Vm};
@@ -17,7 +16,6 @@ struct FunctionInner {
     arity: u8,
     name: RuaString,
     upvalue_count: u8,
-    id: usize,
 }
 
 #[derive(Clone)]
@@ -27,8 +25,7 @@ pub struct Function {
 
 #[derive(Clone)]
 pub struct NativeFunction {
-    func: Rc<dyn Fn(&mut FunctionContext) -> RuaResult>,
-    id: usize,
+    func: &'static dyn Fn(&mut FunctionContext) -> RuaResult,
 }
 
 pub struct FunctionContext<'vm> {
@@ -38,16 +35,7 @@ pub struct FunctionContext<'vm> {
 
 impl Function {
     pub fn new(chunk: Chunk, arity: u8, name: RuaString, upvalue_count: u8) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        Self {
-            inner: Rc::new(FunctionInner {
-                chunk,
-                arity,
-                name,
-                upvalue_count,
-                id: COUNTER.fetch_add(1, Ordering::Relaxed),
-            }),
-        }
+        Self { inner: Rc::new(FunctionInner { chunk, arity, name, upvalue_count }) }
     }
 
     pub fn chunk(&self) -> &Chunk {
@@ -72,9 +60,8 @@ impl Function {
 }
 
 impl NativeFunction {
-    pub fn new(func: Rc<dyn Fn(&mut FunctionContext) -> RuaResult>) -> Self {
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        Self { func, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
+    pub fn new(func: &'static dyn Fn(&mut FunctionContext) -> RuaResult) -> Self {
+        Self { func }
     }
 
     pub fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
@@ -84,13 +71,16 @@ impl NativeFunction {
 
 impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
-        self.inner.id == other.inner.id
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
 impl PartialEq for NativeFunction {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        std::ptr::eq(
+            (self.func as *const dyn Fn(&mut FunctionContext) -> RuaResult).cast::<u8>(),
+            (other.func as *const dyn Fn(&mut FunctionContext) -> RuaResult).cast::<u8>(),
+        )
     }
 }
 
@@ -100,13 +90,13 @@ impl Eq for NativeFunction {}
 
 impl Hash for Function {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner.id.hash(state);
+        (Rc::as_ptr(&self.inner) as usize).hash(state);
     }
 }
 
 impl Hash for NativeFunction {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        (std::ptr::addr_of!(self.func) as usize).hash(state);
     }
 }
 
