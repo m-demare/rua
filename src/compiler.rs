@@ -27,16 +27,18 @@ pub mod upvalues;
 mod utils;
 
 pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
-    tokens: MyPeekable<Tokenizer<'vm, T>>,
+    tokens: Tokenizer<'vm, T>,
+    peeked_token: Option<Token>,
     context: CompilerCtxt,
     context_stack: Vec<CompilerCtxt>,
 }
 
 #[allow(unused_parens)]
 impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
-    fn new(mut tokens: MyPeekable<Tokenizer<'vm, T>>) -> Self {
-        let name = tokens.inner().vm().new_string("<main>".into());
-        Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new() }
+    fn new(mut tokens: Tokenizer<'vm, T>) -> Self {
+        let name = tokens.vm().new_string("<main>".into());
+        let peeked_token = tokens.next();
+        Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new(), peeked_token }
     }
 
     fn compile_fn(&mut self) -> Result<(Function, Upvalues), ParseError> {
@@ -413,12 +415,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
     }
 
-    fn peek_token(&mut self) -> Option<&Token> {
-        self.tokens.peek()
+    fn peek_token(&self) -> Option<&Token> {
+        self.peeked_token.as_ref()
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        self.tokens.next()
+        std::mem::replace(&mut self.peeked_token, self.tokens.next())
     }
 
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
@@ -580,7 +582,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn for_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::FOR);
         self.next_token();
-        let empty_str = self.tokens.inner().vm().new_string("".into());
+        let empty_str = self.tokens.vm().new_string("".into());
 
         let id = self.identifier()?;
         consume!(self; (TT::ASSIGN));
@@ -703,7 +705,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
             return Err(ParseError::NamedFunctionExpr(id.clone(), *line));
         }
-        let name = self.tokens.inner().vm().new_string("".into());
+        let name = self.tokens.vm().new_string("".into());
         let (function, upvalues) = self.function(name)?;
         self.emit_closure(function, upvalues, line)?;
         Ok(())
@@ -830,7 +832,6 @@ pub fn compile<C: Iterator<Item = char> + Clone>(
     vm: &mut Vm,
 ) -> Result<Closure, ParseError> {
     let tokens = Tokenizer::new(chars, vm);
-    let tokens = MyPeekable::new(tokens);
     let compiler = Compiler::new(tokens);
     compiler.compile().map(Closure::new)
 }
@@ -864,36 +865,6 @@ const fn precedence_of_binary(op: BinaryOp) -> Precedence {
         BinaryOp::PLUS => Precedence::Sum,
         BinaryOp::TIMES | BinaryOp::DIV | BinaryOp::MOD => Precedence::Product,
         BinaryOp::EXP => Precedence::Exp,
-    }
-}
-
-struct MyPeekable<It: Iterator> {
-    inner: It,
-    peeked: Option<It::Item>,
-}
-
-impl<It: Iterator> MyPeekable<It> {
-    fn new(mut inner: It) -> Self {
-        let peeked = inner.next();
-        Self { inner, peeked }
-    }
-
-    fn peek(&mut self) -> Option<&It::Item> {
-        self.peeked.as_ref()
-    }
-
-    fn inner(&mut self) -> &mut It {
-        &mut self.inner
-    }
-}
-
-impl<It: Iterator> Iterator for MyPeekable<It> {
-    type Item = It::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let next = self.peeked.take();
-        self.peeked = self.inner.next();
-        next
     }
 }
 
