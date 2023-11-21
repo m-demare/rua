@@ -281,7 +281,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                         break Ok(());
                     }
                 }
-                Some(Token { ttype: TT::LPAREN, line, .. }) => {
+                Some(Token { ttype: TT::LPAREN | TT::STRING(_) | TT::LBRACE, line, .. }) => {
                     let line = *line;
                     if precedence < Precedence::Call {
                         self.call_expr(line)?;
@@ -482,9 +482,19 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn call_expr(&mut self, line: usize) -> Result<(), ParseError> {
-        debug_peek_token!(self, TT::LPAREN);
-        self.next_token();
-        let cant_args = self.arg_list()?;
+        debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
+        let cant_args = match self.next_token() {
+            Some(Token { ttype: TT::LPAREN, .. }) => self.arg_list()?,
+            Some(Token { ttype: TT::STRING(s), line, .. }) => {
+                self.emit_string(s, line)?;
+                1
+            },
+            Some(Token { ttype: TT::LBRACE, line, .. }) => {
+                self.table_literal(line)?;
+                1
+            },
+            _ => unreachable!("Invalid token at call_expr"),
+        };
         self.instruction(I::Call(cant_args), line);
         Ok(())
     }

@@ -134,7 +134,7 @@ impl Chunk {
         functions: Vec<Function>,
         lines: Vec<(usize, usize)>,
     ) -> Self {
-        debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() >= code.len());
+        debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() == code.len());
         Self { code, numbers, strings, functions, lines }
     }
 

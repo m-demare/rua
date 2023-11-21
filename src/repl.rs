@@ -39,7 +39,8 @@ pub fn run() -> io::Result<()> {
 
 fn print_res(val: Result<RuaVal, EvalErrorTraced>) {
     match val {
-        Ok(v) => println!("{v}"),
+        Ok(v) if v != RuaVal::Nil => println!("{v}"),
+        Ok(..) => {},
         Err(e) => println!("{e}"),
     }
 }

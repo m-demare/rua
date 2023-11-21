@@ -84,6 +84,10 @@ test_interpret!(nativefn_assert, "assert(false, 'custom error')", |vm| Err(EvalE
 )));
 test_interpret!(nativefn_pcall_ok, "return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
 test_interpret!(nativefn_pcall_err, "return pcall(assert, false)", |_| Ok(false.into()));
+test_interpret!(nativefn_math_sqrt, "return math.sqrt(math.pi)", |_| Ok(1.772_453_850_905_515_9.into()));
+test_interpret!(nativefn_math_cos, "return math.cos(math.pi)", |_| Ok((-1.0).into()));
+test_interpret!(nativefn_math_sin, "return math.sin(0)", |_| Ok(0.0.into()));
+test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(std::f64::consts::E.into()));
 
 test_interpret!(if_true, "if 5>=5 then return 1 end", |_| Ok(1.0.into()));
 test_interpret!(if_false, "if 4>=5 then return 1 end", |_| Ok(RuaVal::Nil));
@@ -435,6 +439,9 @@ test_interpret!(
     multiassign_globals,
     "
     a, b, c = 2, 5, 10
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
     return a + c - b
 ",
     |_| Ok(7.0.into())
@@ -447,6 +454,9 @@ test_interpret!(
     local b
     local c
     a, b, c = 2, 5, 10
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
     return a + c - b
 ",
     |_| Ok(7.0.into())
@@ -462,6 +472,9 @@ test_interpret!(
         a, b, c = 2, 5, 10
     end
     foo()
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
     return a + c - b
 ",
     |_| Ok(7.0.into())
@@ -472,6 +485,9 @@ test_interpret!(
     "
     local a = {}
     a.a, a.b, a['c'] = 2, 5, 10
+    assert(a.a==2)
+    assert(a.b==5)
+    assert(a.c==10)
     return a.a + a.c - a.b
 ",
     |_| Ok(7.0.into())
@@ -483,6 +499,10 @@ test_interpret!(
     local a = {}
     local d
     a.a, b, a['c'], d = 2, 5, 10, 1
+    assert(a.a==2)
+    assert(b==5)
+    assert(a.c==10)
+    assert(d==1)
     return a.a + a.c - b + d
 ",
     |_| Ok(8.0.into())
@@ -494,6 +514,10 @@ test_interpret!(
     local a = {}
     local d
     a.a, b, a['c'], d, e = 2, 5, 10
+    assert(a.a==2)
+    assert(b==5)
+    assert(a.c==10)
+    assert(d==nil)
     return d
 ",
     |_| Ok(RuaVal::Nil)
@@ -513,6 +537,9 @@ test_interpret!(
     multilocal,
     "
     local a, b, c = 1, 2, 4
+    assert(a==1)
+    assert(b==2)
+    assert(c==4)
     return a + b - c
 ",
     |_| Ok((-1.0).into())
@@ -522,6 +549,9 @@ test_interpret!(
     multilocal_more_lhs,
     "
     local a, b, c = 1, 2
+    assert(a==1)
+    assert(b==2)
+    assert(c==nil)
     return c
 ",
     |_| Ok(RuaVal::Nil)
@@ -531,6 +561,9 @@ test_interpret!(
     multilocal_more_rhs,
     "
     local a, b, c = 1, 2, 4, 3
+    assert(a==1)
+    assert(b==2)
+    assert(c==4)
     return a + b - c
 ",
     |_| Ok((-1.0).into())
@@ -564,3 +597,15 @@ test_interpret!(
     return fibo(8)",
     |_| Ok(21.0.into())
 );
+
+test_interpret!(call_str_literal,
+"
+    return tonumber '58'
+", |_| Ok(58.0.into()));
+
+test_interpret!(call_table_literal,
+"
+    local function foo(t) return #t end
+    return foo { 5, bar = 8, 'hi' }
+", |_| Ok(2.0.into()));
+
