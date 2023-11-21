@@ -84,7 +84,9 @@ test_interpret!(nativefn_assert, "assert(false, 'custom error')", |vm| Err(EvalE
 )));
 test_interpret!(nativefn_pcall_ok, "return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
 test_interpret!(nativefn_pcall_err, "return pcall(assert, false)", |_| Ok(false.into()));
-test_interpret!(nativefn_math_sqrt, "return math.sqrt(math.pi)", |_| Ok(1.772_453_850_905_515_9.into()));
+test_interpret!(nativefn_math_sqrt, "return math.sqrt(math.pi)", |_| Ok(
+    1.772_453_850_905_515_9.into()
+));
 test_interpret!(nativefn_math_cos, "return math.cos(math.pi)", |_| Ok((-1.0).into()));
 test_interpret!(nativefn_math_sin, "return math.sin(0)", |_| Ok(0.0.into()));
 test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(std::f64::consts::E.into()));
@@ -598,14 +600,72 @@ test_interpret!(
     |_| Ok(21.0.into())
 );
 
-test_interpret!(call_str_literal,
-"
+test_interpret!(
+    call_str_literal,
+    "
     return tonumber '58'
-", |_| Ok(58.0.into()));
+",
+    |_| Ok(58.0.into())
+);
 
-test_interpret!(call_table_literal,
-"
+test_interpret!(
+    call_table_literal,
+    "
     local function foo(t) return #t end
     return foo { 5, bar = 8, 'hi' }
-", |_| Ok(2.0.into()));
+",
+    |_| Ok(2.0.into())
+);
 
+test_interpret!(
+    do_block,
+    "
+    do
+        local a = 5
+        assert(a==5)
+    end
+    return a
+",
+    |_| Ok(RuaVal::Nil)
+);
+
+test_interpret!(
+    forward_for_loop,
+    "
+    local sum = 0
+    for i = 1, 5 do
+        sum = sum + i
+    end
+    return sum
+",
+    |_| Ok(15.0.into())
+);
+
+test_interpret!(
+    forward_for_loop_step,
+    "
+    local sum = 0
+    for i = 1, 5, 2 do
+        sum = sum + i
+    end
+    return sum
+",
+    |_| Ok(9.0.into())
+);
+
+test_interpret!(
+    for_loop_upvalues,
+    "
+    local a = {}
+    for i = 1, 10 do
+        table.insert(a, function() return i end)
+    end
+
+    local sum = 0
+    for i = 1, 10, 4 do
+        sum = sum + a[i]()
+    end
+    return sum
+",
+    |_| Ok(15.0.into())
+);

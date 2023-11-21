@@ -40,7 +40,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     fn compile_fn(&mut self) -> Result<(Function, Upvalues), ParseError> {
-        self.block()?;
+        self.scoped_block()?;
         self.instruction(I::ReturnNil, 0);
         if let Some(ctxt) = self.context_stack.pop() {
             let fn_ctxt = std::mem::replace(&mut self.context, ctxt);
@@ -54,7 +54,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 
     pub fn compile(mut self) -> Result<Function, ParseError> {
-        self.block()?;
+        self.scoped_block()?;
         self.instruction(I::ReturnNil, 0);
 
         debug_assert!(self.context_stack.is_empty());
@@ -64,9 +64,30 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(func)
     }
 
-    fn block(&mut self) -> Result<(), ParseError> {
+    fn scoped_block(&mut self) -> Result<(), ParseError> {
+        self.begin_scope();
+
+        self.block()?;
+
+        self.end_scope();
+        Ok(())
+    }
+
+    fn begin_scope(&mut self) {
         self.context.locals.begin_scope();
-        let mut end_line = 0;
+    }
+
+    fn end_scope(&mut self) {
+        self.context.locals.end_scope(|local| {
+            if local.is_captured() {
+                self.context.chunk.add_instruction(I::CloseUpvalue, 0);
+            } else {
+                self.context.chunk.add_instruction(I::Pop, 0);
+            }
+        });
+    }
+
+    fn block(&mut self) -> Result<(), ParseError> {
         #[cfg(debug_assertions)]
         self.instruction(I::CheckStack(self.context.locals.len()), 0);
         while let Some(token) = self.peek_token() {
@@ -88,11 +109,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     self.next_token();
                     self.function_st(line, false)?;
                 }
-                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, line, .. } => {
-                    let line = *line;
-                    end_line = line;
-                    break;
-                }
+                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. } => break,
                 Token { ttype: TT::IF, line, .. } => {
                     let line = *line;
                     self.if_st(line)?;
@@ -100,6 +117,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::WHILE, line, .. } => {
                     let line = *line;
                     self.while_st(line)?;
+                }
+                Token { ttype: TT::DO, .. } => self.do_block(true)?,
+                Token { ttype: TT::FOR, line, .. } => {
+                    let line = *line;
+                    self.for_st(line)?;
                 }
                 t => {
                     return Err(ParseError::UnexpectedToken(
@@ -121,13 +143,6 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             #[cfg(debug_assertions)]
             self.instruction(I::CheckStack(self.context.locals.len()), 0);
         }
-        self.context.locals.end_scope(|local| {
-            if local.is_captured() {
-                self.context.chunk.add_instruction(I::CloseUpvalue, end_line);
-            } else {
-                self.context.chunk.add_instruction(I::Pop, end_line);
-            }
-        });
         Ok(())
     }
 
@@ -389,6 +404,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
     }
 
+    #[must_use = "Use consume!(self; (TT::IDENTIFIER(_))) if you don't care about the value"]
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(id),
@@ -488,11 +504,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::STRING(s), line, .. }) => {
                 self.emit_string(s, line)?;
                 1
-            },
+            }
             Some(Token { ttype: TT::LBRACE, line, .. }) => {
                 self.table_literal(line)?;
                 1
-            },
+            }
             _ => unreachable!("Invalid token at call_expr"),
         };
         self.instruction(I::Call(cant_args), line);
@@ -522,7 +538,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.expression(Precedence::Lowest)?;
         consume!(self; (TT::THEN));
         let if_jmp = self.jmp_if_false_pop(u16::MAX, line);
-        self.block()?;
+        self.scoped_block()?;
 
         match self.next_token() {
             Some(Token { ttype: TT::END, .. }) => {
@@ -531,7 +547,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
                 let else_jmp = self.jmp(0, line);
                 self.patch_jmp(if_jmp, line)?;
-                self.block()?;
+                self.scoped_block()?;
                 self.patch_jmp(else_jmp, line_else)?;
                 consume!(self; (TT::END));
             }
@@ -552,16 +568,72 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.next_token();
         let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
-        consume!(self; (TT::DO));
         let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
-        self.block()?;
+        self.do_block(true)?;
 
-        let offset = Chunk::offset(self.current_chunk().code().len(), loop_start)
-            .or(Err(ParseError::JmpTooFar(line)))?;
-        self.loop_to(offset, line);
+        self.loop_to(loop_start, line)?;
         self.patch_jmp(exit_jmp, line)?;
-        consume!(self; (TT::END));
 
+        Ok(())
+    }
+
+    fn for_st(&mut self, line: usize) -> Result<(), ParseError> {
+        debug_peek_token!(self, TT::FOR);
+        self.next_token();
+        let empty_str = self.tokens.inner().vm().new_string("".into());
+
+        let id = self.identifier()?;
+        consume!(self; (TT::ASSIGN));
+        self.expression(Precedence::Lowest)?;
+        let from = self.context.locals.declare(empty_str.clone())?;
+        consume!(self; (TT::COMMA));
+        self.expression(Precedence::Lowest)?;
+        let to = self.context.locals.declare(empty_str.clone())?;
+        if match_token!(self, (TT::COMMA)) {
+            self.expression(Precedence::Lowest)?;
+        } else {
+            self.emit_number(1.0, line)?;
+        }
+        let step = self.context.locals.declare(empty_str)?;
+
+        let loop_start = self.current_chunk().code().len();
+        self.instruction(I::GetLocal(from), line);
+        self.instruction(I::GetLocal(to), line);
+        self.instruction(I::Le, line);
+        let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
+
+        self.begin_scope();
+
+        self.instruction(I::GetLocal(from), 0);
+        self.context.locals.declare(id)?;
+        self.do_block(false)?;
+
+        self.end_scope();
+
+        self.instruction(I::GetLocal(from), line);
+        self.instruction(I::GetLocal(step), line);
+        self.instruction(I::Add, line);
+        self.instruction(I::SetLocal(from), line);
+
+        self.loop_to(loop_start, line)?;
+        self.patch_jmp(exit_jmp, line)?;
+
+        self.instruction(I::Pop, line);
+        self.instruction(I::Pop, line);
+        self.instruction(I::Pop, line);
+
+        self.context.locals.drop(3);
+        Ok(())
+    }
+
+    fn do_block(&mut self, scoped: bool) -> Result<(), ParseError> {
+        consume!(self; (TT::DO));
+        if scoped {
+            self.scoped_block()?;
+        } else {
+            self.block()?;
+        }
+        consume!(self; (TT::END));
         Ok(())
     }
 
@@ -569,8 +641,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.instruction(I::Jmp(to), line)
     }
 
-    fn loop_to(&mut self, to: u16, line: usize) -> usize {
-        self.instruction(I::Loop(to), line)
+    fn loop_to(&mut self, target: usize, line: usize) -> Result<usize, ParseError> {
+        let offset = Chunk::offset(self.current_chunk().code().len(), target)
+            .or(Err(ParseError::JmpTooFar(line)))?;
+        Ok(self.instruction(I::Loop(offset), line))
     }
 
     fn jmp_if_false_pop(&mut self, to: u16, line: usize) -> usize {

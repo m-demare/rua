@@ -115,7 +115,7 @@ macro_rules! add_constant {
         if let Some(c) = prev {
             $handle(c.try_into().expect("Constants shouldn't exceed limit"))
         } else {
-            let c = $vec.len().try_into().map_err(|_| ParseError::TooManyConstants)?;
+            let c = $vec.len().try_into().or(Err(ParseError::TooManyConstants))?;
             $vec.push($val);
             $handle(c)
         }
