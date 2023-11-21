@@ -146,16 +146,21 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         &mut self.context.chunk
     }
 
-    fn emit_number(&mut self, val: f64, line: usize) {
-        self.current_chunk().add_number(val, line);
+    fn emit_number(&mut self, val: f64, line: usize) -> Result<(), ParseError> {
+        self.current_chunk().add_number(val, line)
     }
 
-    fn emit_string(&mut self, val: RuaString, line: usize) {
-        self.current_chunk().add_string(val, line);
+    fn emit_string(&mut self, val: RuaString, line: usize) -> Result<(), ParseError> {
+        self.current_chunk().add_string(val, line)
     }
 
-    fn emit_closure(&mut self, val: Function, upvalues: Upvalues, line: usize) {
-        self.current_chunk().add_closure(val, upvalues, line);
+    fn emit_closure(
+        &mut self,
+        val: Function,
+        upvalues: Upvalues,
+        line: usize,
+    ) -> Result<(), ParseError> {
+        self.current_chunk().add_closure(val, upvalues, line)
     }
 
     fn unary(&mut self, op: UnaryOp, line: usize) -> Result<(), ParseError> {
@@ -205,10 +210,10 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                 self.named_variable(id, line)?;
             }
             Some(Token { ttype: TT::NUMBER(n), line, .. }) => {
-                self.emit_number(n, line);
+                self.emit_number(n, line)?;
             }
             Some(Token { ttype: TT::STRING(s), line, .. }) => {
-                self.emit_string(s, line);
+                self.emit_string(s, line)?;
             }
             Some(Token { ttype: TT::TRUE, line, .. }) => {
                 self.instruction(I::True, line);
@@ -239,7 +244,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         } else if let Some(upvalue) = self.context.resolve_upvalue(&id, &mut self.context_stack)? {
             self.instruction(I::GetUpvalue(upvalue), line);
         } else {
-            self.emit_string(id, line);
+            self.emit_string(id, line)?;
             self.instruction(I::GetGlobal, line);
         }
         Ok(())
@@ -289,7 +294,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     if precedence < Precedence::FieldAccess {
                         self.next_token();
                         let id = self.identifier()?;
-                        self.emit_string(id, line);
+                        self.emit_string(id, line)?;
                         self.instruction(I::Index, line);
                     } else {
                         break Ok(());
@@ -506,7 +511,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         self.next_token();
         self.expression(Precedence::Lowest)?;
         consume!(self; (TT::THEN));
-        let if_jmp = self.jmp_if_false_pop(u32::MAX, line);
+        let if_jmp = self.jmp_if_false_pop(u16::MAX, line);
         self.block()?;
 
         match self.next_token() {
@@ -538,7 +543,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
         consume!(self; (TT::DO));
-        let exit_jmp = self.jmp_if_false_pop(u32::MAX, line);
+        let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
         self.block()?;
 
         let offset = Chunk::offset(self.current_chunk().code().len(), loop_start)
@@ -550,23 +555,23 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn jmp(&mut self, to: u32, line: usize) -> usize {
+    fn jmp(&mut self, to: u16, line: usize) -> usize {
         self.instruction(I::Jmp(to), line)
     }
 
-    fn loop_to(&mut self, to: u32, line: usize) -> usize {
+    fn loop_to(&mut self, to: u16, line: usize) -> usize {
         self.instruction(I::Loop(to), line)
     }
 
-    fn jmp_if_false_pop(&mut self, to: u32, line: usize) -> usize {
+    fn jmp_if_false_pop(&mut self, to: u16, line: usize) -> usize {
         self.instruction(I::JmpIfFalsePop(to), line)
     }
 
-    fn jmp_if_false(&mut self, to: u32, line: usize) -> usize {
+    fn jmp_if_false(&mut self, to: u16, line: usize) -> usize {
         self.instruction(I::JmpIfFalse(to), line)
     }
 
-    fn jmp_if_true(&mut self, to: u32, line: usize) -> usize {
+    fn jmp_if_true(&mut self, to: u16, line: usize) -> usize {
         self.instruction(I::JmpIfTrue(to), line)
     }
 
@@ -600,11 +605,11 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         let (function, upvalues) = self.function(id.clone())?;
 
         if local {
-            self.emit_closure(function, upvalues, line);
+            self.emit_closure(function, upvalues, line)?;
             self.context.locals.declare(id)?;
         } else {
-            self.emit_string(id, line);
-            self.emit_closure(function, upvalues, line);
+            self.emit_string(id, line)?;
+            self.emit_closure(function, upvalues, line)?;
             self.instruction(I::SetGlobal, line);
         }
         Ok(())
@@ -616,7 +621,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
         let name = self.tokens.inner().vm().new_string("".into());
         let (function, upvalues) = self.function(name)?;
-        self.emit_closure(function, upvalues, line);
+        self.emit_closure(function, upvalues, line)?;
         Ok(())
     }
 
@@ -689,12 +694,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                                 self.pop_instruction();
                                 let name =
                                     self.context.resolve_upvalue_name(up, &self.context_stack);
-                                self.emit_string(name, line);
+                                self.emit_string(name, line)?;
                             }
                             I::GetLocal(idx) => {
                                 self.pop_instruction();
                                 let name = self.context.locals.get(idx);
-                                self.emit_string(name, line);
+                                self.emit_string(name, line)?;
                             }
                             I::String(_) => {}
                             _ => return Err(ParseError::InvalidAssignLHS(line)),
@@ -714,7 +719,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
                     let line = *line;
                     ops.push(I::InsertValKey);
                     arr_count += 1;
-                    self.emit_number(f64::from(arr_count), line);
+                    self.emit_number(f64::from(arr_count), line)?;
                 }
                 None => {}
             }

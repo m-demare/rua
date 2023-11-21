@@ -33,11 +33,11 @@ impl CallFrame {
         instr
     }
 
-    pub fn rel_jmp(&mut self, offset: u32) {
+    pub fn rel_jmp(&mut self, offset: u16) {
         self.ip += offset as usize;
     }
 
-    pub fn rel_loop(&mut self, offset: u32) {
+    pub fn rel_loop(&mut self, offset: u16) {
         self.ip -= offset as usize;
     }
 

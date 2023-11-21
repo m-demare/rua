@@ -49,11 +49,11 @@ pub enum Instruction {
     GetLocal(LocalHandle),
     SetLocal(LocalHandle),
 
-    JmpIfFalse(u32),
-    JmpIfTrue(u32),
-    Jmp(u32),
-    Loop(u32),
-    JmpIfFalsePop(u32),
+    JmpIfFalse(u16),
+    JmpIfTrue(u16),
+    Jmp(u16),
+    Loop(u16),
+    JmpIfFalsePop(u16),
 
     NewTable,
     InsertKeyVal,
@@ -72,6 +72,9 @@ pub enum Instruction {
     CheckStack(u8),
 }
 
+#[cfg(target_arch = "x86_64")]
+static_assertions::assert_eq_size!(Instruction, [u8; 4]);
+
 #[derive(PartialEq)]
 pub struct Chunk {
     code: Vec<Instruction>,
@@ -83,27 +86,44 @@ pub struct Chunk {
 
 #[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NumberHandle(u32);
+pub struct NumberHandle(u16);
 
 #[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringHandle(u32);
+pub struct StringHandle(u16);
 
 #[cfg(not(test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FnHandle(u32);
+pub struct FnHandle(u16);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NumberHandle(pub(crate) u32);
+pub struct NumberHandle(pub(crate) u16);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringHandle(pub(crate) u32);
+pub struct StringHandle(pub(crate) u16);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FnHandle(pub(crate) u32);
+pub struct FnHandle(pub(crate) u16);
+
+macro_rules! add_constant {
+    ($val: expr, $vec: expr, $handle: expr, $find_previous: expr) => {{
+        #[allow(clippy::float_cmp)]
+        let prev = if $find_previous { $vec.iter().position(|c| *c == $val) } else { None };
+        if let Some(c) = prev {
+            $handle(c.try_into().expect("Constants shouldn't exceed limit"))
+        } else {
+            let c = $vec.len().try_into().map_err(|_| ParseError::TooManyConstants)?;
+            $vec.push($val);
+            $handle(c)
+        }
+    }};
+    ($val: expr, $vec: expr, $handle: expr) => {{
+        add_constant!($val, $vec, $handle, true)
+    }};
+}
 
 impl Chunk {
     #[cfg(all(test, debug_assertions))]
@@ -134,27 +154,30 @@ impl Chunk {
         &self.code
     }
 
-    pub fn add_closure(&mut self, func: Function, upvalues: Upvalues, line: usize) {
-        let c = FnHandle(self.functions.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        self.functions.push(func);
+    pub fn add_closure(
+        &mut self,
+        func: Function,
+        upvalues: Upvalues,
+        line: usize,
+    ) -> Result<(), ParseError> {
+        let c = add_constant!(func, self.functions, FnHandle, false);
         self.add_instruction(Instruction::Closure(c), line);
         for up in upvalues {
             self.add_instruction(Instruction::Upvalue(up), line);
         }
+        Ok(())
     }
 
-    pub fn add_number(&mut self, val: f64, line: usize) -> usize {
-        let c =
-            NumberHandle(self.numbers.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        self.numbers.push(val); // TODO maybe reuse constants?
-        self.add_instruction(Instruction::Number(c), line)
+    pub fn add_number(&mut self, val: f64, line: usize) -> Result<(), ParseError> {
+        let c = add_constant!(val, self.numbers, NumberHandle);
+        self.add_instruction(Instruction::Number(c), line);
+        Ok(())
     }
 
-    pub fn add_string(&mut self, val: RuaString, line: usize) -> usize {
-        let c =
-            StringHandle(self.strings.len().try_into().expect("Too many constants in one chunk")); // TODO handle gracefully
-        self.strings.push(val); // TODO maybe reuse constants?
-        self.add_instruction(Instruction::String(c), line)
+    pub fn add_string(&mut self, val: RuaString, line: usize) -> Result<(), ParseError> {
+        let c = add_constant!(val, self.strings, StringHandle);
+        self.add_instruction(Instruction::String(c), line);
+        Ok(())
     }
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
@@ -200,7 +223,7 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn offset(from: usize, to: usize) -> Result<u32, TryFromIntError> {
+    pub fn offset(from: usize, to: usize) -> Result<u16, TryFromIntError> {
         debug_assert!(from >= to);
         let offset = from - to;
         offset.try_into()
@@ -292,6 +315,8 @@ pub enum ParseError {
     TooManyLocals,
     #[error("Cannot pass more than 256 arguments to a function")]
     TooManyArgs,
+    #[error("Cannot have more than 2**16 constants in one chunk")]
+    TooManyConstants,
     #[error("Attempted to jmp too far (line {0})")]
     JmpTooFar(usize),
     #[error("Too many items in lhs of assignment (line {0})")]
