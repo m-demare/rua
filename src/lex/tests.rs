@@ -24,11 +24,11 @@ macro_rules! test_lex {
         #[allow(unused_macros)]
         macro_rules! string {
             ($s: expr) => {
-                TT::STRING(vm.new_string($s.into()))
+                TT::STRING(vm.new_string((*$s).into()))
             };
         }
 
-        let tokens = Tokenizer::new($input.chars(), &mut vm).collect::<Vec<_>>();
+        let tokens = Tokenizer::new($input.bytes(), &mut vm).collect::<Vec<_>>();
         assert_eq!(tokens, $expected_output)
     };
 }
@@ -38,10 +38,10 @@ fn lex_basic_assignment() {
     test_lex!(
         "local foo = bar",
         vec![
-            Token { ttype: TT::LOCAL, line: 0 },
-            Token { ttype: id!("foo"), line: 0 },
-            Token { ttype: TT::ASSIGN, line: 0 },
-            Token { ttype: id!("bar"), line: 0 },
+            Token { ttype: TT::LOCAL, line: 1 },
+            Token { ttype: id!(b"foo"), line: 1 },
+            Token { ttype: TT::ASSIGN, line: 1 },
+            Token { ttype: id!(b"bar"), line: 1 },
         ]
     );
 }
@@ -54,11 +54,11 @@ fn lex_ints() {
         0b1001
         0b158",
         vec![
-            Token { ttype: TT::NUMBER(58.0), line: 0 },
-            Token { ttype: TT::NUMBER(42.0), line: 1 },
-            Token { ttype: TT::NUMBER(9.0), line: 2 },
-            Token { ttype: TT::ILLEGAL("0b15".into()), line: 3 },
-            Token { ttype: TT::NUMBER(8.0), line: 3 },
+            Token { ttype: TT::NUMBER(58.0), line: 1 },
+            Token { ttype: TT::NUMBER(42.0), line: 2 },
+            Token { ttype: TT::NUMBER(9.0), line: 3 },
+            Token { ttype: TT::ILLEGAL("0b15".into()), line: 4 },
+            Token { ttype: TT::NUMBER(8.0), line: 4 },
         ]
     );
 }
@@ -71,12 +71,12 @@ fn lex_floats() {
         0b0.1
         0b0.23",
         vec![
-            Token { ttype: TT::NUMBER(0.58), line: 0 },
-            Token { ttype: TT::NUMBER(0.164_062_5), line: 1 },
-            Token { ttype: TT::ILLEGAL("0b0.".into()), line: 2 },
-            Token { ttype: TT::NUMBER(1.0), line: 2 },
+            Token { ttype: TT::NUMBER(0.58), line: 1 },
+            Token { ttype: TT::NUMBER(0.164_062_5), line: 2 },
             Token { ttype: TT::ILLEGAL("0b0.".into()), line: 3 },
-            Token { ttype: TT::NUMBER(23.0), line: 3 },
+            Token { ttype: TT::NUMBER(1.0), line: 3 },
+            Token { ttype: TT::ILLEGAL("0b0.".into()), line: 4 },
+            Token { ttype: TT::NUMBER(23.0), line: 4 },
         ]
     );
 }
@@ -87,29 +87,29 @@ fn lex_ops() {
         "a = a <= b and a+b or a^b
         (c-d>e);#f",
         vec![
-            Token { ttype: id!("a"), line: 0 },
-            Token { ttype: TT::ASSIGN, line: 0 },
-            Token { ttype: id!("a"), line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::LE), line: 0 },
-            Token { ttype: id!("b"), line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::AND), line: 0 },
-            Token { ttype: id!("a"), line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::PLUS), line: 0 },
-            Token { ttype: id!("b"), line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::OR), line: 0 },
-            Token { ttype: id!("a"), line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::EXP), line: 0 },
-            Token { ttype: id!("b"), line: 0 },
-            Token { ttype: TT::LPAREN, line: 1 },
-            Token { ttype: id!("c"), line: 1 },
-            Token { ttype: TT::MINUS, line: 1 },
-            Token { ttype: id!("d"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::GT), line: 1 },
-            Token { ttype: id!("e"), line: 1 },
-            Token { ttype: TT::RPAREN, line: 1 },
-            Token { ttype: TT::SEMICOLON, line: 1 },
-            Token { ttype: TT::UNARY_OP(UnaryOp::LEN), line: 1 },
-            Token { ttype: id!("f"), line: 1 },
+            Token { ttype: id!(b"a"), line: 1 },
+            Token { ttype: TT::ASSIGN, line: 1 },
+            Token { ttype: id!(b"a"), line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::LE), line: 1 },
+            Token { ttype: id!(b"b"), line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::AND), line: 1 },
+            Token { ttype: id!(b"a"), line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::PLUS), line: 1 },
+            Token { ttype: id!(b"b"), line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::OR), line: 1 },
+            Token { ttype: id!(b"a"), line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::EXP), line: 1 },
+            Token { ttype: id!(b"b"), line: 1 },
+            Token { ttype: TT::LPAREN, line: 2 },
+            Token { ttype: id!(b"c"), line: 2 },
+            Token { ttype: TT::MINUS, line: 2 },
+            Token { ttype: id!(b"d"), line: 2 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::GT), line: 2 },
+            Token { ttype: id!(b"e"), line: 2 },
+            Token { ttype: TT::RPAREN, line: 2 },
+            Token { ttype: TT::SEMICOLON, line: 2 },
+            Token { ttype: TT::UNARY_OP(UnaryOp::LEN), line: 2 },
+            Token { ttype: id!(b"f"), line: 2 },
         ]
     );
 }
@@ -119,9 +119,9 @@ fn lex_comment() {
     test_lex!(
         "a = b -- a+b\n--123",
         vec![
-            Token { ttype: id!("a"), line: 0 },
-            Token { ttype: TT::ASSIGN, line: 0 },
-            Token { ttype: id!("b"), line: 0 },
+            Token { ttype: id!(b"a"), line: 1 },
+            Token { ttype: TT::ASSIGN, line: 1 },
+            Token { ttype: id!(b"b"), line: 1 },
         ]
     );
 }
@@ -131,10 +131,10 @@ fn lex_dots() {
     test_lex!(
         ".\n..\n...\n.123",
         vec![
-            Token { ttype: TT::DOT, line: 0 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::DOTDOT), line: 1 },
-            Token { ttype: TT::DOTDOTDOT, line: 2 },
-            Token { ttype: TT::NUMBER(0.123), line: 3 },
+            Token { ttype: TT::DOT, line: 1 },
+            Token { ttype: TT::BINARY_OP(BinaryOp::DOTDOT), line: 2 },
+            Token { ttype: TT::DOTDOTDOT, line: 3 },
+            Token { ttype: TT::NUMBER(0.123), line: 4 },
         ]
     );
 }
@@ -144,10 +144,10 @@ fn lex_illegals() {
     test_lex!(
         "0b2 ! @ ~",
         vec![
-            Token { ttype: TT::ILLEGAL("0b2".into()), line: 0 },
-            Token { ttype: TT::ILLEGAL("!".into()), line: 0 },
-            Token { ttype: TT::ILLEGAL("@".into()), line: 0 },
-            Token { ttype: TT::ILLEGAL("~".into()), line: 0 },
+            Token { ttype: TT::ILLEGAL("0b2".into()), line: 1 },
+            Token { ttype: TT::ILLEGAL("!".into()), line: 1 },
+            Token { ttype: TT::ILLEGAL("@".into()), line: 1 },
+            Token { ttype: TT::ILLEGAL("~".into()), line: 1 },
         ]
     );
 }
@@ -165,12 +165,12 @@ string\'\"'
         'test
     "#,
         vec![
-            Token { ttype: string!("hello'world"), line: 1 },
-            Token { ttype: string!("foo\"bar"), line: 2 },
-            Token { ttype: string!("test\"string"), line: 3 },
-            Token { ttype: string!("test'string"), line: 4 },
-            Token { ttype: string!("test\\'\nstring'\""), line: 6 },
-            Token { ttype: TT::ILLEGAL("Unclosed string literal".into()), line: 8 },
+            Token { ttype: string!(b"hello'world"), line: 2 },
+            Token { ttype: string!(b"foo\"bar"), line: 3 },
+            Token { ttype: string!(b"test\"string"), line: 4 },
+            Token { ttype: string!(b"test'string"), line: 5 },
+            Token { ttype: string!(b"test\\'\nstring'\""), line: 7 },
+            Token { ttype: TT::ILLEGAL("Unclosed string literal".into()), line: 9 },
         ]
     );
 }

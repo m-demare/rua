@@ -38,10 +38,15 @@ fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
             format!("Bad argument radix: {radix} is not an integer").into(),
         ));
     }
-    Ok(match read_number_radix(s.to_string().chars().peekable().by_ref(), r) {
-        Ok(n) => RuaVal::Number(n.into()),
-        Err(..) => RuaVal::Nil,
-    })
+    Ok(
+        match read_number_radix(
+            s.to_string().bytes().peekable().by_ref(),
+            r.try_into().or(Err(EvalError::Exception("Invalid radix".into())))?,
+        ) {
+            Ok(n) => RuaVal::Number(n.into()),
+            Err(..) => RuaVal::Nil,
+        },
+    )
 }
 
 #[rua_func(exact_args)]

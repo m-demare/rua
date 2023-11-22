@@ -6,7 +6,7 @@ fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
             let mut vm = Vm::new();
-            compile(black_box(input.chars()), black_box(&mut vm))
+            compile(black_box(input.bytes()), black_box(&mut vm))
         })
     });
 }

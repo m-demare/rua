@@ -5,25 +5,18 @@ pub mod utils;
 
 use std::iter::Peekable;
 
-use once_cell::sync::Lazy;
-use regex_lite::Regex;
-
 use crate::eval::Vm;
 
 use self::tokens::{lookup_char, lookup_comparison, lookup_keyword, BinaryOp, Token, TokenType};
-use self::utils::take_while_peeking;
 use self::{
     chars::{is_alphabetic, is_numeric, is_space},
     utils::{eat_while_peeking, read_decimals},
 };
 use rua_trie::TrieWalker;
 
-static STR_REPLACE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\\([\\'"])"#).expect("Regex is valid"));
-
 pub struct Tokenizer<'vm, T>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     input: Peekable<T>,
     vm: &'vm mut Vm,
@@ -32,21 +25,21 @@ where
 
 impl<'vm, T> Iterator for Tokenizer<'vm, T>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(ch) = self.input.peek() {
             return Some(match ch {
-                '=' | '<' | '>' | '~' => self.read_comparison(),
-                '-' => match self.read_minus() {
+                b'=' | b'<' | b'>' | b'~' => self.read_comparison(),
+                b'-' => match self.read_minus() {
                     Some(t) => t,
                     None => continue,
                 },
-                '\'' | '"' => self.read_string(),
-                '.' => self.read_dot(),
-                '\n' => {
+                b'\'' | b'"' => self.read_string(),
+                b'.' => self.read_dot(),
+                b'\n' => {
                     self.input.next();
                     self.line += 1;
                     continue;
@@ -66,15 +59,15 @@ where
 
 impl<'vm, T> Tokenizer<'vm, T>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     pub fn new(input: T, vm: &'vm mut Vm) -> Self {
-        Self { input: input.peekable(), vm, line: 0 }
+        Self { input: input.peekable(), vm, line: 1 }
     }
 
     fn read_comparison(&mut self) -> Token {
         let ch = self.input.next().expect("Input cannot be empty here");
-        if self.input.peek() == Some(&'=') {
+        if self.input.peek() == Some(&b'=') {
             self.input.next();
             return Token { ttype: lookup_comparison(ch, true), line: self.line };
         }
@@ -84,26 +77,26 @@ where
     fn read_minus(&mut self) -> Option<Token> {
         let ch = self.input.next();
 
-        debug_assert_eq!(ch, Some('-'));
+        debug_assert_eq!(ch, Some(b'-'));
 
-        if self.input.peek() != Some(&'-') {
+        if self.input.peek() != Some(&b'-') {
             return Some(Token { ttype: TokenType::MINUS, line: self.line });
         }
 
         // If -- is found, discard til next \n
         self.input.next();
-        eat_while_peeking(&mut self.input, &|ch: &char| *ch != '\n');
+        eat_while_peeking(&mut self.input, &|ch: &u8| *ch != b'\n');
         None
     }
 
     fn read_dot(&mut self) -> Token {
         let ch = self.input.next();
 
-        debug_assert_eq!(ch, Some('.'));
+        debug_assert_eq!(ch, Some(b'.'));
 
-        if self.input.peek() == Some(&'.') {
+        if self.input.peek() == Some(&b'.') {
             self.input.next();
-            if self.input.peek() == Some(&'.') {
+            if self.input.peek() == Some(&b'.') {
                 self.input.next();
                 return Token { ttype: TokenType::DOTDOTDOT, line: self.line };
             }
@@ -115,9 +108,7 @@ where
                 let float = read_decimals(&mut self.input, 10);
                 match float {
                     Ok(n) => Token { ttype: TokenType::NUMBER(n), line: self.line },
-                    Err(s) => {
-                        Token { ttype: TokenType::ILLEGAL(s.into_boxed_str()), line: self.line }
-                    }
+                    Err(s) => Token { ttype: TokenType::ILLEGAL(s), line: self.line },
                 }
             }
             _ => Token { ttype: TokenType::DOT, line: self.line },
@@ -131,7 +122,7 @@ where
 
         let mut trie_walker = TrieWalker::new(self.vm.identifiers());
 
-        while let Some(ch) = self.input.next_if(|ch: &char| is_alphabetic(*ch) || is_numeric(*ch)) {
+        while let Some(ch) = self.input.next_if(|ch: &u8| is_alphabetic(*ch) || is_numeric(*ch)) {
             i += 1;
             trie_walker.walk(ch);
         }
@@ -139,7 +130,7 @@ where
         if let Some(ttype) = ttype {
             Token { ttype: ttype.clone(), line: self.line }
         } else {
-            let s = clone_it.take(i).collect::<String>();
+            let s = clone_it.take(i).collect::<Vec<_>>();
             let id = self.vm.new_string(s.into());
             Token {
                 ttype: self
@@ -183,31 +174,42 @@ where
 
     fn read_string(&mut self) -> Token {
         let delimiter = self.input.next().expect("Input cannot be empty here");
-        debug_assert!(delimiter == '\'' || delimiter == '"');
+        debug_assert!(delimiter == b'\'' || delimiter == b'"');
         let mut is_escaped = false;
-        let s: String = take_while_peeking(&mut self.input, |ch| {
-            if !is_escaped && *ch == delimiter {
-                return false;
+        let mut acc = Vec::new();
+        for ch in self.input.by_ref() {
+            if ch == delimiter && !is_escaped {
+                return Token {
+                    ttype: TokenType::STRING(self.vm.new_string(acc.into())),
+                    line: self.line,
+                };
             }
-            if *ch == '\n' {
+            if ch == b'\n' {
                 self.line += 1;
             }
-            is_escaped = !is_escaped && *ch == '\\';
-            true
-        });
-        match self.input.next() {
-            Some(ch) => debug_assert_eq!(ch, delimiter),
-            None => {
-                return Token {
-                    ttype: TokenType::ILLEGAL("Unclosed string literal".into()),
-                    line: self.line,
+            if is_escaped {
+                match ch {
+                    b'\'' | b'\"' | b'\\' => acc.push(ch),
+                    b'n' => acc.push(b'\n'),
+                    b't' => acc.push(b'\t'),
+                    b'0' => acc.push(b'\0'),
+                    _ => {
+                        acc.push(b'\\');
+                        acc.push(ch);
+                        return Token {
+                            ttype: TokenType::ILLEGAL(String::from_utf8_lossy(&acc).into()),
+                            line: self.line,
+                        };
+                    }
                 }
+                is_escaped = false;
+            } else if ch != b'\\' {
+                acc.push(ch);
+            } else {
+                is_escaped = true;
             }
-        };
-
-        let s = STR_REPLACE_RE.replace_all(&s, "$1");
-
-        Token { ttype: TokenType::STRING(self.vm.new_string(s.into())), line: self.line }
+        }
+        Token { ttype: TokenType::ILLEGAL("Unclosed string literal".into()), line: self.line }
     }
 
     pub(crate) fn vm(&mut self) -> &mut Vm {

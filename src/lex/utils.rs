@@ -4,17 +4,17 @@ use super::chars::{is_alphabetic, is_numeric};
 use std::iter::Peekable;
 
 #[inline]
-pub(super) fn eat_while_peeking<T>(chars: &mut Peekable<T>, pred: &impl Fn(&char) -> bool)
+pub(super) fn eat_while_peeking<T>(chars: &mut Peekable<T>, pred: &impl Fn(&u8) -> bool)
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     while chars.next_if(pred).is_some() {}
 }
 
 #[allow(clippy::cast_possible_truncation)]
-pub(super) fn read_decimals<T>(chars: &mut Peekable<T>, radix: u32) -> Result<f64, String>
+pub(super) fn read_decimals<T>(chars: &mut Peekable<T>, radix: u8) -> Result<f64, Box<str>>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     let clone_it = chars.clone();
     let mut i = 0;
@@ -28,17 +28,19 @@ where
         }
         chars.next();
         multiplier /= f64::from(radix);
-        res += match ch.to_digit(radix) {
+        res += match (ch as char).to_digit(radix.into()) {
             Some(n) => f64::from(n),
-            None => return Err(clone_it.take(i).collect()),
+            None => {
+                return Err(String::from_utf8_lossy(&clone_it.take(i).collect::<Vec<_>>()).into())
+            }
         } * multiplier;
     }
-    let precision = f64::from(radix.pow(i as u32));
+    let precision = f64::from((u32::from(radix)).pow(i as u32));
     res = (res * precision).round() / precision;
     Ok(res)
 }
 
-fn format_num(s: &str, radix: u32) -> Box<str> {
+fn format_num(s: &[u8], radix: u8) -> Box<str> {
     format!(
         "{}{}",
         match radix {
@@ -46,14 +48,14 @@ fn format_num(s: &str, radix: u32) -> Box<str> {
             16 => "0x",
             _ => "",
         },
-        s
+        String::from_utf8_lossy(s)
     )
     .into_boxed_str()
 }
 
-pub fn read_number_radix<T>(chars: &mut Peekable<T>, radix: u32) -> Result<f64, Box<str>>
+pub fn read_number_radix<T>(chars: &mut Peekable<T>, radix: u8) -> Result<f64, Box<str>>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     let clone_it = chars.clone();
     let mut i = 0;
@@ -66,15 +68,15 @@ where
         }
         chars.next();
         res *= f64::from(radix);
-        res += match ch.to_digit(radix) {
+        res += match (ch as char).to_digit(radix.into()) {
             Some(n) => f64::from(n),
-            None => return Err(format_num(&clone_it.take(i).collect::<String>(), radix)),
+            None => return Err(format_num(&clone_it.take(i).collect::<Vec<_>>(), radix)),
         };
     }
-    if Some(&'.') == chars.peek() {
+    if Some(&b'.') == chars.peek() {
         chars.next();
         if radix == 2 {
-            return Err(format_num(&clone_it.take(i).collect::<String>(), radix));
+            return Err(format_num(&clone_it.take(i).collect::<Vec<_>>(), radix));
         }
         res += read_decimals(chars, radix)?;
     }
@@ -83,18 +85,18 @@ where
 
 pub(super) fn read_number<T>(chars: &mut Peekable<T>) -> Result<f64, Box<str>>
 where
-    T: Iterator<Item = char> + Clone,
+    T: Iterator<Item = u8> + Clone,
 {
     let mut radix = 10;
-    if chars.peek() == Some(&'0') {
+    if chars.peek() == Some(&b'0') {
         chars.next();
         if let Some(ch) = chars.peek() {
             radix = match ch {
-                'x' => {
+                b'x' => {
                     chars.next();
                     16
                 }
-                'b' => {
+                b'b' => {
                     chars.next();
                     2
                 }
@@ -103,18 +105,4 @@ where
         }
     }
     read_number_radix(chars, radix)
-}
-
-pub(super) fn take_while_peeking<T, F>(chars: &mut Peekable<T>, mut pred: F) -> String
-where
-    T: Iterator<Item = char> + Clone,
-    F: FnMut(&char) -> bool,
-{
-    let mut i = 0;
-    let mut clone_it = chars.clone();
-
-    while clone_it.next_if(&mut pred).is_some() {
-        i += 1;
-    }
-    chars.take(i).collect()
 }

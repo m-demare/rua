@@ -11,7 +11,7 @@ use pretty_assertions::assert_eq;
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F) {
     let mut vm = Vm::new();
-    let res = compile(input.chars(), &mut vm);
+    let res = compile(input.bytes(), &mut vm);
 
     match (res, output(&mut vm)) {
         (Ok(closure), Ok(chunk)) => assert_eq!(closure.function().chunk(), &chunk),
@@ -49,7 +49,7 @@ fn test_arithmetic_exprs() {
             vec![5.0, 1.0, 6.0, 2.0, 3.0, 4.0],
             Vec::new(),
             Vec::new(),
-            vec![(0, 17)],
+            vec![(0, 1), (1, 14), (0, 2)],
         ))
     });
 }
@@ -77,7 +77,7 @@ fn test_locals() {
                 vec![5.0, 8.0],
                 Vec::new(),
                 Vec::new(),
-                vec![(0, 1), (1, 3), (0, 1), (2, 2), (0, 3)],
+                vec![(0, 1), (2, 3), (0, 1), (3, 2), (0, 3)],
             ))
         },
     );
@@ -112,7 +112,7 @@ fn test_locals() {
                 vec![5.0, 8.0, 3.0],
                 Vec::new(),
                 Vec::new(),
-                vec![(0, 1), (1, 3), (0, 1), (2, 1), (0, 1), (3, 3), (0, 1), (4, 2), (0, 5)],
+                vec![(0, 1), (2, 3), (0, 1), (3, 1), (0, 1), (4, 3), (0, 1), (5, 2), (0, 5)],
             ))
         },
     );
@@ -137,9 +137,9 @@ fn test_assign() {
                     I::ReturnNil,
                 ],
                 vec![5.0, 8.0],
-                vec![vm.new_string("foo".into())],
+                vec![vm.new_string((*b"foo").into())],
                 Vec::new(),
-                vec![(0, 1), (1, 5), (0, 2)],
+                vec![(0, 1), (2, 5), (0, 2)],
             ))
         },
     );

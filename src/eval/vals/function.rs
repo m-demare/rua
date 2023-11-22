@@ -46,7 +46,7 @@ impl Function {
         if self.inner.name.is_empty() {
             "<anonymous>".into()
         } else {
-            self.inner.name.inner()
+            String::from_utf8_lossy(&self.inner.name.inner()).into()
         }
     }
 

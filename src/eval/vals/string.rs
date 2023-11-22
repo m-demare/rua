@@ -9,13 +9,12 @@ use std::{
 
 use crate::eval::StringId;
 
-#[derive(Debug)]
 struct StringInner {
-    data: Rc<str>,
+    data: Rc<[u8]>,
     id: StringId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct RuaString(Rc<StringInner>);
 
 impl Hash for StringInner {
@@ -33,17 +32,17 @@ impl PartialEq for StringInner {
 impl Eq for StringInner {}
 
 impl RuaString {
-    pub(crate) fn new(data: Rc<str>, id: StringId) -> Self {
+    pub(crate) fn new(data: Rc<[u8]>, id: StringId) -> Self {
         Self(Rc::new(StringInner { data, id }))
     }
 
-    pub(super) fn inner(&self) -> Rc<str> {
+    pub(super) fn inner(&self) -> Rc<[u8]> {
         self.0.data.clone()
     }
 }
 
 impl Deref for RuaString {
-    type Target = str;
+    type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
         &self.0.data
@@ -52,11 +51,18 @@ impl Deref for RuaString {
 
 impl Display for RuaString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.data)
+        let s = String::from_utf8_lossy(&self.0.data);
+        write!(f, "{s}")
     }
 }
 
-impl From<RuaString> for Rc<str> {
+impl std::fmt::Debug for RuaString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl From<RuaString> for Rc<[u8]> {
     fn from(val: RuaString) -> Self {
         val.0.data.clone()
     }

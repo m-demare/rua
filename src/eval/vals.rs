@@ -61,7 +61,7 @@ impl RuaVal {
         self.try_into()
     }
 
-    pub fn into_str(self) -> Result<Rc<str>, EvalError> {
+    pub fn into_str(self) -> Result<Rc<[u8]>, EvalError> {
         self.try_into()
     }
 
@@ -191,11 +191,17 @@ impl<T: Into<RuaVal>> IntoRuaVal for T {
 
 impl IntoRuaVal for Rc<str> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        RuaVal::String(vm.new_string(self.into()))
+    }
+}
+
+impl IntoRuaVal for Rc<[u8]> {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
         RuaVal::String(vm.new_string(self))
     }
 }
 
-impl IntoRuaVal for &str {
+impl IntoRuaVal for &[u8] {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
         RuaVal::String(vm.new_string(self.into()))
     }
@@ -203,7 +209,7 @@ impl IntoRuaVal for &str {
 
 impl IntoRuaVal for String {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        RuaVal::String(vm.new_string(self.into()))
+        RuaVal::String(vm.new_string(self.as_bytes().into()))
     }
 }
 
@@ -251,10 +257,10 @@ impl TryInto<bool> for RuaVal {
     }
 }
 
-impl TryInto<Rc<str>> for RuaVal {
+impl TryInto<Rc<[u8]>> for RuaVal {
     type Error = EvalError;
 
-    fn try_into(self) -> Result<Rc<str>, Self::Error> {
+    fn try_into(self) -> Result<Rc<[u8]>, Self::Error> {
         match self {
             Self::String(s) => Ok(s.inner()),
             v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),

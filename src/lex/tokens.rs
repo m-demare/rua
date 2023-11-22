@@ -91,80 +91,80 @@ pub struct Token {
     pub line: usize,
 }
 
-pub fn lookup_keyword(identifier: &str) -> Option<TokenType> {
+pub const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
     use TokenType as T;
     Some(match identifier {
-        "and" => T::BINARY_OP(BinaryOp::AND),
-        "break" => T::BREAK,
-        "do" => T::DO,
-        "else" => T::ELSE,
-        "elseif" => T::ELSEIF,
-        "end" => T::END,
-        "false" => T::FALSE,
-        "for" => T::FOR,
-        "function" => T::FUNCTION,
-        "if" => T::IF,
-        "in" => T::IN,
-        "local" => T::LOCAL,
-        "nil" => T::NIL,
-        "not" => T::UNARY_OP(UnaryOp::NOT),
-        "or" => T::BINARY_OP(BinaryOp::OR),
-        "repeat" => T::REPEAT,
-        "return" => T::RETURN,
-        "then" => T::THEN,
-        "true" => T::TRUE,
-        "until" => T::UNTIL,
-        "while" => T::WHILE,
+        b"and" => T::BINARY_OP(BinaryOp::AND),
+        b"break" => T::BREAK,
+        b"do" => T::DO,
+        b"else" => T::ELSE,
+        b"elseif" => T::ELSEIF,
+        b"end" => T::END,
+        b"false" => T::FALSE,
+        b"for" => T::FOR,
+        b"function" => T::FUNCTION,
+        b"if" => T::IF,
+        b"in" => T::IN,
+        b"local" => T::LOCAL,
+        b"nil" => T::NIL,
+        b"not" => T::UNARY_OP(UnaryOp::NOT),
+        b"or" => T::BINARY_OP(BinaryOp::OR),
+        b"repeat" => T::REPEAT,
+        b"return" => T::RETURN,
+        b"then" => T::THEN,
+        b"true" => T::TRUE,
+        b"until" => T::UNTIL,
+        b"while" => T::WHILE,
         _ => return None,
     })
 }
 
 #[inline]
-pub(super) fn lookup_char(ch: char) -> TokenType {
+pub(super) fn lookup_char(ch: u8) -> TokenType {
     use TokenType as T;
     match ch {
-        '+' => T::BINARY_OP(BinaryOp::PLUS),
-        '-' => T::MINUS,
-        '*' => T::BINARY_OP(BinaryOp::TIMES),
-        '/' => T::BINARY_OP(BinaryOp::DIV),
-        '%' => T::BINARY_OP(BinaryOp::MOD),
-        '^' => T::BINARY_OP(BinaryOp::EXP),
-        '#' => T::UNARY_OP(UnaryOp::LEN),
+        b'+' => T::BINARY_OP(BinaryOp::PLUS),
+        b'-' => T::MINUS,
+        b'*' => T::BINARY_OP(BinaryOp::TIMES),
+        b'/' => T::BINARY_OP(BinaryOp::DIV),
+        b'%' => T::BINARY_OP(BinaryOp::MOD),
+        b'^' => T::BINARY_OP(BinaryOp::EXP),
+        b'#' => T::UNARY_OP(UnaryOp::LEN),
 
-        '=' => T::ASSIGN,
-        '(' => T::LPAREN,
-        ')' => T::RPAREN,
-        '{' => T::LBRACE,
-        '}' => T::RBRACE,
-        '[' => T::LBRACK,
-        ']' => T::RBRACK,
-        ';' => T::SEMICOLON,
-        ':' => T::COLON,
-        ',' => T::COMMA,
+        b'=' => T::ASSIGN,
+        b'(' => T::LPAREN,
+        b')' => T::RPAREN,
+        b'{' => T::LBRACE,
+        b'}' => T::RBRACE,
+        b'[' => T::LBRACK,
+        b']' => T::RBRACK,
+        b';' => T::SEMICOLON,
+        b':' => T::COLON,
+        b',' => T::COMMA,
 
-        _ => T::ILLEGAL(ch.to_string().into_boxed_str()),
+        _ => T::ILLEGAL((ch as char).to_string().into_boxed_str()),
     }
 }
 
 #[inline]
-pub(super) fn lookup_comparison(ch: char, has_eq: bool) -> TokenType {
+pub(super) fn lookup_comparison(ch: u8, has_eq: bool) -> TokenType {
     use TokenType as T;
-    debug_assert!(matches!(ch, '<' | '>' | '=' | '~'));
+    debug_assert!(matches!(ch, b'<' | b'>' | b'=' | b'~'));
 
     if has_eq {
         match ch {
-            '<' => T::BINARY_OP(BinaryOp::LE),
-            '>' => T::BINARY_OP(BinaryOp::GE),
-            '=' => T::BINARY_OP(BinaryOp::EQ),
-            '~' => T::BINARY_OP(BinaryOp::NEQ),
-            _ => T::ILLEGAL((ch.to_string() + "=").into_boxed_str()),
+            b'<' => T::BINARY_OP(BinaryOp::LE),
+            b'>' => T::BINARY_OP(BinaryOp::GE),
+            b'=' => T::BINARY_OP(BinaryOp::EQ),
+            b'~' => T::BINARY_OP(BinaryOp::NEQ),
+            _ => T::ILLEGAL(((ch as char).to_string() + "=").into_boxed_str()),
         }
     } else {
         match ch {
-            '<' => T::BINARY_OP(BinaryOp::LT),
-            '>' => T::BINARY_OP(BinaryOp::GT),
-            '=' => T::ASSIGN,
-            _ => T::ILLEGAL(ch.to_string().into_boxed_str()),
+            b'<' => T::BINARY_OP(BinaryOp::LT),
+            b'>' => T::BINARY_OP(BinaryOp::GT),
+            b'=' => T::ASSIGN,
+            _ => T::ILLEGAL((ch as char).to_string().into_boxed_str()),
         }
     }
 }

@@ -26,7 +26,7 @@ mod tests;
 pub mod upvalues;
 mod utils;
 
-pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
+pub struct Compiler<'vm, T: Iterator<Item = u8> + Clone> {
     tokens: Tokenizer<'vm, T>,
     peeked_token: Option<Token>,
     context: CompilerCtxt,
@@ -34,9 +34,9 @@ pub struct Compiler<'vm, T: Iterator<Item = char> + Clone> {
 }
 
 #[allow(unused_parens)]
-impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
+impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn new(mut tokens: Tokenizer<'vm, T>) -> Self {
-        let name = tokens.vm().new_string("<main>".into());
+        let name = tokens.vm().new_string((*b"<main>").into());
         let peeked_token = tokens.next();
         Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new(), peeked_token }
     }
@@ -245,10 +245,12 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::LBRACE, line, .. }) => return self.table_literal(line),
             Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_expr(line),
             Some(t) => {
+                let line = t.line;
                 return Err(ParseError::UnexpectedTokenWithErrorMsg(
                     Box::new(t),
                     "an expression".into(),
-                ))
+                    line,
+                ));
             }
             None => return Err(ParseError::UnexpectedEOF),
         }
@@ -415,7 +417,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         }
     }
 
-    fn peek_token(&self) -> Option<&Token> {
+    const fn peek_token(&self) -> Option<&Token> {
         self.peeked_token.as_ref()
     }
 
@@ -582,7 +584,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     fn for_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::FOR);
         self.next_token();
-        let empty_str = self.tokens.vm().new_string("".into());
+        let empty_str = self.tokens.vm().new_string([].into());
 
         let id = self.identifier()?;
         consume!(self; (TT::ASSIGN));
@@ -705,7 +707,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
         if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
             return Err(ParseError::NamedFunctionExpr(id.clone(), *line));
         }
-        let name = self.tokens.vm().new_string("".into());
+        let name = self.tokens.vm().new_string([].into());
         let (function, upvalues) = self.function(name)?;
         self.emit_closure(function, upvalues, line)?;
         Ok(())
@@ -827,7 +829,7 @@ impl<'vm, T: Iterator<Item = char> + Clone> Compiler<'vm, T> {
     }
 }
 
-pub fn compile<C: Iterator<Item = char> + Clone>(
+pub fn compile<C: Iterator<Item = u8> + Clone>(
     chars: C,
     vm: &mut Vm,
 ) -> Result<Closure, ParseError> {

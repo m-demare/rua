@@ -41,7 +41,7 @@ pub struct Vm {
     frames: Vec<CallFrame>,
     global: Table,
     identifiers: Trie<TokenType>,
-    strings: WeakKeyHashMap<Weak<str>, StringId, BuildHasherDefault<FxHasher>>,
+    strings: WeakKeyHashMap<Weak<[u8]>, StringId, BuildHasherDefault<FxHasher>>,
     open_upvalues: Vec<UpvalueObj>,
 }
 
@@ -388,7 +388,7 @@ impl Vm {
     fn str_concat(&mut self) -> Result<(), EvalError> {
         let b = self.pop();
         let a = self.pop();
-        let res = (a.into_str()?.to_string() + &b.into_str()?).into_rua(self);
+        let res = [a.into_str()?, b.into_str()?].concat().into_rua(self);
         self.push(res);
         Ok(())
     }
@@ -422,7 +422,7 @@ impl Vm {
         &mut self.identifiers
     }
 
-    pub fn new_string(&mut self, s: Rc<str>) -> RuaString {
+    pub fn new_string(&mut self, s: Rc<[u8]>) -> RuaString {
         let string_id = match self.strings.entry(s.clone()) {
             Entry::Occupied(v) => *v.get(),
             Entry::Vacant(e) => *e.insert({

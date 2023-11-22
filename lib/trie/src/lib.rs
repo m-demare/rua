@@ -5,7 +5,7 @@ pub struct Trie<T> {
 }
 
 pub struct TrieNode<T> {
-    next: Vec<(char, Box<TrieNode<T>>)>,
+    next: Vec<(u8, Box<TrieNode<T>>)>,
     // A HashMap is slower, there won't be that many keys
     // (see https://github.com/m-demare/rust_microbenches)
     val: Option<T>,
@@ -21,21 +21,21 @@ impl<'trie, T> Trie<T> {
         Self { root: (TrieNode::new(None)) }
     }
 
-    pub fn add_or_get(&'trie mut self, s: &str, val: T) -> &T {
+    pub fn add_or_get(&'trie mut self, s: &[u8], val: T) -> &T {
         let mut node = &mut self.root;
 
-        for ch in s.chars() {
-            node = node.find_next_or_add(ch);
+        for ch in s {
+            node = node.find_next_or_add(*ch);
         }
 
         node.val.get_or_insert(val)
     }
 
     #[cfg(test)]
-    pub fn find(&self, s: &str) -> Option<&T> {
+    pub fn find(&self, s: &[u8]) -> Option<&T> {
         let mut node = &self.root;
-        for ch in s.chars() {
-            node = &node.next.iter().find(|(c, _)| &ch == c)?.1
+        for ch in s {
+            node = &node.next.iter().find(|(c, _)| ch == c)?.1
         }
         node.val.as_ref()
     }
@@ -52,7 +52,7 @@ impl<'trie, T> TrieWalker<'trie, T> {
         Self { curr_node: Some(&trie.root), trie: PhantomData }
     }
 
-    pub fn walk(&mut self, ch: char) {
+    pub fn walk(&mut self, ch: u8) {
         if let Some(n) = &self.curr_node {
             self.curr_node = n.next.iter().find(|(c, _)| &ch == c).map(|(_, node)| node.as_ref());
         }
@@ -68,7 +68,7 @@ impl<'trie, T> TrieNode<T> {
         Self { next: Vec::new(), val }
     }
 
-    fn find_next_or_add(&'trie mut self, ch: char) -> &'trie mut Self {
+    fn find_next_or_add(&'trie mut self, ch: u8) -> &'trie mut Self {
         if let Some(i) = self.next.iter().position(|(c, _)| &ch == c) {
             &mut self.next[i].1
         } else {
@@ -85,30 +85,30 @@ mod tests {
     #[test]
     fn test_trie() {
         let mut trie = Trie::new();
-        assert_eq!(None, trie.find("foooo"));
-        assert_eq!(None, trie.find("foo"));
-        let foooo = trie.add_or_get("foooo", 1).clone();
+        assert_eq!(None, trie.find(b"foooo"));
+        assert_eq!(None, trie.find(b"foo"));
+        let foooo = trie.add_or_get(b"foooo", 1).clone();
         assert_eq!(1, foooo);
-        let foo = trie.add_or_get("foo", 2).clone();
+        let foo = trie.add_or_get(b"foo", 2).clone();
         assert_eq!(2, foo);
 
-        assert_eq!(Some(&foo), trie.find("foo"));
-        assert_eq!(Some(&foooo), trie.find("foooo"));
+        assert_eq!(Some(&foo), trie.find(b"foo"));
+        assert_eq!(Some(&foooo), trie.find(b"foooo"));
     }
 
     #[test]
     fn test_walker() {
         let mut trie = Trie::new();
 
-        let foo = trie.add_or_get("foo", true).clone();
-        let local = trie.add_or_get("local", false).clone();
+        let foo = trie.add_or_get(b"foo", true).clone();
+        let local = trie.add_or_get(b"local", false).clone();
 
         let mut lukes_trie_walker = TrieWalker::new(&trie);
-        "foo".chars().for_each(|ch| lukes_trie_walker.walk(ch));
+        "foo".bytes().for_each(|ch| lukes_trie_walker.walk(ch));
         assert_eq!(lukes_trie_walker.get_res(), Some(&foo));
 
         lukes_trie_walker = TrieWalker::new(&trie);
-        "local".chars().for_each(|ch| lukes_trie_walker.walk(ch));
+        "local".bytes().for_each(|ch| lukes_trie_walker.walk(ch));
         assert_eq!(lukes_trie_walker.get_res(), Some(&local));
     }
 }

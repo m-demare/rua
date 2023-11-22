@@ -33,12 +33,12 @@ fn main() {
 }
 
 fn evaluate(path: &PathBuf) -> Result<(), ParseError> {
-    let contents = std::fs::read_to_string(path) // TODO maybe not read file all at once? Need some perf testing
+    let contents = std::fs::read(path) // TODO maybe not read file all at once? Need some perf testing
         .expect("Error: input file does not exist");
 
     let mut vm = Vm::new();
 
-    let prog = compile(contents.chars(), &mut vm)?;
+    let prog = compile(contents.iter().copied(), &mut vm)?;
 
     let res = vm.interpret(prog.into());
     match res {

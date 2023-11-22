@@ -21,14 +21,14 @@ pub fn run() -> io::Result<()> {
 
         if input.lines().count() == 1 {
             // Attempt to parse it as an expression
-            let prog = parse_chars("return ".chars().chain(input.chars()), &mut vm);
+            let prog = parse_chars("return ".bytes().chain(input.bytes()), &mut vm);
             if let Ok(prog) = prog {
                 print_res(vm.interpret(prog.into()));
                 continue;
             }
         }
 
-        let prog = parse_chars(input.chars(), &mut vm);
+        let prog = parse_chars(input.bytes(), &mut vm);
 
         match prog {
             Ok(prog) => print_res(vm.interpret(prog.into())),
@@ -45,7 +45,7 @@ fn print_res(val: Result<RuaVal, EvalErrorTraced>) {
     }
 }
 
-fn parse_chars<T: Iterator<Item = char> + Clone>(
+fn parse_chars<T: Iterator<Item = u8> + Clone>(
     input: T,
     vm: &mut Vm,
 ) -> Result<Closure, ParseError> {

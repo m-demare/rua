@@ -138,8 +138,8 @@ mod tests {
     fn test_insert() {
         let mut vm = Vm::new();
         let mut table = Table::new();
-        table.insert(1.0.into(), "test".into_rua(&mut vm));
-        table.insert(3.0.into(), "test2".into_rua(&mut vm));
+        table.insert(1.0.into(), b"test".into_rua(&mut vm));
+        table.insert(3.0.into(), b"test2".into_rua(&mut vm));
         assert!(table.arr_size() == 1 || table.arr_size() == 3);
 
         let table2: RuaVal = Table::new().into();
@@ -147,9 +147,9 @@ mod tests {
         table.push(true.into());
 
         assert_eq!(table.arr_size(), 3);
-        assert_eq!(table.get(&1.0.into()), Some("test".into_rua(&mut vm)));
+        assert_eq!(table.get(&1.0.into()), Some(b"test".into_rua(&mut vm)));
         assert_eq!(table.get(&2.0.into()), Some(true.into()));
-        assert_eq!(table.get(&3.0.into()), Some("test2".into_rua(&mut vm)));
+        assert_eq!(table.get(&3.0.into()), Some(b"test2".into_rua(&mut vm)));
         assert_eq!(table.get(&table2), Some(5.0.into()));
         assert_eq!(table.get(&Table::new().into()), None);
     }
@@ -162,7 +162,7 @@ mod tests {
             (0.0.into(), 50.0.into()),
             (1.0.into(), 51.0.into()),
             (2.0.into(), 52.0.into()),
-            ("hello".into_rua(&mut vm), "world".into_rua(&mut vm)),
+            (b"hello".into_rua(&mut vm), b"world".into_rua(&mut vm)),
             (3.0.into(), 53.0.into()),
             (4.0.into(), 54.0.into()),
             (6.0.into(), 56.0.into()),
@@ -179,9 +179,9 @@ mod tests {
             None => panic!("There were items to pop"),
         };
 
-        assert_eq!(table.remove(&"foo".into_rua(&mut vm)), None);
-        assert_eq!(table.remove(&"hello".into_rua(&mut vm)), Some("world".into_rua(&mut vm)));
-        assert_eq!(table.get(&"hello".into_rua(&mut vm)), None);
+        assert_eq!(table.remove(&b"foo".into_rua(&mut vm)), None);
+        assert_eq!(table.remove(&b"hello".into_rua(&mut vm)), Some(b"world".into_rua(&mut vm)));
+        assert_eq!(table.get(&b"hello".into_rua(&mut vm)), None);
 
         table.pop();
         assert!(table.arr_size() == 2 || table.arr_size() == 3 || table.arr_size() == 6);

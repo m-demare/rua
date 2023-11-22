@@ -15,7 +15,7 @@ fn test_interpret_aux<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalErrorTraced>>(
 ) {
     let mut vm = Vm::new();
 
-    let prog = compile(input.chars(), &mut vm).expect("Failed to compile program");
+    let prog = compile(input.bytes(), &mut vm).expect("Failed to compile program");
 
     let res = vm.interpret(prog.into());
     let expected = output(&mut vm);
@@ -41,7 +41,7 @@ test_interpret!(arithmetic_ops5, "return 2 - 1 + 3", |_| Ok(4.0.into()));
 test_interpret!(arithmetic_ops6, "return 4 / 2 * 3", |_| Ok(6.0.into()));
 
 test_interpret!(string_concat, "return 'hello' .. ' ' .. 'world'", |vm| Ok(vm
-    .new_string("hello world".into())
+    .new_string((*b"hello world").into())
     .into()));
 test_interpret!(string_equality, "return 'foo' .. 'bar' ~= 'foobar'", |_| Ok(false.into()));
 test_interpret!(string_length, "return #'foo' + 1", |_| Ok(4.0.into()));
@@ -74,13 +74,21 @@ test_interpret!(
     |_| Ok(16.0.into())
 );
 
-test_interpret!(nativefn_tostring, "return type(tostring(5))", |vm| Ok("string".into_rua(vm)));
-test_interpret!(nativefn_tonumber, "return type(tonumber('5'))", |vm| Ok("number".into_rua(vm)));
-test_interpret!(nativefn_tostring2, "return tostring(5) .. 'foo'", |vm| Ok("5foo".into_rua(vm)));
+test_interpret!(nativefn_tostring, "return type(tostring(5))", |vm| Ok((*b"string").into_rua(vm)));
+test_interpret!(
+    nativefn_tonumber,
+    "return type(tonumber('5'))",
+    |vm| Ok((*b"number").into_rua(vm))
+);
+test_interpret!(
+    nativefn_tostring2,
+    "return tostring(5) .. 'foo'",
+    |vm| Ok((*b"5foo").into_rua(vm))
+);
 test_interpret!(nativefn_tonumbre_binary, "return tonumber('110', 2)", |_| Ok(6.0.into()));
 test_interpret!(nativefn_assert, "assert(false, 'custom error')", |vm| Err(EvalErrorTraced::new(
-    EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
-    vec![("assert".into(), 0), ("<main>".into(), 0)]
+    EvalError::AssertionFailed(Some((*b"custom error").into_rua(vm))),
+    vec![("assert".into(), 0), ("<main>".into(), 1)]
 )));
 test_interpret!(nativefn_pcall_ok, "return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
 test_interpret!(nativefn_pcall_err, "return pcall(assert, false)", |_| Ok(false.into()));
@@ -100,7 +108,7 @@ test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| 
 
 test_interpret!(and, "return true and 5", |_| Ok(5.0.into()));
 test_interpret!(and_shortciruit, "return false and nil + nil", |_| Ok(false.into()));
-test_interpret!(or, "return false or 'test'", |vm| Ok("test".into_rua(vm)));
+test_interpret!(or, "return false or 'test'", |vm| Ok((*b"test").into_rua(vm)));
 test_interpret!(or_shortciruit, "return 2 or nil + nil", |_| Ok(2.0.into()));
 
 test_interpret!(
@@ -166,7 +174,7 @@ end
 foo()",
     |_| Err(EvalErrorTraced::new(
         EvalError::TypeError { expected: RuaType::Number, got: RuaType::Nil },
-        vec![("bar".into(), 2), ("foo".into(), 5), ("<main>".into(), 7)]
+        vec![("bar".into(), 3), ("foo".into(), 6), ("<main>".into(), 8)]
     ))
 );
 test_interpret!(
@@ -176,8 +184,8 @@ test_interpret!(
 end
 foo()",
     |vm| Err(EvalErrorTraced::new(
-        EvalError::AssertionFailed(Some("custom error".into_rua(vm))),
-        vec![("assert".into(), 0), ("foo".into(), 1), ("<main>".into(), 3)]
+        EvalError::AssertionFailed(Some((*b"custom error").into_rua(vm))),
+        vec![("assert".into(), 0), ("foo".into(), 2), ("<main>".into(), 4)]
     ))
 );
 
