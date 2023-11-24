@@ -1,3 +1,5 @@
+use struct_invariant::invariant;
+
 use crate::compiler::bytecode::{FnHandle, Instruction, NumberHandle, StringHandle};
 
 use std::{
@@ -15,6 +17,7 @@ pub struct CallFrame {
     id: usize,
 }
 
+#[invariant(self.closure.function().chunk().code().len() >= self.ip, "Invalid IP")]
 impl CallFrame {
     pub fn new(closure: Rc<Closure>, start: usize) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);

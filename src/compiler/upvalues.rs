@@ -1,4 +1,5 @@
 use either::Either;
+use struct_invariant::invariant;
 
 use super::{bytecode::ParseError, locals::LocalHandle};
 
@@ -20,6 +21,7 @@ pub struct UpvalueHandle(u8);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UpvalueHandle(pub u8);
 
+#[invariant(self.upvalues.len() <= u8::MAX.into(), "Pushed too many upvalues")]
 impl Upvalues {
     pub fn find_or_add(
         &mut self,

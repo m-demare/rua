@@ -1,4 +1,5 @@
 use std::{fmt::Debug, num::TryFromIntError};
+use struct_invariant::invariant;
 use thiserror::Error;
 
 use crate::{
@@ -125,8 +126,9 @@ macro_rules! add_constant {
     }};
 }
 
+#[invariant(self.lines.iter().map(|l| l.1).sum::<usize>() == self.code.len(), "Every instruction should have a corresponding line")]
+#[invariant(!self.lines.is_empty(), "lines cannot be empty")]
 impl Chunk {
-    #[cfg(all(test, debug_assertions))]
     pub fn new(
         code: Vec<Instruction>,
         numbers: Vec<f64>,
@@ -134,7 +136,6 @@ impl Chunk {
         functions: Vec<Function>,
         lines: Vec<(usize, usize)>,
     ) -> Self {
-        debug_assert!(lines.iter().map(|l| l.1).sum::<usize>() == code.len());
         Self { code, numbers, strings, functions, lines }
     }
 
@@ -192,14 +193,13 @@ impl Chunk {
     }
 
     pub fn pop_instruction(&mut self) -> Option<Instruction> {
-        debug_assert!(!self.code.is_empty() && !self.lines.is_empty());
+        debug_assert!(!self.code.is_empty());
         let last_line = self.lines.last_mut().expect("lines is always non-empty");
         if last_line.1 > 1 {
             last_line.1 -= 1;
         } else if self.lines.len() > 1 {
             self.lines.pop();
         }
-        debug_assert!(!self.lines.is_empty());
         self.code.pop()
     }
 
@@ -250,13 +250,7 @@ impl Chunk {
 
 impl Default for Chunk {
     fn default() -> Self {
-        Self {
-            code: Vec::new(),
-            numbers: Vec::new(),
-            strings: Vec::new(),
-            functions: Vec::new(),
-            lines: vec![(0, 0)],
-        }
+        Self::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), vec![(0, 0)])
     }
 }
 

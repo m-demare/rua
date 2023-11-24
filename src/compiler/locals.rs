@@ -1,3 +1,5 @@
+use struct_invariant::invariant;
+
 use crate::eval::vals::string::RuaString;
 
 use super::bytecode::ParseError;
@@ -23,6 +25,7 @@ pub struct LocalHandle(u8);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalHandle(pub u8);
 
+#[invariant(self.locals.len() <= u8::MAX.into(), "Pushed too many locals")]
 impl Locals {
     pub fn new() -> Self {
         Self { locals: Vec::with_capacity(MAX_LOCALS as usize), scope_depth: 0 }

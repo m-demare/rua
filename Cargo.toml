@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "lib/func_macros",
     "lib/trie",
+    "lib/struct-invariant",
 ]
 
 [package]
@@ -19,6 +20,7 @@ rustc-hash = "1.1.0"
 thiserror = "1.0.49"
 rua_func_macros = { path = "./lib/func_macros" }
 rua_trie = { path = "./lib/trie" }
+struct-invariant = { path = "./lib/struct-invariant" }
 weak-table = "0.3.2"
 either = "1.9.0"
 static_assertions = "1.1.0"
