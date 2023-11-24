@@ -50,12 +50,12 @@ fn lex_basic_assignment() {
 fn lex_ints() {
     test_lex!(
         "58
-        0x2A
+        0x2ae2
         0b1001
         0b158",
         vec![
             Token { ttype: TT::NUMBER(58.0), line: 1 },
-            Token { ttype: TT::NUMBER(42.0), line: 2 },
+            Token { ttype: TT::NUMBER(f64::from(0x2ae2)), line: 2 },
             Token { ttype: TT::NUMBER(9.0), line: 3 },
             Token { ttype: TT::ILLEGAL("0b15".into()), line: 4 },
             Token { ttype: TT::NUMBER(8.0), line: 4 },
@@ -77,6 +77,27 @@ fn lex_floats() {
             Token { ttype: TT::NUMBER(1.0), line: 3 },
             Token { ttype: TT::ILLEGAL("0b0.".into()), line: 4 },
             Token { ttype: TT::NUMBER(23.0), line: 4 },
+        ]
+    );
+}
+
+#[test]
+fn lex_exp() {
+    test_lex!(
+        "
+        0.58e5
+        .58e+5
+        0.58E-52
+        10E30
+        10e+3
+        10e-3",
+        vec![
+            Token { ttype: TT::NUMBER(0.58e5), line: 2 },
+            Token { ttype: TT::NUMBER(0.58e5), line: 3 },
+            Token { ttype: TT::NUMBER(0.58e-52), line: 4 },
+            Token { ttype: TT::NUMBER(10e30), line: 5 },
+            Token { ttype: TT::NUMBER(10e3), line: 6 },
+            Token { ttype: TT::NUMBER(10e-3), line: 7 },
         ]
     );
 }
@@ -142,9 +163,11 @@ fn lex_dots() {
 #[test]
 fn lex_illegals() {
     test_lex!(
-        "0b2 ! @ ~",
+        "0b2 0b1e 5e3a ! @ ~",
         vec![
             Token { ttype: TT::ILLEGAL("0b2".into()), line: 1 },
+            Token { ttype: TT::ILLEGAL("0b1e".into()), line: 1 },
+            Token { ttype: TT::ILLEGAL("5e3a".into()), line: 1 },
             Token { ttype: TT::ILLEGAL("!".into()), line: 1 },
             Token { ttype: TT::ILLEGAL("@".into()), line: 1 },
             Token { ttype: TT::ILLEGAL("~".into()), line: 1 },

@@ -105,7 +105,7 @@ where
 
         match self.input.peek() {
             Some(n) if is_numeric(*n) => {
-                let float = read_decimals(&mut self.input, 10);
+                let float = read_decimals(&mut self.input, 10, 0f64);
                 match float {
                     Ok(n) => Token { ttype: TokenType::NUMBER(n), line: self.line },
                     Err(s) => Token { ttype: TokenType::ILLEGAL(s), line: self.line },
