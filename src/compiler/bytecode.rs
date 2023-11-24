@@ -238,6 +238,14 @@ impl Chunk {
             })
             .map_or(0, |(line, _)| *line)
     }
+
+    pub fn nconstants(&self) -> usize {
+        self.numbers.len() + self.strings.len()
+    }
+
+    pub fn nfunctions(&self) -> usize {
+        self.functions.len()
+    }
 }
 
 impl Default for Chunk {
@@ -260,35 +268,29 @@ impl Debug for Chunk {
         if 0 == line.ok_or(std::fmt::Error)?.1 {
             line = lines.next();
         }
-        writeln!(f, "\nopnr  line descr")?;
+        writeln!(f, "\nopnr   line  opcode")?;
         for (i, instr) in self.code.iter().enumerate() {
             let line_str = if count_in_line == 0 {
                 let linenr = line.ok_or(std::fmt::Error)?.0;
-                format!("{linenr: >5}")
+                format!("{linenr: >6}")
             } else {
-                "    |".to_string()
+                "     |".to_string()
             };
-            writeln!(f, "{i:4} {line_str} {instr:?}")?;
+            let clarification = match instr {
+                Instruction::Number(n) => format!("; {}", self.numbers[n.0 as usize]),
+                Instruction::String(s) => format!("; {}", self.strings[s.0 as usize]),
+                Instruction::Closure(func) => {
+                    format!("; {}", self.functions[func.0 as usize].pretty_name())
+                }
+                _ => String::new(),
+            };
+            writeln!(f, "{i:4} {line_str} {instr:?} {clarification}")?;
             count_in_line += 1;
             if count_in_line >= line.ok_or(std::fmt::Error)?.1 {
                 line = lines.next();
                 count_in_line = 0;
             }
         }
-        writeln!(f, "Numbers:")?;
-        for (i, c) in self.numbers.iter().enumerate() {
-            writeln!(f, "{i} {c}")?;
-        }
-        writeln!(f, "Strings:")?;
-        for (i, c) in self.strings.iter().enumerate() {
-            writeln!(f, "{i} {c}")?;
-        }
-        writeln!(f, "Functions:")?;
-        for (i, c) in self.functions.iter().enumerate() {
-            writeln!(f, "{i} {}", c.pretty_name())?;
-        }
-        writeln!(f, "Lines:")?;
-        writeln!(f, "{:?}", self.lines)?;
         Ok(())
     }
 }

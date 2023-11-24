@@ -108,8 +108,20 @@ impl<'vm> FunctionContext<'vm> {
 
 impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = self.pretty_name();
-        writeln!(f, "function {} (arity: {})", name, self.inner.arity)?;
+        writeln!(
+            f,
+            "function {} ({} instructions)",
+            self.pretty_name(),
+            self.inner.chunk.code().len()
+        )?;
+        writeln!(
+            f,
+            "{}+ params, {} upvalues, {} constants, {} functions",
+            self.inner.arity,
+            self.inner.upvalue_count,
+            self.inner.chunk.nconstants(),
+            self.inner.chunk.nfunctions()
+        )?;
         write!(f, "{:?}", self.inner.chunk)
     }
 }
