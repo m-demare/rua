@@ -1,64 +1,76 @@
 use std::{
     cell::RefCell,
     hash::{BuildHasherDefault, Hash, Hasher},
-    rc::Rc,
 };
 
 use rustc_hash::FxHashMap;
 
 use super::RuaVal;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+struct TableInner {
+    map: FxHashMap<RuaVal, RuaVal>,
+    marked: bool,
+}
+
+#[derive(Debug)]
 pub struct Table {
-    inner: Rc<RefCell<FxHashMap<RuaVal, RuaVal>>>,
+    inner: RefCell<TableInner>,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
 
 impl Table {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::with_capacity(0)
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: RefCell::new(FxHashMap::with_capacity_and_hasher(
+            inner: RefCell::new(TableInner{
+                map: FxHashMap::with_capacity_and_hasher(
                 capacity,
                 BuildHasherDefault::default(),
-            ))
-            .into(),
+            ),
+                marked: false,
+            }
+            ),
         }
     }
 
-    pub fn insert(&mut self, key: RuaVal, val: RuaVal) -> Option<RuaVal> {
+    pub fn insert(&self, key: RuaVal, val: RuaVal) -> Option<RuaVal> {
         if RuaVal::Nil == val {
-            return self.inner.borrow_mut().remove(&key);
+            return self.inner.borrow_mut().map.remove(&key);
         }
-        self.inner.borrow_mut().insert(key, val)
+        self.inner.borrow_mut().map.insert(key, val)
     }
 
     pub fn get(&self, key: &RuaVal) -> Option<RuaVal> {
-        self.inner.borrow().get(key).cloned()
+        self.inner.borrow().map.get(key).cloned()
     }
 
     #[allow(clippy::cast_precision_loss)]
-    pub fn push(&mut self, val: RuaVal) {
+    pub fn push(&self, val: RuaVal) {
         let pos = self.arr_size() + 1;
         self.insert(RuaVal::Number((pos as f64).into()), val);
     }
 
     #[allow(clippy::cast_precision_loss)]
-    pub fn pop(&mut self) -> Option<RuaVal> {
+    pub fn pop(&self) -> Option<RuaVal> {
         let pos = self.arr_size();
         self.remove(&RuaVal::Number((pos as f64).into()))
     }
 
-    pub fn remove(&mut self, key: &RuaVal) -> Option<RuaVal> {
-        self.inner.borrow_mut().remove(key)
+    pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
+        self.inner.borrow_mut().map.remove(key)
+    }
+
+    pub fn clear(&self) {
+        self.inner.borrow_mut().map.clear();
     }
 
     pub fn addr(&self) -> usize {
-        Rc::as_ptr(&self.inner) as usize
+        std::ptr::addr_of!(*self) as usize
     }
 
     /// Returns any number n, such that:
@@ -66,14 +78,14 @@ impl Table {
     /// - n+1 isn't a key in the table
     #[allow(clippy::cast_precision_loss)]
     pub fn arr_size(&self) -> usize {
-        let inner = self.inner.borrow();
+        let map = &self.inner.borrow().map;
         let (mut lower, mut upper) = (0, 1);
         while self.get(&(upper as f64).into()).is_some() {
             lower = upper;
             if upper > MAX_SAFE_INTEGER / 2 {
                 // Malicious input, resort to linear search
                 for i in 1.. {
-                    let val = inner.get(&RuaVal::Number((i as f64).into()));
+                    let val = map.get(&RuaVal::Number((i as f64).into()));
                     if val.is_none() {
                         return i - 1;
                     }
@@ -90,6 +102,25 @@ impl Table {
         }
         lower
     }
+
+    pub(crate) fn mark(&self) {
+        {
+            let already_marked = self.inner.borrow().marked;
+            if already_marked {return;}
+        }
+
+        #[cfg(test)]
+        println!("Marked {}", self.addr());
+
+        {
+            self.inner.borrow_mut().marked = true;
+        }
+
+        for (k, v) in &self.inner.borrow().map {
+            k.mark();
+            v.mark();
+        }
+    }
 }
 
 impl Default for Table {
@@ -100,7 +131,7 @@ impl Default for Table {
 
 impl PartialEq for Table {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.inner, &other.inner)
+        std::ptr::eq(self, other)
     }
 }
 
@@ -108,7 +139,7 @@ impl Eq for Table {}
 
 impl Hash for Table {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        (Rc::as_ptr(&self.inner) as usize).hash(state);
+        std::ptr::addr_of!(*self).hash(state);
     }
 }
 
@@ -117,7 +148,7 @@ where
     I: Into<RuaVal>,
 {
     fn from_iter<T: IntoIterator<Item = (I, RuaVal)>>(iter: T) -> Self {
-        let mut table = Self::new();
+        let table = Self::new();
         for (key, val) in iter {
             table.insert(key.into(), val);
         }
@@ -137,20 +168,26 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut vm = Vm::new();
-        let mut table = Table::new();
+        let table = Table::new();
         table.insert(1.0.into(), b"test".into_rua(&mut vm));
         table.insert(3.0.into(), b"test2".into_rua(&mut vm));
         assert!(table.arr_size() == 1 || table.arr_size() == 3);
 
+        let table1: RuaVal = Table::new().into();
+        table.insert(table1.clone(), 5.0.into());
         let table2: RuaVal = Table::new().into();
-        table.insert(table2.clone(), 5.0.into());
+        table.insert(table2.clone(), 7.0.into());
+        let table3: RuaVal = Table::new().into();
+        table.insert(table3.clone(), 9.0.into());
         table.push(true.into());
 
         assert_eq!(table.arr_size(), 3);
         assert_eq!(table.get(&1.0.into()), Some(b"test".into_rua(&mut vm)));
         assert_eq!(table.get(&2.0.into()), Some(true.into()));
         assert_eq!(table.get(&3.0.into()), Some(b"test2".into_rua(&mut vm)));
-        assert_eq!(table.get(&table2), Some(5.0.into()));
+        assert_eq!(table.get(&table2), Some(7.0.into()));
+        assert_eq!(table.get(&table1), Some(5.0.into()));
+        assert_eq!(table.get(&table3), Some(9.0.into()));
         assert_eq!(table.get(&Table::new().into()), None);
     }
 
@@ -167,7 +204,7 @@ mod tests {
             (4.0.into(), 54.0.into()),
             (6.0.into(), 56.0.into()),
         ];
-        let mut table = Table::from_iter(vec);
+        let table = Table::from_iter(vec);
 
         assert!(table.arr_size() == 4 || table.arr_size() == 6);
         match table.pop() {

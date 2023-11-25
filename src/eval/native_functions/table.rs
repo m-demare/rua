@@ -10,12 +10,12 @@ use super::super::vals::{
 use rua_func_macros::rua_func;
 
 #[rua_func]
-fn insert(mut table: Table, val: RuaVal) {
+fn insert(table: Rc<Table>, val: RuaVal) {
     table.push(val);
 }
 
 #[rua_func]
-fn remove(mut table: Table) -> Option<RuaVal> {
+fn remove(table: Rc<Table>) -> Option<RuaVal> {
     table.pop()
 }
 

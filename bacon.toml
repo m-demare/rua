@@ -23,6 +23,13 @@ command = [
 ]
 need_stdout = true
 
+[jobs.valgrind]
+command = [
+    "cargo", "valgrind", "test", "--color", "always", "--workspace",
+    "--", "--color", "always", # see https://github.com/Canop/bacon/issues/124
+]
+need_stdout = true
+
 [jobs.doc]
 command = ["cargo", "doc", "--color", "always", "--no-deps"]
 need_stdout = false
@@ -33,3 +40,4 @@ need_stdout = false
 on_success = "back"
 
 [keybindings]
+v = "job:valgrind"

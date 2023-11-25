@@ -79,7 +79,7 @@ fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
 
 // Helpers {{{
 
-pub fn default_global(vm: &mut Vm) -> Table {
+pub fn default_global(vm: &mut Vm) -> Rc<Table> {
     let global = [
         ("print", RuaVal::NativeFunction(NativeFunction::new(&print).into())),
         ("tostring", RuaVal::NativeFunction(NativeFunction::new(&tostring).into())),
@@ -87,13 +87,13 @@ pub fn default_global(vm: &mut Vm) -> Table {
         ("type", RuaVal::NativeFunction(NativeFunction::new(&rua_type).into())),
         ("assert", RuaVal::NativeFunction(NativeFunction::new(&assert).into())),
         ("pcall", RuaVal::NativeFunction(NativeFunction::new(&pcall).into())),
-        ("table", RuaVal::Table(table::table(vm))),
-        ("math", RuaVal::Table(math::math(vm))),
-        ("io", RuaVal::Table(io::io(vm))),
+        ("table", RuaVal::Table(table::table(vm).into())),
+        ("math", RuaVal::Table(math::math(vm).into())),
+        ("io", RuaVal::Table(io::io(vm).into())),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
-    let mut global = Table::from_iter(global);
+    let global = Rc::new(Table::from_iter(global));
     global.insert(Into::<Rc<str>>::into("_G").into_rua(vm), RuaVal::Table(global.clone()));
 
     global

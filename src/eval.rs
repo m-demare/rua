@@ -15,7 +15,7 @@ use crate::{
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
 use rustc_hash::FxHasher;
-use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
+use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap, WeakHashSet};
 
 use crate::{
     compiler::bytecode::Instruction,
@@ -39,21 +39,27 @@ const STACK_SIZE: usize = u8::MAX as usize;
 pub struct Vm {
     stack: Vec<RuaVal>,
     frames: Vec<CallFrame>,
-    global: Table,
+    global: Rc<Table>,
     identifiers: Trie<TokenType>,
     strings: WeakKeyHashMap<Weak<[u8]>, StringId, BuildHasherDefault<FxHasher>>,
     open_upvalues: Vec<UpvalueObj>,
+    gc_data: GcData,
 }
 
 impl Vm {
     pub fn new() -> Self {
+        // No need to call register_table on global, it shouldn't
+        // be collected until Vm is dropped anyways
+        let global = Table::new().into();
+
         let mut vm = Self {
             stack: Vec::with_capacity(STACK_SIZE),
             frames: Vec::new(),
-            global: Table::new(),
+            global,
             identifiers: Trie::new(),
             strings: WeakKeyHashMap::default(),
             open_upvalues: Vec::new(),
+            gc_data: GcData::default(),
         };
         vm.global = default_global(&mut vm);
         vm
@@ -169,13 +175,14 @@ impl Vm {
                 Instruction::Jmp(offset) => frame.rel_jmp(offset - 1),
                 Instruction::Loop(offset) => frame.rel_loop(offset + 1),
                 Instruction::NewTable => {
-                    self.push(RuaVal::Table(Table::new()));
+                    let table = self.new_table();
+                    self.push(RuaVal::Table(table));
                 }
                 Instruction::InsertKeyVal => {
                     let table = self.peek(0);
                     let val = self.peek(1);
                     let key = self.peek(2);
-                    let mut table = trace_err(table.into_table(), &frame)?;
+                    let table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
                     self.push(table.into());
@@ -184,7 +191,7 @@ impl Vm {
                     let table = self.peek(0);
                     let key = self.peek(1);
                     let val = self.peek(2);
-                    let mut table = trace_err(table.into_table(), &frame)?;
+                    let table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
                     self.push(table.into());
@@ -228,6 +235,7 @@ impl Vm {
     }
 
     fn call(&mut self, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
+        self.gc();
         let func = self.peek(nargs as usize);
         match func {
             RuaVal::Closure(closure) => {
@@ -331,7 +339,7 @@ impl Vm {
                     let val = self.peek(0);
                     let key = self.peek(n - i + keys_in_stack);
                     let table = self.peek(n - i + keys_in_stack + 1);
-                    let mut table = trace_err(table.into_table(), &*frame)?;
+                    let table = trace_err(table.into_table(), &*frame)?;
                     table.insert(key, val);
                     self.pop();
                     keys_in_stack += 2;
@@ -482,6 +490,53 @@ impl Vm {
 
     fn get_frame_start(&self, nargs: usize) -> usize {
         self.stack.len() - nargs - 1
+    }
+
+    fn new_table(&mut self) -> Rc<Table> {
+        let table = Rc::new(Table::new());
+        self.register_table(table.clone());
+        table
+    }
+
+    fn register_table(&mut self, table: Rc<Table>) {
+        self.gc_data.tables.insert(table);
+    }
+
+    fn gc(&mut self) {
+        #[cfg(test)]
+        println!("-- GC started --");
+
+        self.mark_roots();
+
+        #[cfg(test)]
+        println!("-- GC ended --");
+    }
+
+    fn mark_roots(&mut self) {
+        for val in &mut self.stack {
+            val.mark();
+        }
+
+        self.global.mark();
+
+        for frame in &mut self.frames {
+            frame.closure().mark();
+        }
+    }
+}
+
+#[derive(Default)]
+struct GcData{
+    tables: WeakHashSet<Weak<Table>>,
+    closures: WeakHashSet<Weak<Closure>>,
+}
+
+impl Drop for Vm {
+    fn drop(&mut self) {
+        self.stack.clear();
+        self.global.clear();
+        self.frames.clear();
+        self.gc();
     }
 }
 

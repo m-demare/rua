@@ -28,7 +28,7 @@ pub enum RuaVal {
     Closure(Rc<Closure>),
     String(RuaString),
     NativeFunction(Rc<NativeFunction>),
-    Table(Table),
+    Table(Rc<Table>),
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -57,7 +57,7 @@ impl RuaVal {
         }
     }
 
-    pub fn into_table(self) -> Result<Table, EvalError> {
+    pub fn into_table(self) -> Result<Rc<Table>, EvalError> {
         self.try_into()
     }
 
@@ -86,6 +86,14 @@ impl RuaVal {
             Self::String(s) => Ok(s.len()),
             Self::Table(t) => Ok(t.arr_size()),
             v => Err(EvalError::TypeError { expected: v.get_type(), got: RuaType::Table }),
+        }
+    }
+
+    pub(super) fn mark(&self) {
+        match self {
+            Self::Closure(c) => c.mark(),
+            Self::Table(t) => t.mark(),
+            _ => {}
         }
     }
 }
@@ -216,9 +224,16 @@ impl IntoRuaVal for String {
 // TODO convert these into IntoRuaVal
 impl From<Table> for RuaVal {
     fn from(val: Table) -> Self {
+        Self::Table(val.into())
+    }
+}
+
+impl From<Rc<Table>> for RuaVal {
+    fn from(val: Rc<Table>) -> Self {
         Self::Table(val)
     }
 }
+
 
 impl From<bool> for RuaVal {
     fn from(val: bool) -> Self {
@@ -268,10 +283,10 @@ impl TryInto<Rc<[u8]>> for RuaVal {
     }
 }
 
-impl TryInto<Table> for RuaVal {
+impl TryInto<Rc<Table>> for RuaVal {
     type Error = EvalError;
 
-    fn try_into(self) -> Result<Table, Self::Error> {
+    fn try_into(self) -> Result<Rc<Table>, Self::Error> {
         match self {
             Self::Table(t) => Ok(t),
             v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
