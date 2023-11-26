@@ -2,7 +2,7 @@
 
 use std::hash::{self, Hash};
 
-use super::RuaVal;
+use super::{RuaVal, RuaValInner};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct RuaNumber(f64);
@@ -41,12 +41,12 @@ impl From<RuaNumber> for f64 {
 
 impl From<RuaNumber> for RuaVal {
     fn from(value: RuaNumber) -> Self {
-        Self::Number(value)
+        Self(RuaValInner::Number(value))
     }
 }
 
 impl From<f64> for RuaVal {
     fn from(val: f64) -> Self {
-        Self::Number(RuaNumber::new(val))
+        Self(RuaValInner::Number(RuaNumber::new(val)))
     }
 }

@@ -4,7 +4,7 @@ pub mod number;
 pub mod string;
 pub mod table;
 
-use either::Either;
+use either::Either::{self, Left, Right};
 use std::{
     cell::RefCell,
     convert::Infallible,
@@ -21,7 +21,7 @@ use self::{
 };
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum RuaVal {
+enum RuaValInner {
     Number(RuaNumber),
     Bool(bool),
     Nil,
@@ -30,6 +30,9 @@ pub enum RuaVal {
     NativeFunction(Rc<NativeFunction>),
     Table(Rc<Table>),
 }
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct RuaVal(RuaValInner);
 
 #[cfg(target_arch = "x86_64")]
 static_assertions::assert_eq_size!(RuaVal, [u8; 16]);
@@ -51,8 +54,8 @@ pub enum RuaType {
 
 impl RuaVal {
     pub const fn as_number(&self) -> Result<f64, EvalError> {
-        match self {
-            Self::Number(n) => Ok(n.val()),
+        match &self.0 {
+            RuaValInner::Number(n) => Ok(n.val()),
             v => Err(EvalError::TypeError { expected: RuaType::Number, got: v.get_type() }),
         }
     }
@@ -66,9 +69,62 @@ impl RuaVal {
     }
 
     pub const fn truthy(&self) -> bool {
-        !matches!(self, Self::Bool(false) | Self::Nil)
+        !matches!(self.0, RuaValInner::Bool(false) | RuaValInner::Nil)
     }
 
+    pub const fn is_nil(&self) -> bool {
+        matches!(self.0, RuaValInner::Nil)
+    }
+
+    pub const fn get_type(&self) -> RuaType {
+        self.0.get_type()
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> Result<usize, EvalError> {
+        match &self.0 {
+            RuaValInner::String(s) => Ok(s.len()),
+            RuaValInner::Table(t) => Ok(t.arr_size()),
+            v => Err(EvalError::TypeError { expected: v.get_type(), got: RuaType::Table }),
+        }
+    }
+
+    pub(super) fn mark(&self) {
+        match &self.0 {
+            RuaValInner::Closure(c) => c.mark(),
+            RuaValInner::Table(t) => t.mark(),
+            _ => {}
+        }
+    }
+
+    pub const fn nil() -> Self {
+        Self(RuaValInner::Nil)
+    }
+
+    pub fn into_closure(self) -> Result<Rc<Closure>, EvalError> {
+        self.try_into()
+    }
+
+    pub fn into_native_fn(self) -> Result<Rc<NativeFunction>, EvalError> {
+        self.try_into()
+    }
+
+    pub fn into_callable(self) -> Result<Either<Rc<Closure>, Rc<NativeFunction>>, EvalError> {
+        match self.0 {
+            RuaValInner::Closure(c) => Ok(Left(c)),
+            RuaValInner::NativeFunction(f) => Ok(Right(f)),
+            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
+        }
+    }
+
+    /// # Safety
+    /// An unregistered table will not be garbage collected
+    pub unsafe fn from_table_unregistered(table: Rc<Table>) -> Self {
+        Self(RuaValInner::Table(table))
+    }
+}
+
+impl RuaValInner {
     pub const fn get_type(&self) -> RuaType {
         match self {
             Self::Number(..) => RuaType::Number,
@@ -79,26 +135,9 @@ impl RuaVal {
             Self::Table(..) => RuaType::Table,
         }
     }
-
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> Result<usize, EvalError> {
-        match self {
-            Self::String(s) => Ok(s.len()),
-            Self::Table(t) => Ok(t.arr_size()),
-            v => Err(EvalError::TypeError { expected: v.get_type(), got: RuaType::Table }),
-        }
-    }
-
-    pub(super) fn mark(&self) {
-        match self {
-            Self::Closure(c) => c.mark(),
-            Self::Table(t) => t.mark(),
-            _ => {}
-        }
-    }
 }
 
-impl Display for RuaVal {
+impl Display for RuaValInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Number(n) => write!(f, "{}", n.val()),
@@ -126,13 +165,25 @@ impl Display for RuaType {
     }
 }
 
-impl Debug for RuaVal {
+impl Debug for RuaValInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Closure(closure) => write!(f, "function ({})", closure.function().pretty_name()),
             Self::NativeFunction(_) => write!(f, "native function"),
             _ => write!(f, "{self}"),
         }
+    }
+}
+
+impl Debug for RuaVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+impl Display for RuaVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -199,57 +250,80 @@ impl<T: Into<RuaVal>> IntoRuaVal for T {
 
 impl IntoRuaVal for Rc<str> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        RuaVal::String(vm.new_string(self.into()))
+        RuaVal(RuaValInner::String(vm.new_string(self.into())))
     }
 }
 
 impl IntoRuaVal for Rc<[u8]> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        RuaVal::String(vm.new_string(self))
+        RuaVal(RuaValInner::String(vm.new_string(self)))
     }
 }
 
 impl IntoRuaVal for &[u8] {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        RuaVal::String(vm.new_string(self.into()))
+        RuaVal(RuaValInner::String(vm.new_string(self.into())))
     }
 }
 
 impl IntoRuaVal for String {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        RuaVal::String(vm.new_string(self.as_bytes().into()))
+        RuaVal(RuaValInner::String(vm.new_string(self.as_bytes().into())))
     }
 }
 
 // TODO convert these into IntoRuaVal
 impl From<Table> for RuaVal {
     fn from(val: Table) -> Self {
-        Self::Table(val.into())
+        Self(RuaValInner::Table(val.into()))
     }
 }
 
 impl From<Rc<Table>> for RuaVal {
     fn from(val: Rc<Table>) -> Self {
-        Self::Table(val)
+        Self(RuaValInner::Table(val))
     }
 }
 
+impl From<Closure> for RuaVal {
+    fn from(val: Closure) -> Self {
+        Self(RuaValInner::Closure(val.into()))
+    }
+}
+
+impl From<Rc<Closure>> for RuaVal {
+    fn from(val: Rc<Closure>) -> Self {
+        Self(RuaValInner::Closure(val))
+    }
+}
 
 impl From<bool> for RuaVal {
     fn from(val: bool) -> Self {
-        Self::Bool(val)
+        Self(RuaValInner::Bool(val))
     }
 }
 
 impl From<RuaString> for RuaVal {
     fn from(val: RuaString) -> Self {
-        Self::String(val)
+        Self(RuaValInner::String(val))
     }
 }
 
 impl From<()> for RuaVal {
     fn from((): ()) -> Self {
-        Self::Nil
+        Self::nil()
+    }
+}
+
+impl From<Rc<NativeFunction>> for RuaVal {
+    fn from(val: Rc<NativeFunction>) -> Self {
+        Self(RuaValInner::NativeFunction(val))
+    }
+}
+
+impl From<NativeFunction> for RuaVal {
+    fn from(val: NativeFunction) -> Self {
+        Self(RuaValInner::NativeFunction(val.into()))
     }
 }
 
@@ -261,14 +335,9 @@ impl TryInto<f64> for RuaVal {
     }
 }
 
-impl TryInto<bool> for RuaVal {
-    type Error = EvalError;
-
-    fn try_into(self) -> Result<bool, Self::Error> {
-        match self {
-            Self::Bool(b) => Ok(b),
-            v => Err(EvalError::TypeError { expected: RuaType::Bool, got: v.get_type() }),
-        }
+impl From<RuaVal> for bool {
+    fn from(val: RuaVal) -> Self {
+        val.truthy()
     }
 }
 
@@ -276,8 +345,8 @@ impl TryInto<Rc<[u8]>> for RuaVal {
     type Error = EvalError;
 
     fn try_into(self) -> Result<Rc<[u8]>, Self::Error> {
-        match self {
-            Self::String(s) => Ok(s.inner()),
+        match self.0 {
+            RuaValInner::String(s) => Ok(s.inner()),
             v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),
         }
     }
@@ -287,9 +356,31 @@ impl TryInto<Rc<Table>> for RuaVal {
     type Error = EvalError;
 
     fn try_into(self) -> Result<Rc<Table>, Self::Error> {
-        match self {
-            Self::Table(t) => Ok(t),
+        match self.0 {
+            RuaValInner::Table(t) => Ok(t),
             v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
+        }
+    }
+}
+
+impl TryInto<Rc<Closure>> for RuaVal {
+    type Error = EvalError;
+
+    fn try_into(self) -> Result<Rc<Closure>, Self::Error> {
+        match self.0 {
+            RuaValInner::Closure(c) => Ok(c),
+            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
+        }
+    }
+}
+
+impl TryInto<Rc<NativeFunction>> for RuaVal {
+    type Error = EvalError;
+
+    fn try_into(self) -> Result<Rc<NativeFunction>, Self::Error> {
+        match self.0 {
+            RuaValInner::NativeFunction(f) => Ok(f),
+            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
         }
     }
 }
@@ -316,7 +407,7 @@ where
 
     fn try_into_opt(self) -> Result<Option<T>, Self::Error> {
         Ok(match self {
-            Self::Nil => None,
+            Self(RuaValInner::Nil) => None,
             v => Some(v.try_into()?),
         })
     }
@@ -334,7 +425,7 @@ impl From<Option<Self>> for RuaVal {
     fn from(val: Option<Self>) -> Self {
         match val {
             Some(v) => v,
-            None => Self::Nil,
+            None => Self(RuaValInner::Nil),
         }
     }
 }

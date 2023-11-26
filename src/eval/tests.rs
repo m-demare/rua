@@ -53,7 +53,7 @@ test_interpret!(
     return foo",
     |_| Ok(13.0.into())
 );
-test_interpret!(undefined_global, "return bar", |_| Ok(RuaVal::Nil));
+test_interpret!(undefined_global, "return bar", |_| Ok(RuaVal::nil()));
 test_interpret!(
     global_mutation,
     "
@@ -90,7 +90,7 @@ test_interpret!(nativefn_assert, "assert(false, 'custom error')", |vm| Err(EvalE
     EvalError::AssertionFailed(Some((*b"custom error").into_rua(vm))),
     vec![("assert".into(), 0), ("<main>".into(), 1)]
 )));
-test_interpret!(nativefn_pcall_ok, "return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::Nil));
+test_interpret!(nativefn_pcall_ok, "return pcall(print, 5, 'hello world')", |_| Ok(RuaVal::nil()));
 test_interpret!(nativefn_pcall_err, "return pcall(assert, false)", |_| Ok(false.into()));
 test_interpret!(nativefn_math_sqrt, "return math.sqrt(math.pi)", |_| Ok(
     1.772_453_850_905_515_9.into()
@@ -100,7 +100,7 @@ test_interpret!(nativefn_math_sin, "return math.sin(0)", |_| Ok(0.0.into()));
 test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(std::f64::consts::E.into()));
 
 test_interpret!(if_true, "if 5>=5 then return 1 end", |_| Ok(1.0.into()));
-test_interpret!(if_false, "if 4>=5 then return 1 end", |_| Ok(RuaVal::Nil));
+test_interpret!(if_false, "if 4>=5 then return 1 end", |_| Ok(RuaVal::nil()));
 test_interpret!(if_false2, "if 4>=5 then return 1 end return true", |_| Ok(true.into()));
 
 test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
@@ -238,7 +238,7 @@ test_interpret!(
     "
     local a = {1, b = true, 2, [2+3] = false}
     return a[false]",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
@@ -253,7 +253,7 @@ test_interpret!(
     "
     local a = {1, b = true, 2, [2+3] = false}
     return a.c",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
@@ -262,7 +262,7 @@ test_interpret!(
     local b = 'test'
     local a = {1, b = true, 2, [2+3] = false}
     return a.b",
-    |_| Ok(RuaVal::Bool(true))
+    |_| Ok(true.into())
 );
 
 test_interpret!(
@@ -274,7 +274,7 @@ test_interpret!(
         return a.b
     end
     return foo()",
-    |_| Ok(RuaVal::Bool(true))
+    |_| Ok(true.into())
 );
 
 test_interpret!(
@@ -284,7 +284,7 @@ function foo(a, b, c)
     return c
 end
 return foo()",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 test_interpret!(
     call_with_more_args,
@@ -530,7 +530,7 @@ test_interpret!(
     assert(d==nil)
     return d
 ",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
@@ -564,7 +564,7 @@ test_interpret!(
     assert(c==nil)
     return c
 ",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
@@ -634,7 +634,7 @@ test_interpret!(
     end
     return a
 ",
-    |_| Ok(RuaVal::Nil)
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(

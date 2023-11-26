@@ -27,19 +27,15 @@ impl Table {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: RefCell::new(TableInner{
-                map: FxHashMap::with_capacity_and_hasher(
-                capacity,
-                BuildHasherDefault::default(),
-            ),
+            inner: RefCell::new(TableInner {
+                map: FxHashMap::with_capacity_and_hasher(capacity, BuildHasherDefault::default()),
                 marked: false,
-            }
-            ),
+            }),
         }
     }
 
     pub fn insert(&self, key: RuaVal, val: RuaVal) -> Option<RuaVal> {
-        if RuaVal::Nil == val {
+        if val.is_nil() {
             return self.inner.borrow_mut().map.remove(&key);
         }
         self.inner.borrow_mut().map.insert(key, val)
@@ -52,13 +48,13 @@ impl Table {
     #[allow(clippy::cast_precision_loss)]
     pub fn push(&self, val: RuaVal) {
         let pos = self.arr_size() + 1;
-        self.insert(RuaVal::Number((pos as f64).into()), val);
+        self.insert((pos as f64).into(), val);
     }
 
     #[allow(clippy::cast_precision_loss)]
     pub fn pop(&self) -> Option<RuaVal> {
         let pos = self.arr_size();
-        self.remove(&RuaVal::Number((pos as f64).into()))
+        self.remove(&(pos as f64).into())
     }
 
     pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
@@ -85,7 +81,7 @@ impl Table {
             if upper > MAX_SAFE_INTEGER / 2 {
                 // Malicious input, resort to linear search
                 for i in 1.. {
-                    let val = map.get(&RuaVal::Number((i as f64).into()));
+                    let val = map.get(&(i as f64).into());
                     if val.is_none() {
                         return i - 1;
                     }
@@ -106,7 +102,9 @@ impl Table {
     pub(crate) fn mark(&self) {
         {
             let already_marked = self.inner.borrow().marked;
-            if already_marked {return;}
+            if already_marked {
+                return;
+            }
         }
 
         #[cfg(test)]
@@ -159,7 +157,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        eval::vals::{IntoRuaVal, RuaVal},
+        eval::vals::{IntoRuaVal, RuaVal, RuaValInner},
         eval::Vm,
     };
 
@@ -208,8 +206,10 @@ mod tests {
 
         assert!(table.arr_size() == 4 || table.arr_size() == 6);
         match table.pop() {
-            Some(RuaVal::Number(n)) if n.val() == 56.0 => assert_eq!(table.arr_size(), 4),
-            Some(RuaVal::Number(n)) if n.val() == 54.0 => {
+            Some(RuaVal(RuaValInner::Number(n))) if n.val() == 56.0 => {
+                assert_eq!(table.arr_size(), 4);
+            }
+            Some(RuaVal(RuaValInner::Number(n))) if n.val() == 54.0 => {
                 assert!(table.arr_size() == 3 || table.arr_size() == 6);
             }
             Some(n) => panic!("Should have popped 54 or 56, not {n}"),

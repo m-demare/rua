@@ -70,7 +70,9 @@ impl Closure {
     pub(crate) fn mark(&self) {
         {
             let already_marked = self.marked.borrow();
-            if *already_marked {return;}
+            if *already_marked {
+                return;
+            }
         }
 
         #[cfg(test)]
@@ -79,7 +81,9 @@ impl Closure {
         self.marked.replace(true);
 
         for up in &self.upvalues {
-            up.borrow().as_ref().right().map(|v| v.mark());
+            if let Some(v) = up.borrow().as_ref().right() {
+                v.mark();
+            }
         }
     }
 }

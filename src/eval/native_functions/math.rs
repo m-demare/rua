@@ -76,24 +76,24 @@ fn exp(n: f64) -> f64 {
     n.exp()
 }
 
-pub(super) fn math(vm: &mut Vm) -> Table {
+pub(super) fn math(vm: &mut Vm) -> RuaVal {
     let math = [
-        ("sqrt", RuaVal::NativeFunction(NativeFunction::new(&sqrt).into())),
-        ("abs", RuaVal::NativeFunction(NativeFunction::new(&abs).into())),
-        ("max", RuaVal::NativeFunction(NativeFunction::new(&max).into())),
-        ("min", RuaVal::NativeFunction(NativeFunction::new(&min).into())),
-        ("sin", RuaVal::NativeFunction(NativeFunction::new(&sin).into())),
-        ("cos", RuaVal::NativeFunction(NativeFunction::new(&cos).into())),
-        ("tan", RuaVal::NativeFunction(NativeFunction::new(&tan).into())),
-        ("sinh", RuaVal::NativeFunction(NativeFunction::new(&sinh).into())),
-        ("cosh", RuaVal::NativeFunction(NativeFunction::new(&cosh).into())),
-        ("tanh", RuaVal::NativeFunction(NativeFunction::new(&tanh).into())),
-        ("floor", RuaVal::NativeFunction(NativeFunction::new(&floor).into())),
-        ("ceil", RuaVal::NativeFunction(NativeFunction::new(&ceil).into())),
-        ("exp", RuaVal::NativeFunction(NativeFunction::new(&exp).into())),
+        ("sqrt", NativeFunction::new(&sqrt).into()),
+        ("abs", NativeFunction::new(&abs).into()),
+        ("max", NativeFunction::new(&max).into()),
+        ("min", NativeFunction::new(&min).into()),
+        ("sin", NativeFunction::new(&sin).into()),
+        ("cos", NativeFunction::new(&cos).into()),
+        ("tan", NativeFunction::new(&tan).into()),
+        ("sinh", NativeFunction::new(&sinh).into()),
+        ("cosh", NativeFunction::new(&cosh).into()),
+        ("tanh", NativeFunction::new(&tanh).into()),
+        ("floor", NativeFunction::new(&floor).into()),
+        ("ceil", NativeFunction::new(&ceil).into()),
+        ("exp", NativeFunction::new(&exp).into()),
         ("pi", std::f64::consts::PI.into()),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
-    Table::from_iter(math)
+    Table::from_iter(math).into_rua(vm)
 }

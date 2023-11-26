@@ -8,6 +8,7 @@ use super::vals::{
     table::Table,
     EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal, TryIntoOpt,
 };
+use either::Either::{Left, Right};
 use rua_func_macros::rua_func;
 
 mod io;
@@ -43,8 +44,8 @@ fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
             s.to_string().bytes().peekable().by_ref(),
             r.try_into().or(Err(EvalError::Exception("Invalid radix".into())))?,
         ) {
-            Ok(n) => RuaVal::Number(n.into()),
-            Err(..) => RuaVal::Nil,
+            Ok(n) => n.into(),
+            Err(..) => RuaVal::nil(),
         },
     )
 }
@@ -67,12 +68,12 @@ fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
 // TODO revise when I add returning multiple values
 #[rua_func]
 fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
-    match func {
-        RuaVal::Closure(c) => ctxt.vm.interpret(c),
-        RuaVal::NativeFunction(f) => f.call(&ctxt.args[1..], ctxt.vm),
-        _ => return RuaVal::Bool(false),
+    match func.into_callable() {
+        Ok(Left(closure)) => ctxt.vm.interpret(closure),
+        Ok(Right(native_fn)) => native_fn.call(&ctxt.args[1..], ctxt.vm),
+        Err(_) => return false.into(),
     }
-    .map_or(RuaVal::Bool(false), |v| v)
+    .map_or(false.into(), |v| v)
 }
 
 // }}}
@@ -81,20 +82,22 @@ fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
 
 pub fn default_global(vm: &mut Vm) -> Rc<Table> {
     let global = [
-        ("print", RuaVal::NativeFunction(NativeFunction::new(&print).into())),
-        ("tostring", RuaVal::NativeFunction(NativeFunction::new(&tostring).into())),
-        ("tonumber", RuaVal::NativeFunction(NativeFunction::new(&tonumber).into())),
-        ("type", RuaVal::NativeFunction(NativeFunction::new(&rua_type).into())),
-        ("assert", RuaVal::NativeFunction(NativeFunction::new(&assert).into())),
-        ("pcall", RuaVal::NativeFunction(NativeFunction::new(&pcall).into())),
-        ("table", RuaVal::Table(table::table(vm).into())),
-        ("math", RuaVal::Table(math::math(vm).into())),
-        ("io", RuaVal::Table(io::io(vm).into())),
+        ("print", (NativeFunction::new(&print).into())),
+        ("tostring", (NativeFunction::new(&tostring).into())),
+        ("tonumber", (NativeFunction::new(&tonumber).into())),
+        ("type", (NativeFunction::new(&rua_type).into())),
+        ("assert", (NativeFunction::new(&assert).into())),
+        ("pcall", (NativeFunction::new(&pcall).into())),
+        ("table", table::table(vm)),
+        ("math", math::math(vm)),
+        ("io", io::io(vm)),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
     let global = Rc::new(Table::from_iter(global));
-    global.insert(Into::<Rc<str>>::into("_G").into_rua(vm), RuaVal::Table(global.clone()));
+    global.insert(Into::<Rc<str>>::into("_G").into_rua(vm), unsafe {
+        RuaVal::from_table_unregistered(global.clone())
+    });
 
     global
 }

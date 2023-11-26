@@ -10,12 +10,12 @@ use std::{
 
 use crate::{
     compiler::{bytecode::FnHandle, locals::LocalHandle, upvalues::UpvalueHandle},
-    eval::vals::{closure::Closure, IntoRuaVal, RuaType},
+    eval::vals::{closure::Closure, IntoRuaVal},
 };
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
 use rustc_hash::FxHasher;
-use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap, WeakHashSet};
+use weak_table::{weak_key_hash_map::Entry, WeakHashSet, WeakKeyHashMap};
 
 use crate::{
     compiler::bytecode::Instruction,
@@ -118,7 +118,7 @@ impl Vm {
                 }
                 Instruction::True => self.push(true.into()),
                 Instruction::False => self.push(false.into()),
-                Instruction::Nil => self.push(RuaVal::Nil),
+                Instruction::Nil => self.push(RuaVal::nil()),
                 Instruction::Neg => {
                     trace_err(self.unary_op(|v| Ok((-v.as_number()?).into())), &frame)?;
                 }
@@ -176,7 +176,7 @@ impl Vm {
                 Instruction::Loop(offset) => frame.rel_loop(offset + 1),
                 Instruction::NewTable => {
                     let table = self.new_table();
-                    self.push(RuaVal::Table(table));
+                    self.push(table);
                 }
                 Instruction::InsertKeyVal => {
                     let table = self.peek(0);
@@ -237,13 +237,13 @@ impl Vm {
     fn call(&mut self, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
         self.gc();
         let func = self.peek(nargs as usize);
-        match func {
-            RuaVal::Closure(closure) => {
+        match func.into_callable() {
+            Ok(Left(closure)) => {
                 if closure.function().arity() < nargs {
                     self.drop((nargs - closure.function().arity()) as usize);
                 }
                 for _ in 0..closure.function().arity().saturating_sub(nargs) {
-                    self.push(RuaVal::Nil);
+                    self.push(RuaVal::nil());
                 }
                 let stack_start_pos = self.get_frame_start(closure.function().arity() as usize);
                 #[cfg(test)]
@@ -255,7 +255,7 @@ impl Vm {
                 self.frames.push(old_frame);
                 Ok(())
             }
-            RuaVal::NativeFunction(f) => {
+            Ok(Right(f)) => {
                 let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
                 let retval = match f.call(&args, self) {
                     Ok(v) => v,
@@ -268,12 +268,9 @@ impl Vm {
                 self.push(retval);
                 Ok(())
             }
-            v => {
+            Err(e) => {
                 let stack_trace = vec![(frame.func_name(), frame.curr_line())];
-                Err(EvalErrorTraced::new(
-                    EvalError::TypeError { expected: RuaType::Function, got: v.get_type() },
-                    stack_trace,
-                ))
+                Err(EvalErrorTraced::new(e, stack_trace))
             }
         }
     }
@@ -285,7 +282,7 @@ impl Vm {
         first_frame_id: usize,
     ) -> Option<RuaVal> {
         self.close_upvalues(frame.stack_start());
-        let retval = if is_nil { RuaVal::Nil } else { self.pop() };
+        let retval = if is_nil { RuaVal::nil() } else { self.pop() };
         self.stack.truncate(frame.stack_start());
         if frame.id() == first_frame_id {
             return Some(retval);
@@ -318,7 +315,8 @@ impl Vm {
                 unreachable!("Expected {upvalue_count} upvalues after this closure");
             }
         }
-        self.push(RuaVal::Closure(closure.into()));
+        let closure = Rc::new(closure).into_rua(self);
+        self.push(closure);
     }
 
     fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
@@ -469,7 +467,7 @@ impl Vm {
             };
             let close = up_pos >= last;
             if close {
-                up.replace(Right(std::mem::replace(&mut self.stack[up_pos], RuaVal::Nil)));
+                up.replace(Right(std::mem::replace(&mut self.stack[up_pos], RuaVal::nil())));
             }
             !close
         });
@@ -492,10 +490,8 @@ impl Vm {
         self.stack.len() - nargs - 1
     }
 
-    fn new_table(&mut self) -> Rc<Table> {
-        let table = Rc::new(Table::new());
-        self.register_table(table.clone());
-        table
+    fn new_table(&mut self) -> RuaVal {
+        Rc::new(Table::new()).into_rua(self)
     }
 
     fn register_table(&mut self, table: Rc<Table>) {
@@ -526,7 +522,7 @@ impl Vm {
 }
 
 #[derive(Default)]
-struct GcData{
+struct GcData {
     tables: WeakHashSet<Weak<Table>>,
     closures: WeakHashSet<Weak<Closure>>,
 }

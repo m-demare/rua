@@ -19,12 +19,12 @@ fn remove(table: Rc<Table>) -> Option<RuaVal> {
     table.pop()
 }
 
-pub(super) fn table(vm: &mut Vm) -> Table {
+pub(super) fn table(vm: &mut Vm) -> RuaVal {
     let table = [
-        ("insert", RuaVal::NativeFunction(NativeFunction::new(&insert).into())),
-        ("remove", RuaVal::NativeFunction(NativeFunction::new(&remove).into())),
+        ("insert", NativeFunction::new(&insert).into()),
+        ("remove", NativeFunction::new(&remove).into()),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
-    Table::from_iter(table)
+    Table::from_iter(table).into_rua(vm)
 }
