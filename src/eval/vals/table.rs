@@ -1,21 +1,18 @@
 use std::{
     cell::RefCell,
-    hash::{BuildHasherDefault, Hash, Hasher},
+    hash::{BuildHasherDefault, Hash, Hasher}, rc::Rc,
 };
 
 use rustc_hash::FxHashMap;
 
-use super::RuaVal;
+use crate::eval::{GcData, Vm, macros::trace_gc};
 
-#[derive(Debug)]
-struct TableInner {
-    map: FxHashMap<RuaVal, RuaVal>,
-    marked: bool,
-}
+use super::{RuaVal, IntoRuaVal, RuaValInner};
 
 #[derive(Debug)]
 pub struct Table {
-    inner: RefCell<TableInner>,
+    map: RefCell<FxHashMap<RuaVal, RuaVal>>,
+    marked: RefCell<bool>,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
@@ -27,22 +24,22 @@ impl Table {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: RefCell::new(TableInner {
-                map: FxHashMap::with_capacity_and_hasher(capacity, BuildHasherDefault::default()),
-                marked: false,
-            }),
+            map: RefCell::new(
+                FxHashMap::with_capacity_and_hasher(capacity, BuildHasherDefault::default()),
+            ),
+            marked: RefCell::new(false)
         }
     }
 
     pub fn insert(&self, key: RuaVal, val: RuaVal) -> Option<RuaVal> {
         if val.is_nil() {
-            return self.inner.borrow_mut().map.remove(&key);
+            return self.map.borrow_mut().remove(&key);
         }
-        self.inner.borrow_mut().map.insert(key, val)
+        self.map.borrow_mut().insert(key, val)
     }
 
     pub fn get(&self, key: &RuaVal) -> Option<RuaVal> {
-        self.inner.borrow().map.get(key).cloned()
+        self.map.borrow().get(key).cloned()
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -58,11 +55,11 @@ impl Table {
     }
 
     pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
-        self.inner.borrow_mut().map.remove(key)
+        self.map.borrow_mut().remove(key)
     }
 
     pub fn clear(&self) {
-        self.inner.borrow_mut().map.clear();
+        self.map.borrow_mut().clear();
     }
 
     pub fn addr(&self) -> usize {
@@ -74,7 +71,7 @@ impl Table {
     /// - n+1 isn't a key in the table
     #[allow(clippy::cast_precision_loss)]
     pub fn arr_size(&self) -> usize {
-        let map = &self.inner.borrow().map;
+        let map = &self.map.borrow();
         let (mut lower, mut upper) = (0, 1);
         while self.get(&(upper as f64).into()).is_some() {
             lower = upper;
@@ -99,25 +96,35 @@ impl Table {
         lower
     }
 
-    pub(crate) fn mark(&self) {
-        {
-            let already_marked = self.inner.borrow().marked;
-            if already_marked {
-                return;
-            }
+    #[must_use]
+    pub(in super::super) fn mark(&self) -> bool {
+        let already_marked = self.marked.replace(true);
+        trace_gc!("Marking table 0x{:x}. Was marked {}", self.addr(), already_marked);
+        if already_marked {
+            return false;
         }
 
-        #[cfg(test)]
-        println!("Marked {}", self.addr());
+        trace_gc!("Marked table 0x{:x}", self.addr());
 
-        {
-            self.inner.borrow_mut().marked = true;
-        }
+        true
+    }
 
-        for (k, v) in &self.inner.borrow().map {
-            k.mark();
-            v.mark();
+    pub(super) fn blacken(&self, gc_data: &mut GcData) {
+        let map: &FxHashMap<_, _> = &self.map.borrow();
+        for (k, v) in map {
+            k.mark(gc_data);
+            v.mark(gc_data);
         }
+    }
+
+    pub(in super::super) fn soft_drop(&self) {
+        trace_gc!("soft dropping table 0x{:x}", self.addr());
+        self.map.borrow_mut().clear();
+    }
+
+    pub(in super::super) fn unmark(&self) -> bool {
+        trace_gc!("Unmarking table 0x{:x}. Is marked? {}", self.addr(), *self.marked.borrow());
+        self.marked.replace(false)
     }
 }
 
@@ -154,6 +161,19 @@ where
     }
 }
 
+impl IntoRuaVal for Table {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        Rc::new(self).into_rua(vm)
+    }
+}
+
+impl IntoRuaVal for Rc<Table> {
+    fn into_rua(self, vm: &mut Vm) -> RuaVal {
+        vm.register_table(self.clone());
+        RuaVal(RuaValInner::Table(self))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -171,11 +191,11 @@ mod tests {
         table.insert(3.0.into(), b"test2".into_rua(&mut vm));
         assert!(table.arr_size() == 1 || table.arr_size() == 3);
 
-        let table1: RuaVal = Table::new().into();
+        let table1: RuaVal = Table::new().into_rua(&mut vm);
         table.insert(table1.clone(), 5.0.into());
-        let table2: RuaVal = Table::new().into();
+        let table2: RuaVal = Table::new().into_rua(&mut vm);
         table.insert(table2.clone(), 7.0.into());
-        let table3: RuaVal = Table::new().into();
+        let table3: RuaVal = Table::new().into_rua(&mut vm);
         table.insert(table3.clone(), 9.0.into());
         table.push(true.into());
 
@@ -186,7 +206,7 @@ mod tests {
         assert_eq!(table.get(&table2), Some(7.0.into()));
         assert_eq!(table.get(&table1), Some(5.0.into()));
         assert_eq!(table.get(&table3), Some(9.0.into()));
-        assert_eq!(table.get(&Table::new().into()), None);
+        assert_eq!(table.get(&Table::new().into_rua(&mut vm)), None);
     }
 
     #[test]

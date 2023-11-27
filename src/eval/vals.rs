@@ -20,6 +20,8 @@ use self::{
     closure::Closure, function::NativeFunction, number::RuaNumber, string::RuaString, table::Table,
 };
 
+use super::GcData;
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum RuaValInner {
     Number(RuaNumber),
@@ -89,12 +91,23 @@ impl RuaVal {
         }
     }
 
-    pub(super) fn mark(&self) {
-        match &self.0 {
+    pub(super) fn mark(&self, gc_data: &mut GcData) {
+        let add_grey = match &self.0 {
             RuaValInner::Closure(c) => c.mark(),
             RuaValInner::Table(t) => t.mark(),
-            _ => {}
+            _ => return,
+        };
+        if add_grey {
+            gc_data.add_grey(self.clone());
         }
+    }
+
+    pub(super) fn blacken(&self, gc_data: &mut GcData) {
+        match &self.0 {
+            RuaValInner::Closure(c) => c.blacken(gc_data),
+            RuaValInner::Table(t) => t.blacken(gc_data),
+            _ => (),
+        };
     }
 
     pub const fn nil() -> Self {
@@ -121,6 +134,12 @@ impl RuaVal {
     /// An unregistered table will not be garbage collected
     pub unsafe fn from_table_unregistered(table: Rc<Table>) -> Self {
         Self(RuaValInner::Table(table))
+    }
+
+    /// # Safety
+    /// An unregistered closure will not be garbage collected
+    pub unsafe fn from_closure_unregistered(closure: Rc<Closure>) -> Self {
+        Self(RuaValInner::Closure(closure))
     }
 }
 
@@ -269,31 +288,6 @@ impl IntoRuaVal for &[u8] {
 impl IntoRuaVal for String {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
         RuaVal(RuaValInner::String(vm.new_string(self.as_bytes().into())))
-    }
-}
-
-// TODO convert these into IntoRuaVal
-impl From<Table> for RuaVal {
-    fn from(val: Table) -> Self {
-        Self(RuaValInner::Table(val.into()))
-    }
-}
-
-impl From<Rc<Table>> for RuaVal {
-    fn from(val: Rc<Table>) -> Self {
-        Self(RuaValInner::Table(val))
-    }
-}
-
-impl From<Closure> for RuaVal {
-    fn from(val: Closure) -> Self {
-        Self(RuaValInner::Closure(val.into()))
-    }
-}
-
-impl From<Rc<Closure>> for RuaVal {
-    fn from(val: Rc<Closure>) -> Self {
-        Self(RuaValInner::Closure(val))
     }
 }
 

@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     compiler::{bytecode::FnHandle, locals::LocalHandle, upvalues::UpvalueHandle},
-    eval::vals::{closure::Closure, IntoRuaVal},
+    eval::{vals::{closure::Closure, IntoRuaVal}, macros::trace_gc},
 };
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
@@ -32,6 +32,7 @@ use self::{
 };
 
 mod call_frame;
+mod macros;
 mod tests;
 
 const STACK_SIZE: usize = u8::MAX as usize;
@@ -185,7 +186,8 @@ impl Vm {
                     let table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
-                    self.push(table.into());
+                    // SAFETY: table was on stack, it's already registered
+                    self.push(unsafe { RuaVal::from_table_unregistered(table) });
                 }
                 Instruction::InsertValKey => {
                     let table = self.peek(0);
@@ -194,7 +196,8 @@ impl Vm {
                     let table = trace_err(table.into_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
-                    self.push(table.into());
+                    // SAFETY: table was on stack, it's already registered
+                    self.push(unsafe { RuaVal::from_table_unregistered(table) });
                 }
                 Instruction::Index => {
                     let key = self.pop();
@@ -235,7 +238,6 @@ impl Vm {
     }
 
     fn call(&mut self, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        self.gc();
         let func = self.peek(nargs as usize);
         match func.into_callable() {
             Ok(Left(closure)) => {
@@ -441,7 +443,7 @@ impl Vm {
 
     fn capture_upvalue(&mut self, closure: &mut Closure, pos: usize) {
         let existing = self.open_upvalues.iter().find(|up| {
-            let up: &Either<usize, RuaVal> = &up.borrow();
+            let up: &Either<_, _> = &up.borrow();
             match up {
                 Left(up_pos) => *up_pos == pos,
                 Right(_) => unreachable!("upvalue in open_upvalues is closed"),
@@ -459,7 +461,7 @@ impl Vm {
     fn close_upvalues(&mut self, last: usize) {
         self.open_upvalues.retain(|up| {
             let up_pos = {
-                let up: &Either<usize, RuaVal> = &up.borrow();
+                let up: &Either<_, _> = &up.borrow();
                 match up {
                     Left(up_pos) => *up_pos,
                     Right(_) => unreachable!("upvalue in open_upvalues is closed"),
@@ -495,28 +497,52 @@ impl Vm {
     }
 
     fn register_table(&mut self, table: Rc<Table>) {
+        trace_gc!("register_table 0x{:x}", table.addr());
         self.gc_data.tables.insert(table);
     }
 
+    fn register_closure(&mut self, closure: Rc<Closure>) {
+        trace_gc!("register_closure 0x{:x}", closure.addr());
+        self.gc_data.closures.insert(closure);
+    }
+
     fn gc(&mut self) {
-        #[cfg(test)]
-        println!("-- GC started --");
+        trace_gc!("-- GC started --");
 
         self.mark_roots();
+        trace_gc!("-- Marked roots --");
 
-        #[cfg(test)]
-        println!("-- GC ended --");
+        self.gc_data.trace_refs();
+        trace_gc!("-- Traced references --");
+
+        self.gc_data.sweep();
+        trace_gc!("-- Sweeped --");
+        self.global.unmark();
+        trace_gc!("-- Unmarked global --");
+
+        trace_gc!("-- GC ended --");
     }
 
     fn mark_roots(&mut self) {
+        trace_gc!("Stack roots:");
         for val in &mut self.stack {
-            val.mark();
+            val.mark(&mut self.gc_data);
         }
 
-        self.global.mark();
+        trace_gc!("Global root:");
+        if self.global.mark(){
+            // SAFETY: global doesn't need to be garbage collected, since it'll be valid
+            // as long as the Vm is valid, and it's dropped when the Vm is dropped
+            self.gc_data.add_grey(unsafe { RuaVal::from_table_unregistered(self.global.clone()) });
+        }
 
+        trace_gc!("Frame roots:");
         for frame in &mut self.frames {
-            frame.closure().mark();
+            if frame.closure().mark() {
+                // SAFETY: any closure in self.frames has been created and registered
+                // at some other point in time
+                self.gc_data.add_grey(unsafe { RuaVal::from_closure_unregistered(frame.closure().clone()) });
+            }
         }
     }
 }
@@ -525,10 +551,43 @@ impl Vm {
 struct GcData {
     tables: WeakHashSet<Weak<Table>>,
     closures: WeakHashSet<Weak<Closure>>,
+    grey_vals: Vec<RuaVal>,
+}
+
+impl GcData {
+    fn add_grey(&mut self, val: RuaVal) {
+        self.grey_vals.push(val);
+
+        #[cfg(test)]
+        assert!(self.grey_vals.len() <= 100_000, "Too many grey vals for test");
+        // Too avoid crashing my PC when I screw up
+    }
+
+    fn trace_refs(&mut self) {
+        while let Some(grey) = self.grey_vals.pop() {
+            grey.blacken(self);
+        }
+    }
+
+    fn sweep(&mut self) {
+        self.tables.retain(|t| {
+            let retain = t.unmark();
+            if !retain {t.soft_drop();}
+            retain
+        });
+
+        self.closures.retain(|c| {
+            let retain = c.unmark();
+            if !retain {c.soft_drop();}
+            retain
+        });
+    }
 }
 
 impl Drop for Vm {
     fn drop(&mut self) {
+        trace_gc!("Dropping vm");
+
         self.stack.clear();
         self.global.clear();
         self.frames.clear();

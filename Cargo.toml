@@ -34,6 +34,9 @@ codegen-units = 1
 [profile.dev]
 opt-level = 3
 
+[profile.test]
+opt-level = 0
+
 [profile.bench]
 debug = true
 

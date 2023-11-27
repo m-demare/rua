@@ -76,6 +76,11 @@ fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     .map_or(false.into(), |v| v)
 }
 
+#[rua_func]
+fn collectgarbage(ctxt: &mut FunctionContext) {
+    ctxt.vm.gc();
+}
+
 // }}}
 
 // Helpers {{{
@@ -88,6 +93,7 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
         ("type", (NativeFunction::new(&rua_type).into())),
         ("assert", (NativeFunction::new(&assert).into())),
         ("pcall", (NativeFunction::new(&pcall).into())),
+        ("collectgarbage", (NativeFunction::new(&collectgarbage).into())),
         ("table", table::table(vm)),
         ("math", math::math(vm)),
         ("io", io::io(vm)),
@@ -95,6 +101,8 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
     let global = Rc::new(Table::from_iter(global));
+    // SAFETY: global doesn't need to be garbage collected, since it'll be valid
+    // as long as the Vm is valid, and it's dropped when the Vm is dropped
     global.insert(Into::<Rc<str>>::into("_G").into_rua(vm), unsafe {
         RuaVal::from_table_unregistered(global.clone())
     });
