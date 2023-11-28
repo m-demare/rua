@@ -738,16 +738,16 @@ test_interpret!(
 
 test_interpret!(
     single_obj_circular_ref_is_gced,
-"
+    "
     a = {}
     a.b = a
 ",
-|_| Ok(RuaVal::nil())
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
     many_obj_circular_ref_is_gced,
-"
+    "
     first = {}
     last = first
     for i = 1, 30 do
@@ -757,12 +757,12 @@ test_interpret!(
     end
     first.prev = last
 ",
-|_| Ok(RuaVal::nil())
+    |_| Ok(RuaVal::nil())
 );
 
 test_interpret!(
     closure_obj_circular_ref_is_gced,
-"
+    "
     function get_closure()
         local a = {}
         local function f()
@@ -776,6 +776,5 @@ test_interpret!(
     end
     local closure = get_closure()
 ",
-|_| Ok(RuaVal::nil())
+    |_| Ok(RuaVal::nil())
 );
-

@@ -10,7 +10,10 @@ use std::{
 
 use crate::{
     compiler::{bytecode::FnHandle, locals::LocalHandle, upvalues::UpvalueHandle},
-    eval::{vals::{closure::Closure, IntoRuaVal}, macros::trace_gc},
+    eval::{
+        macros::trace_gc,
+        vals::{closure::Closure, IntoRuaVal},
+    },
 };
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
@@ -498,14 +501,24 @@ impl Vm {
 
     fn register_table(&mut self, table: &Rc<Table>) {
         trace_gc!("register_table 0x{:x}", table.addr());
-        // TODO remove invalid weak ptrs when reallocating
-        self.gc_data.tables.push(Rc::downgrade(&table));
+
+        if self.should_gc() {
+            self.gc();
+        }
+        self.gc_data.tables.push(Rc::downgrade(table));
     }
 
     fn register_closure(&mut self, closure: &Rc<Closure>) {
         trace_gc!("register_closure 0x{:x}", closure.addr());
-        // TODO remove invalid weak ptrs when reallocating
-        self.gc_data.closures.push(Rc::downgrade(&closure));
+
+        if self.should_gc() {
+            self.gc();
+        }
+        self.gc_data.closures.push(Rc::downgrade(closure));
+    }
+
+    fn should_gc(&self) -> bool {
+        self.gc_data.tables.len() + self.gc_data.closures.len() >= self.gc_data.next_gc
     }
 
     fn gc(&mut self) {
@@ -522,6 +535,10 @@ impl Vm {
         self.global.unmark();
         trace_gc!("-- Unmarked global --");
 
+        self.gc_data.shrink();
+
+        self.gc_data.compute_next_gc();
+
         trace_gc!("-- GC ended --");
     }
 
@@ -532,7 +549,7 @@ impl Vm {
         }
 
         trace_gc!("Global root:");
-        if self.global.mark(){
+        if self.global.mark() {
             // SAFETY: global doesn't need to be garbage collected, since it'll be valid
             // as long as the Vm is valid, and it's dropped when the Vm is dropped
             self.gc_data.add_grey(unsafe { RuaVal::from_table_unregistered(self.global.clone()) });
@@ -543,17 +560,31 @@ impl Vm {
             if frame.closure().mark() {
                 // SAFETY: any closure in self.frames has been created and registered
                 // at some other point in time
-                self.gc_data.add_grey(unsafe { RuaVal::from_closure_unregistered(frame.closure().clone()) });
+                self.gc_data.add_grey(unsafe {
+                    RuaVal::from_closure_unregistered(frame.closure().clone())
+                });
             }
         }
     }
 }
 
-#[derive(Default)]
 struct GcData {
     tables: Vec<Weak<Table>>,
     closures: Vec<Weak<Closure>>,
     grey_vals: Vec<RuaVal>,
+    next_gc: usize,
+}
+
+const MIN_NEXT_GC: usize = 2000;
+impl Default for GcData {
+    fn default() -> Self {
+        Self {
+            tables: Vec::new(),
+            closures: Vec::new(),
+            grey_vals: Vec::new(),
+            next_gc: MIN_NEXT_GC,
+        }
+    }
 }
 
 impl GcData {
@@ -572,27 +603,56 @@ impl GcData {
     }
 
     fn sweep(&mut self) {
-        self.tables.retain(|t| {
-            match t.upgrade() {
-                Some(t) => {
-                    let retain = t.unmark();
-                    if !retain {t.soft_drop();}
-                    retain
-                },
-                None => false,
+        self.tables.retain(|t| match t.upgrade() {
+            Some(t) => {
+                let retain = t.unmark();
+                if !retain {
+                    t.soft_drop();
+                }
+                retain
             }
+            None => false,
         });
 
-        self.closures.retain(|c| {
-            match c.upgrade() {
-                Some(c) => {
-                    let retain = c.unmark();
-                    if !retain {c.soft_drop();}
-                    retain
-                },
-                None => false,
+        self.closures.retain(|c| match c.upgrade() {
+            Some(c) => {
+                let retain = c.unmark();
+                if !retain {
+                    c.soft_drop();
+                }
+                retain
             }
+            None => false,
         });
+    }
+
+    fn shrink(&mut self) {
+        const SHRINK_FACTOR: usize = 3;
+        const EXTRA_SPACE_FACTOR: usize = 5;
+        const MIN_EXTRA_SPACE: usize = 10;
+        const MAX_GREY_RESERVED: usize = 100;
+
+        let v = &mut self.tables;
+        if v.len() * SHRINK_FACTOR < v.capacity() {
+            trace_gc!("-- Shrinking tables --");
+            v.shrink_to(v.len() + MIN_EXTRA_SPACE.max(v.len() / EXTRA_SPACE_FACTOR));
+        }
+        let v = &mut self.closures;
+        if v.len() * SHRINK_FACTOR < v.capacity() {
+            trace_gc!("-- Shrinking closures --");
+            v.shrink_to(v.len() + MIN_EXTRA_SPACE.max(v.len() / EXTRA_SPACE_FACTOR));
+        }
+
+        if self.grey_vals.capacity() > MAX_GREY_RESERVED {
+            self.grey_vals.shrink_to(MAX_GREY_RESERVED);
+        }
+    }
+
+    fn compute_next_gc(&mut self) {
+        const GC_GROWTH_FACTOR: usize = 2;
+
+        self.next_gc =
+            MIN_NEXT_GC.max((self.tables.len() + self.closures.len()) * GC_GROWTH_FACTOR);
     }
 }
 

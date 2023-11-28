@@ -1,13 +1,14 @@
 use std::{
     cell::RefCell,
-    hash::{BuildHasherDefault, Hash, Hasher}, rc::Rc,
+    hash::{BuildHasherDefault, Hash, Hasher},
+    rc::Rc,
 };
 
 use rustc_hash::FxHashMap;
 
-use crate::eval::{GcData, Vm, macros::trace_gc};
+use crate::eval::{macros::trace_gc, GcData, Vm};
 
-use super::{RuaVal, IntoRuaVal, RuaValInner};
+use super::{IntoRuaVal, RuaVal, RuaValInner};
 
 #[derive(Debug)]
 pub struct Table {
@@ -24,10 +25,11 @@ impl Table {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            map: RefCell::new(
-                FxHashMap::with_capacity_and_hasher(capacity, BuildHasherDefault::default()),
-            ),
-            marked: RefCell::new(false)
+            map: RefCell::new(FxHashMap::with_capacity_and_hasher(
+                capacity,
+                BuildHasherDefault::default(),
+            )),
+            marked: RefCell::new(false),
         }
     }
 

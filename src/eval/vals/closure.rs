@@ -4,10 +4,10 @@ use either::Either::{self, Left, Right};
 
 use crate::{
     compiler::upvalues::UpvalueHandle,
-    eval::{GcData, Vm, macros::trace_gc},
+    eval::{macros::trace_gc, GcData, Vm},
 };
 
-use super::{function::Function, RuaVal, UpvalueObj, IntoRuaVal, RuaValInner};
+use super::{function::Function, IntoRuaVal, RuaVal, RuaValInner, UpvalueObj};
 
 #[derive(Clone, Eq, Debug)]
 pub struct Closure {
@@ -121,4 +121,3 @@ impl IntoRuaVal for Rc<Closure> {
         RuaVal(RuaValInner::Closure(self))
     }
 }
-

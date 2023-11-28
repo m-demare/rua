@@ -5,6 +5,4 @@ macro_rules! trace_gc {
     };
 }
 
-
 pub(super) use trace_gc;
-
