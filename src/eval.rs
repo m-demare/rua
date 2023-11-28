@@ -15,7 +15,7 @@ use crate::{
 use either::Either::{self, Left, Right};
 use rua_trie::Trie;
 use rustc_hash::FxHasher;
-use weak_table::{weak_key_hash_map::Entry, WeakHashSet, WeakKeyHashMap};
+use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
 
 use crate::{
     compiler::bytecode::Instruction,
@@ -496,14 +496,16 @@ impl Vm {
         Rc::new(Table::new()).into_rua(self)
     }
 
-    fn register_table(&mut self, table: Rc<Table>) {
+    fn register_table(&mut self, table: &Rc<Table>) {
         trace_gc!("register_table 0x{:x}", table.addr());
-        self.gc_data.tables.insert(table);
+        // TODO remove invalid weak ptrs when reallocating
+        self.gc_data.tables.push(Rc::downgrade(&table));
     }
 
-    fn register_closure(&mut self, closure: Rc<Closure>) {
+    fn register_closure(&mut self, closure: &Rc<Closure>) {
         trace_gc!("register_closure 0x{:x}", closure.addr());
-        self.gc_data.closures.insert(closure);
+        // TODO remove invalid weak ptrs when reallocating
+        self.gc_data.closures.push(Rc::downgrade(&closure));
     }
 
     fn gc(&mut self) {
@@ -549,8 +551,8 @@ impl Vm {
 
 #[derive(Default)]
 struct GcData {
-    tables: WeakHashSet<Weak<Table>>,
-    closures: WeakHashSet<Weak<Closure>>,
+    tables: Vec<Weak<Table>>,
+    closures: Vec<Weak<Closure>>,
     grey_vals: Vec<RuaVal>,
 }
 
@@ -571,15 +573,25 @@ impl GcData {
 
     fn sweep(&mut self) {
         self.tables.retain(|t| {
-            let retain = t.unmark();
-            if !retain {t.soft_drop();}
-            retain
+            match t.upgrade() {
+                Some(t) => {
+                    let retain = t.unmark();
+                    if !retain {t.soft_drop();}
+                    retain
+                },
+                None => false,
+            }
         });
 
         self.closures.retain(|c| {
-            let retain = c.unmark();
-            if !retain {c.soft_drop();}
-            retain
+            match c.upgrade() {
+                Some(c) => {
+                    let retain = c.unmark();
+                    if !retain {c.soft_drop();}
+                    retain
+                },
+                None => false,
+            }
         });
     }
 }

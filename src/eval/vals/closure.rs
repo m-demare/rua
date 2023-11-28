@@ -117,7 +117,7 @@ impl IntoRuaVal for Closure {
 
 impl IntoRuaVal for Rc<Closure> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        vm.register_closure(self.clone());
+        vm.register_closure(&self);
         RuaVal(RuaValInner::Closure(self))
     }
 }

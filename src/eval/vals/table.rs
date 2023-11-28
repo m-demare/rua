@@ -169,7 +169,7 @@ impl IntoRuaVal for Table {
 
 impl IntoRuaVal for Rc<Table> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        vm.register_table(self.clone());
+        vm.register_table(&self);
         RuaVal(RuaValInner::Table(self))
     }
 }
