@@ -62,8 +62,11 @@ impl RuaVal {
         }
     }
 
-    pub fn into_table(self) -> Result<Rc<Table>, EvalError> {
-        self.try_into()
+    pub const fn as_table(&self) -> Result<&Rc<Table>, EvalError> {
+        match &self.0 {
+            RuaValInner::Table(t) => Ok(t),
+            v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
+        }
     }
 
     pub fn into_str(self) -> Result<Rc<[u8]>, EvalError> {

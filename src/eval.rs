@@ -4,8 +4,9 @@ pub mod vals;
 use std::{
     cell::RefCell,
     hash::BuildHasherDefault,
+    num::NonZeroU32,
     rc::{Rc, Weak},
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicU32, AtomicUsize, Ordering},
 };
 
 use crate::{
@@ -48,10 +49,13 @@ pub struct Vm {
     strings: WeakKeyHashMap<Weak<[u8]>, StringId, BuildHasherDefault<FxHasher>>,
     open_upvalues: Vec<UpvalueObj>,
     gc_data: GcData,
+    id: NonZeroU32,
 }
 
 impl Vm {
     pub fn new() -> Self {
+        static COUNTER: AtomicU32 = AtomicU32::new(1);
+
         // No need to call register_table on global, it shouldn't
         // be collected until Vm is dropped anyways
         let global = Table::new().into();
@@ -64,6 +68,8 @@ impl Vm {
             strings: WeakKeyHashMap::default(),
             open_upvalues: Vec::new(),
             gc_data: GcData::default(),
+            id: NonZeroU32::new(COUNTER.fetch_add(1, Ordering::Relaxed))
+                .expect("Vm id cannot be zero"),
         };
         vm.global = default_global(&mut vm);
         vm
@@ -183,29 +189,27 @@ impl Vm {
                     self.push(table);
                 }
                 Instruction::InsertKeyVal => {
-                    let table = self.peek(0);
+                    let table_val = self.peek(0);
                     let val = self.peek(1);
                     let key = self.peek(2);
-                    let table = trace_err(table.into_table(), &frame)?;
+                    let table = trace_err(table_val.as_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
-                    // SAFETY: table was on stack, it's already registered
-                    self.push(unsafe { RuaVal::from_table_unregistered(table) });
+                    self.push(table_val);
                 }
                 Instruction::InsertValKey => {
-                    let table = self.peek(0);
+                    let table_val = self.peek(0);
                     let key = self.peek(1);
                     let val = self.peek(2);
-                    let table = trace_err(table.into_table(), &frame)?;
+                    let table = trace_err(table_val.as_table(), &frame)?;
                     table.insert(key, val);
                     self.drop(3);
-                    // SAFETY: table was on stack, it's already registered
-                    self.push(unsafe { RuaVal::from_table_unregistered(table) });
+                    self.push(table_val);
                 }
                 Instruction::Index => {
                     let key = self.pop();
                     let table = self.pop();
-                    let table = trace_err(table.into_table(), &frame)?;
+                    let table = trace_err(table.as_table(), &frame)?;
                     self.push(table.get(&key).into());
                 }
                 Instruction::Closure(c) => {
@@ -342,7 +346,7 @@ impl Vm {
                     let val = self.peek(0);
                     let key = self.peek(n - i + keys_in_stack);
                     let table = self.peek(n - i + keys_in_stack + 1);
-                    let table = trace_err(table.into_table(), &*frame)?;
+                    let table = trace_err(table.as_table(), &*frame)?;
                     table.insert(key, val);
                     self.pop();
                     keys_in_stack += 2;
@@ -565,6 +569,10 @@ impl Vm {
                 });
             }
         }
+    }
+
+    const fn id(&self) -> NonZeroU32 {
+        self.id
     }
 }
 

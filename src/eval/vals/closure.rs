@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, num::NonZeroU32, rc::Rc};
 
 use either::Either::{self, Left, Right};
 
@@ -14,6 +14,7 @@ pub struct Closure {
     function: Function,
     upvalues: RefCell<Vec<UpvalueObj>>,
     marked: RefCell<bool>,
+    vm_id: RefCell<Option<NonZeroU32>>,
 }
 
 impl PartialEq for Closure {
@@ -31,7 +32,12 @@ impl std::hash::Hash for Closure {
 impl Closure {
     pub fn new(function: Function) -> Self {
         let upvalue_count = function.upvalue_count() as usize;
-        Self { function, upvalues: Vec::with_capacity(upvalue_count).into(), marked: false.into() }
+        Self {
+            function,
+            upvalues: Vec::with_capacity(upvalue_count).into(),
+            marked: false.into(),
+            vm_id: RefCell::new(None),
+        }
     }
 
     pub const fn function(&self) -> &Function {
@@ -107,6 +113,18 @@ impl Closure {
     pub(in super::super) fn unmark(&self) -> bool {
         self.marked.replace(false)
     }
+
+    #[must_use]
+    fn register_in(&self, vm: &Vm) -> bool {
+        let id = vm.id();
+        let old_id = self.vm_id.replace(Some(id));
+        if let Some(old_id) = old_id {
+            assert!(id == old_id, "Cannot register closure in a different Vm");
+            false
+        } else {
+            true
+        }
+    }
 }
 
 impl IntoRuaVal for Closure {
@@ -117,7 +135,9 @@ impl IntoRuaVal for Closure {
 
 impl IntoRuaVal for Rc<Closure> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        vm.register_closure(&self);
+        if self.register_in(vm) {
+            vm.register_closure(&self);
+        }
         RuaVal(RuaValInner::Closure(self))
     }
 }

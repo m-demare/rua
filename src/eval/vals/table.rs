@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     hash::{BuildHasherDefault, Hash, Hasher},
+    num::NonZeroU32,
     rc::Rc,
 };
 
@@ -14,6 +15,7 @@ use super::{IntoRuaVal, RuaVal, RuaValInner};
 pub struct Table {
     map: RefCell<FxHashMap<RuaVal, RuaVal>>,
     marked: RefCell<bool>,
+    vm_id: RefCell<Option<NonZeroU32>>,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
@@ -30,6 +32,7 @@ impl Table {
                 BuildHasherDefault::default(),
             )),
             marked: RefCell::new(false),
+            vm_id: RefCell::new(None),
         }
     }
 
@@ -128,6 +131,18 @@ impl Table {
         trace_gc!("Unmarking table 0x{:x}. Is marked? {}", self.addr(), *self.marked.borrow());
         self.marked.replace(false)
     }
+
+    #[must_use]
+    fn register_in(&self, vm: &Vm) -> bool {
+        let id = vm.id();
+        let old_id = self.vm_id.replace(Some(id));
+        if let Some(old_id) = old_id {
+            assert!(id == old_id, "Cannot register table in a different Vm");
+            false
+        } else {
+            true
+        }
+    }
 }
 
 impl Default for Table {
@@ -171,7 +186,9 @@ impl IntoRuaVal for Table {
 
 impl IntoRuaVal for Rc<Table> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        vm.register_table(&self);
+        if self.register_in(vm) {
+            vm.register_table(&self);
+        }
         RuaVal(RuaValInner::Table(self))
     }
 }
