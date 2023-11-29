@@ -147,16 +147,15 @@ impl Vm {
                 Instruction::Le => trace_err(self.number_binary_op(|a, b| a <= b), &frame)?,
                 Instruction::Ge => trace_err(self.number_binary_op(|a, b| a >= b), &frame)?,
                 Instruction::StrConcat => trace_err(self.str_concat(), &frame)?,
-                Instruction::SetGlobal => {
+                Instruction::SetGlobal(key) => {
                     let val = self.peek(0);
-                    let key = self.peek(1);
-                    self.global.insert(key, val);
-                    self.pop();
+                    let key = frame.read_string(key);
+                    self.global.insert(key.into(), val);
                     self.pop();
                 }
-                Instruction::GetGlobal => {
-                    let key = self.pop();
-                    self.push(self.global.get(&key).into());
+                Instruction::GetGlobal(key) => {
+                    let key = frame.read_string(key);
+                    self.push(self.global.get(&key.into()).into());
                 }
                 Instruction::Call(nargs) => self.call(nargs, &mut frame)?,
                 Instruction::SetLocal(local) => self.set_local(&frame, local),
@@ -335,12 +334,11 @@ impl Vm {
             match frame.curr_instr() {
                 Instruction::SetLocal(local) => self.set_local(&*frame, local),
                 Instruction::SetUpvalue(up) => self.set_upvalue(frame, up),
-                Instruction::SetGlobal => {
+                Instruction::SetGlobal(s) => {
                     let val = self.peek(0);
-                    let key = self.peek(n - i + keys_in_stack);
-                    self.global.insert(key, val);
+                    let key = frame.read_string(s);
+                    self.global.insert(key.into(), val);
                     self.pop();
-                    keys_in_stack += 1;
                 }
                 Instruction::InsertKeyVal => {
                     let val = self.peek(0);

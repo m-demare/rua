@@ -14,7 +14,7 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Chunk, Instruction as I, Instruction, ParseError},
+    bytecode::{Chunk, Instruction as I, Instruction, ParseError, StringHandle},
     locals::{LocalHandle, Locals},
     upvalues::{UpvalueHandle, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
@@ -171,6 +171,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk().add_string(val, line)
     }
 
+    fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
+        self.current_chunk().new_string_constant(val)
+    }
+
     fn emit_closure(
         &mut self,
         val: Function,
@@ -263,8 +267,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         } else if let Some(upvalue) = self.context.resolve_upvalue(&id, &mut self.context_stack)? {
             self.instruction(I::GetUpvalue(upvalue), line);
         } else {
-            self.emit_string(id, line)?;
-            self.instruction(I::GetGlobal, line);
+            let id = self.new_string_constant(id)?;
+            self.instruction(I::GetGlobal(id), line);
         }
         Ok(())
     }
@@ -490,10 +494,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn convert_to_assign(&mut self, line: usize) -> Result<Instruction, ParseError> {
         match self.pop_instruction().expect("Just parsed an expression") {
-            I::GetGlobal => {
-                debug_assert!(matches!(self.context.chunk.code().last(), Some(I::String(_))));
-                Ok(I::SetGlobal)
-            }
+            I::GetGlobal(s) => Ok(I::SetGlobal(s)),
             I::GetUpvalue(up) => Ok(I::SetUpvalue(up)),
             I::GetLocal(idx) => Ok(I::SetLocal(idx)),
             I::Index => Ok(I::InsertKeyVal),
@@ -692,13 +693,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt(line)), Ok)?;
         let (function, upvalues) = self.function(id.clone())?;
 
+        self.emit_closure(function, upvalues, line)?;
         if local {
-            self.emit_closure(function, upvalues, line)?;
             self.context.locals.declare(id)?;
         } else {
-            self.emit_string(id, line)?;
-            self.emit_closure(function, upvalues, line)?;
-            self.instruction(I::SetGlobal, line);
+            let id = self.new_string_constant(id)?;
+            self.instruction(I::SetGlobal(id), line);
         }
         Ok(())
     }
@@ -775,8 +775,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                             .copied()
                             .expect("Just parsed an expression")
                         {
-                            I::GetGlobal => {
+                            I::GetGlobal(s) => {
                                 self.pop_instruction();
+                                let s = self.current_chunk().read_string(s);
+                                self.emit_string(s, line)?;
                             }
                             I::GetUpvalue(up) => {
                                 self.pop_instruction();

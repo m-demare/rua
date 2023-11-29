@@ -128,18 +128,17 @@ fn test_assign() {
             Ok(Chunk::new(
                 vec![
                     I::CheckStack(0),
-                    I::String(StringHandle(0)),
                     I::Number(NumberHandle(0)),
                     I::Number(NumberHandle(1)),
                     I::Add,
-                    I::SetGlobal,
+                    I::SetGlobal(StringHandle(0)),
                     I::CheckStack(0),
                     I::ReturnNil,
                 ],
                 vec![5.0, 8.0],
                 vec![vm.new_string((*b"foo").into())],
                 Vec::new(),
-                vec![(0, 1), (2, 5), (0, 2)],
+                vec![(0, 1), (2, 4), (0, 2)],
             ))
         },
     );

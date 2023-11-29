@@ -41,8 +41,8 @@ pub enum Instruction {
     Ge,
     StrConcat,
 
-    GetGlobal,
-    SetGlobal,
+    GetGlobal(StringHandle),
+    SetGlobal(StringHandle),
 
     Call(u8),
     Pop,
@@ -179,6 +179,10 @@ impl Chunk {
         let c = add_constant!(val, self.strings, StringHandle);
         self.add_instruction(Instruction::String(c), line);
         Ok(())
+    }
+
+    pub fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
+        Ok(add_constant!(val, self.strings, StringHandle))
     }
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
