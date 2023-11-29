@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use rua::{compiler::compile, eval::Vm};
@@ -70,12 +72,48 @@ end
     bench(c, input, "eval_fizzbuzz")
 }
 
+fn stress_rc(c: &mut Criterion) {
+    let input = r"
+for _ = 1, 500 do
+    local first = {}
+    local last = first
+    for _ = 1, 400 do
+        local new = {}
+        new.prev = last
+        last = new
+    end
+end
+";
+
+    bench(c, input, "stress_rc")
+}
+
+fn stress_gc(c: &mut Criterion) {
+    let input = r"
+for i = 1, 500 do
+    local first = {}
+    local last = first
+    for _ = 1, 400 do
+        local new = {}
+        new.prev = last
+        last = new
+    end
+    first.prev = last
+    if i%4 == 0 then collectgarbage() end
+end
+";
+
+    bench(c, input, "stress_gc")
+}
+
 criterion_group! {
     name=eval_bench;
-    config = Criterion::default();
+    config = Criterion::default().measurement_time(Duration::from_secs(10));
     targets=
         eval_fibonacci,
         eval_fibonacci_rec,
         eval_fizzbuzz,
+        stress_rc,
+        stress_gc,
 }
 criterion_main!(eval_bench);
