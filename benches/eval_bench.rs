@@ -78,8 +78,7 @@ for _ = 1, 500 do
     local first = {}
     local last = first
     for _ = 1, 400 do
-        local new = {}
-        new.prev = last
+        local new = { prev = last }
         last = new
     end
 end
@@ -94,8 +93,7 @@ for i = 1, 500 do
     local first = {}
     local last = first
     for _ = 1, 400 do
-        local new = {}
-        new.prev = last
+        local new = { prev = last }
         last = new
     end
     first.prev = last

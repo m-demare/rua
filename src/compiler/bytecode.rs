@@ -56,7 +56,7 @@ pub enum Instruction {
     Loop(u16),
     JmpIfFalsePop(u16),
 
-    NewTable,
+    NewTable(u16),
     InsertKeyVal,
     InsertValKey,
     Index,

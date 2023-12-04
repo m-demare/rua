@@ -820,9 +820,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
         consume!(self; (TT::RBRACE));
 
-        // TODO table with reserved capacity,
-        // push multiple elements at once
-        self.instruction(I::NewTable, line);
+        self.instruction(I::NewTable(ops.len().try_into().unwrap_or(u16::MAX)), line);
         for op in ops.into_iter().rev() {
             self.instruction(op, line);
         }

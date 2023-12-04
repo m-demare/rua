@@ -183,8 +183,8 @@ impl Vm {
                 }
                 Instruction::Jmp(offset) => frame.rel_jmp(offset - 1),
                 Instruction::Loop(offset) => frame.rel_loop(offset + 1),
-                Instruction::NewTable => {
-                    let table = self.new_table();
+                Instruction::NewTable(size) => {
+                    let table = self.new_table(size);
                     self.push(table);
                 }
                 Instruction::InsertKeyVal => {
@@ -497,8 +497,8 @@ impl Vm {
         self.stack.len() - nargs - 1
     }
 
-    fn new_table(&mut self) -> RuaVal {
-        Rc::new(Table::new()).into_rua(self)
+    fn new_table(&mut self, size: u16) -> RuaVal {
+        Rc::new(Table::with_capacity(size.into())).into_rua(self)
     }
 
     fn register_table(&mut self, table: &Rc<Table>) {
@@ -507,7 +507,7 @@ impl Vm {
         if self.should_gc() {
             self.gc();
         }
-        self.gc_data.tables.push(Rc::downgrade(table));
+        push_cleaning_weaks(&mut self.gc_data.tables, Rc::downgrade(table));
     }
 
     fn register_closure(&mut self, closure: &Rc<Closure>) {
@@ -516,7 +516,7 @@ impl Vm {
         if self.should_gc() {
             self.gc();
         }
-        self.gc_data.closures.push(Rc::downgrade(closure));
+        push_cleaning_weaks(&mut self.gc_data.closures, Rc::downgrade(closure));
     }
 
     fn should_gc(&self) -> bool {
@@ -678,6 +678,14 @@ fn trace_err<T>(res: Result<T, EvalError>, frame: &CallFrame) -> Result<T, EvalE
         let stack_trace = vec![(frame.func_name(), frame.curr_line())];
         EvalErrorTraced::new(e, stack_trace)
     })
+}
+
+fn push_cleaning_weaks<T>(vec: &mut Vec<Weak<T>>, val: Weak<T>) {
+    if vec.len() == vec.capacity() {
+        vec.retain(|el| el.upgrade().is_some());
+        vec.reserve(vec.len()); // Reserve at least n more slots
+    }
+    vec.push(val);
 }
 
 impl Default for Vm {
