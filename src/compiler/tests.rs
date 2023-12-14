@@ -3,13 +3,14 @@
 use crate::eval::Vm;
 
 use super::{
-    bytecode::{Chunk, Instruction as I, NumberHandle, ParseError, StringHandle},
+    bytecode::{BinArgs, Chunk, Instruction as I, NumberHandle, ParseError, StringHandle, UnArgs},
     compile,
-    locals::LocalHandle,
 };
 use pretty_assertions::assert_eq;
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F) {
+    println!("Program:\n{}\n", input);
+
     let mut vm = Vm::new();
     let res = compile(input.bytes(), &mut vm);
 
@@ -22,124 +23,80 @@ fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, ou
 }
 
 #[test]
-fn test_arithmetic_exprs() {
-    let input = "return -5 + 1 * -6 - 2 * (3 + 4)";
+fn test_locals() {
+    let input = "
+        local a, b, c
+        return -a + b * -c - b * (c + a)";
 
     test_compile(input, |_| {
         Ok(Chunk::new(
             vec![
-                I::CheckStack(0),
-                I::Number(NumberHandle(0)),
-                I::Neg,
-                I::Number(NumberHandle(1)),
-                I::Number(NumberHandle(2)),
-                I::Neg,
-                I::Mul,
-                I::Add,
-                I::Number(NumberHandle(3)),
-                I::Number(NumberHandle(4)),
-                I::Number(NumberHandle(5)),
-                I::Add,
-                I::Mul,
-                I::Sub,
-                I::Return,
-                I::CheckStack(0),
+                I::Nil { dst: 0 },
+                I::Nil { dst: 1 },
+                I::Nil { dst: 2 },
+                I::Neg(UnArgs { dst: 3, src: 0 }),
+                I::Neg(UnArgs { dst: 4, src: 2 }),
+                I::Mul(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
+                I::Add(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
+                I::Add(BinArgs { dst: 4, lhs: 2, rhs: 0 }),
+                I::Mul(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
+                I::Sub(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
+                I::Return { src: 3 },
                 I::ReturnNil,
             ],
-            vec![5.0, 1.0, 6.0, 2.0, 3.0, 4.0],
             Vec::new(),
             Vec::new(),
-            vec![(0, 1), (1, 14), (0, 2)],
+            Vec::new(),
+            vec![(0, 0), (2, 3), (3, 8), (0, 1)],
         ))
     });
 }
 
 #[test]
-fn test_locals() {
-    test_compile(
-        "
-        local foo = 5 + 8
-        return foo",
-        |_| {
-            Ok(Chunk::new(
-                vec![
-                    I::CheckStack(0),
-                    I::Number(NumberHandle(0)),
-                    I::Number(NumberHandle(1)),
-                    I::Add,
-                    I::CheckStack(1),
-                    I::GetLocal(LocalHandle(0)),
-                    I::Return,
-                    I::CheckStack(1),
-                    I::Pop,
-                    I::ReturnNil,
-                ],
-                vec![5.0, 8.0],
-                Vec::new(),
-                Vec::new(),
-                vec![(0, 1), (2, 3), (0, 1), (3, 2), (0, 3)],
-            ))
-        },
-    );
-    test_compile(
-        "
-        local foo = 5 + 8
-        local bar = 3
-        local foo = foo + bar
-        return foo",
-        |_| {
-            Ok(Chunk::new(
-                vec![
-                    I::CheckStack(0),
-                    I::Number(NumberHandle(0)),
-                    I::Number(NumberHandle(1)),
-                    I::Add,
-                    I::CheckStack(1),
-                    I::Number(NumberHandle(2)),
-                    I::CheckStack(2),
-                    I::GetLocal(LocalHandle(0)),
-                    I::GetLocal(LocalHandle(1)),
-                    I::Add,
-                    I::CheckStack(3),
-                    I::GetLocal(LocalHandle(2)),
-                    I::Return,
-                    I::CheckStack(3),
-                    I::Pop,
-                    I::Pop,
-                    I::Pop,
-                    I::ReturnNil,
-                ],
-                vec![5.0, 8.0, 3.0],
-                Vec::new(),
-                Vec::new(),
-                vec![(0, 1), (2, 3), (0, 1), (3, 1), (0, 1), (4, 3), (0, 1), (5, 2), (0, 5)],
-            ))
-        },
-    );
+fn test_assign_local() {
+    let input = "
+        local a = 5
+        a = 3
+        return -a";
+
+    test_compile(input, |_| {
+        Ok(Chunk::new(
+            vec![
+                I::Number { dst: 0, src: NumberHandle(0) },
+                I::Number { dst: 0, src: NumberHandle(1) },
+                I::Neg(UnArgs { dst: 1, src: 0 }),
+                I::Return { src: 1 },
+                I::ReturnNil,
+            ],
+            vec![5.0, 3.0],
+            Vec::new(),
+            Vec::new(),
+            vec![(0, 2), (4, 2), (0, 1)],
+        ))
+    });
 }
 
 #[test]
-fn test_assign() {
-    test_compile(
-        "
-        foo = 5 + 8
-        ",
-        |vm| {
-            Ok(Chunk::new(
-                vec![
-                    I::CheckStack(0),
-                    I::Number(NumberHandle(0)),
-                    I::Number(NumberHandle(1)),
-                    I::Add,
-                    I::SetGlobal(StringHandle(0)),
-                    I::CheckStack(0),
-                    I::ReturnNil,
-                ],
-                vec![5.0, 8.0],
-                vec![vm.new_string((*b"foo").into())],
-                Vec::new(),
-                vec![(0, 1), (2, 4), (0, 2)],
-            ))
-        },
-    );
+fn test_globals() {
+    let input = "
+    foo = bar + 8
+    return foo";
+
+    test_compile(input, |vm| {
+        Ok(Chunk::new(
+            vec![
+                I::GetGlobal { dst: 0, src: StringHandle(1) },
+                I::Number { dst: 1, src: NumberHandle(0) },
+                I::Add(BinArgs { dst: 0, lhs: 0, rhs: 1 }),
+                I::SetGlobal { dst: StringHandle(0), src: 0 },
+                I::GetGlobal { dst: 0, src: StringHandle(0) },
+                I::Return { src: 0 },
+                I::ReturnNil,
+            ],
+            vec![8.0],
+            vec![vm.new_string((*b"foo").into()), vm.new_string((*b"bar").into())],
+            Vec::new(),
+            vec![(0, 0), (2, 1), (0, 1), (2, 2), (3, 2), (0, 1)],
+        ))
+    });
 }

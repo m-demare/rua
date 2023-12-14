@@ -9,6 +9,7 @@ const MAX_LOCALS: u8 = u8::MAX;
 pub(super) struct Local {
     name: RuaString,
     depth: usize,
+    usable: bool,
     is_captured: bool,
 }
 
@@ -63,6 +64,10 @@ impl Locals {
         Ok(local)
     }
 
+    pub fn make_usable(&mut self, handle: LocalHandle) {
+        self.locals[handle.0 as usize].usable = true;
+    }
+
     pub fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
         // SAFETY: self.locals is only pushed to in `declare`, where
         // it is checked that it doesn't exceed u8::MAX
@@ -70,7 +75,7 @@ impl Locals {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, local)| &local.name == id)
+            .find(|(_, local)| local.usable && &local.name == id)
             .map(|(i, _)| LocalHandle(unsafe { i.try_into().unwrap_unchecked() }))
     }
 
@@ -83,7 +88,6 @@ impl Locals {
         self.locals[handle.0 as usize].name.clone()
     }
 
-    #[cfg(debug_assertions)]
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
     #[allow(clippy::cast_possible_truncation)]
@@ -104,11 +108,17 @@ impl LocalHandle {
 
 impl Local {
     const fn new(name: RuaString, depth: usize) -> Self {
-        Self { name, depth, is_captured: false }
+        Self { name, depth, is_captured: false, usable: false }
     }
 
     pub const fn is_captured(&self) -> bool {
         self.is_captured
+    }
+}
+
+impl From<LocalHandle> for u8 {
+    fn from(value: LocalHandle) -> Self {
+        value.0
     }
 }
 

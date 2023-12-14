@@ -7,48 +7,44 @@ use crate::{
     lex::tokens::{Token, TokenType},
 };
 
-use super::{
-    locals::LocalHandle,
-    upvalues::{Upvalue, UpvalueHandle, Upvalues},
-};
+use super::upvalues::{Upvalue, UpvalueHandle, Upvalues};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instruction {
-    Return,
+    Return { src: u8 },
     ReturnNil,
 
-    Number(NumberHandle),
-    String(StringHandle),
-    True,
-    False,
-    Nil,
+    Number { dst: u8, src: NumberHandle },
+    String { dst: u8, src: StringHandle },
+    True { dst: u8 },
+    False { dst: u8 },
+    Nil { dst: u8 },
 
-    Neg,
-    Not,
-    Len,
+    Neg(UnArgs),
+    Not(UnArgs),
+    Len(UnArgs),
 
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Pow,
-    Eq,
-    Lt,
-    Gt,
-    Neq,
-    Le,
-    Ge,
-    StrConcat,
+    Add(BinArgs),
+    Sub(BinArgs),
+    Mul(BinArgs),
+    Div(BinArgs),
+    Mod(BinArgs),
+    Pow(BinArgs),
+    Eq(BinArgs),
+    Lt(BinArgs),
+    Gt(BinArgs),
+    Neq(BinArgs),
+    Le(BinArgs),
+    Ge(BinArgs),
+    StrConcat(BinArgs),
 
-    GetGlobal(StringHandle),
-    SetGlobal(StringHandle),
+    GetGlobal { dst: u8, src: StringHandle },
+    SetGlobal { dst: StringHandle, src: u8 },
 
-    Call(u8),
+    Call { base: u8, nargs: u8 },
     Pop,
 
-    GetLocal(LocalHandle),
-    SetLocal(LocalHandle),
+    Mv(UnArgs),
 
     JmpIfFalse(u16),
     JmpIfTrue(u16),
@@ -59,7 +55,7 @@ pub enum Instruction {
     NewTable(u16),
     InsertKeyVal,
     InsertValKey,
-    Index,
+    Index(BinArgs),
 
     Closure(FnHandle),
     Upvalue(Upvalue),
@@ -68,9 +64,69 @@ pub enum Instruction {
     SetUpvalue(UpvalueHandle),
 
     Multiassign(u8),
+}
 
-    #[cfg(debug_assertions)]
-    CheckStack(u8),
+impl Instruction {
+    pub(crate) fn change_src(&mut self, new_src: u8) {
+        match self {
+            Self::Return { src } => std::mem::replace(src, new_src),
+            Self::ReturnNil => unreachable!(),
+            Self::Number { .. } => unreachable!(),
+            Self::String { .. } => unreachable!(),
+            Self::True { .. } => unreachable!(),
+            Self::False { .. } => unreachable!(),
+            Self::Nil { .. } => unreachable!(),
+            Self::Neg(UnArgs { src, .. }) => std::mem::replace(src, new_src),
+            Self::Not(UnArgs { src, .. }) => std::mem::replace(src, new_src),
+            Self::Len(UnArgs { src, .. }) => std::mem::replace(src, new_src),
+            Self::Add(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Sub(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Mul(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Div(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Mod(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Pow(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Eq(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Lt(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Gt(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Neq(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Le(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::Ge(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::StrConcat(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
+            Self::GetGlobal { .. } => unreachable!(),
+            Self::SetGlobal { src, .. } => std::mem::replace(src, new_src),
+            Self::Call { base, .. } => std::mem::replace(base, new_src),
+            Self::Pop => todo!(),
+            Self::Mv(UnArgs { src, .. }) => std::mem::replace(src, new_src),
+            Self::JmpIfFalse(_) => todo!(),
+            Self::JmpIfTrue(_) => todo!(),
+            Self::Jmp(_) => todo!(),
+            Self::Loop(_) => todo!(),
+            Self::JmpIfFalsePop(_) => todo!(),
+            Self::NewTable(_) => todo!(),
+            Self::InsertKeyVal => todo!(),
+            Self::InsertValKey => todo!(),
+            Self::Index(_) => todo!(),
+            Self::Closure(_) => todo!(),
+            Self::Upvalue(_) => todo!(),
+            Self::CloseUpvalue => todo!(),
+            Self::GetUpvalue(_) => todo!(),
+            Self::SetUpvalue(_) => todo!(),
+            Self::Multiassign(_) => todo!(),
+        };
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct BinArgs {
+    pub dst: u8,
+    pub lhs: u8,
+    pub rhs: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct UnArgs {
+    pub dst: u8,
+    pub src: u8,
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -169,15 +225,15 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn add_number(&mut self, val: f64, line: usize) -> Result<(), ParseError> {
+    pub fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<(), ParseError> {
         let c = add_constant!(val, self.numbers, NumberHandle);
-        self.add_instruction(Instruction::Number(c), line);
+        self.add_instruction(Instruction::Number { dst, src: c }, line);
         Ok(())
     }
 
-    pub fn add_string(&mut self, val: RuaString, line: usize) -> Result<(), ParseError> {
+    pub fn add_string(&mut self, dst: u8, val: RuaString, line: usize) -> Result<(), ParseError> {
         let c = add_constant!(val, self.strings, StringHandle);
-        self.add_instruction(Instruction::String(c), line);
+        self.add_instruction(Instruction::String { dst, src: c }, line);
         Ok(())
     }
 
@@ -197,14 +253,19 @@ impl Chunk {
     }
 
     pub fn pop_instruction(&mut self) -> Option<Instruction> {
-        debug_assert!(!self.code.is_empty());
-        let last_line = self.lines.last_mut().expect("lines is always non-empty");
-        if last_line.1 > 1 {
-            last_line.1 -= 1;
-        } else if self.lines.len() > 1 {
-            self.lines.pop();
+        if let Some(instr) = self.code.pop() {
+            let last_line = self.lines.last_mut().expect("lines is always non-empty");
+            if last_line.1 > 1 {
+                last_line.1 -= 1;
+            } else if self.lines.len() > 1 {
+                self.lines.pop();
+            } else {
+                self.lines[0] = (0, 0)
+            }
+            Some(instr)
+        } else {
+            None
         }
-        self.code.pop()
     }
 
     pub fn patch_jmp(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
@@ -275,11 +336,13 @@ impl Debug for Chunk {
                 "     |".to_string()
             };
             let clarification = match instr {
-                Instruction::Number(n) => format!("; {}", self.numbers[n.0 as usize]),
-                Instruction::String(s) => format!("; {}", self.strings[s.0 as usize]),
+                Instruction::Number { src, .. } => format!("; {}", self.numbers[src.0 as usize]),
+                Instruction::String { src, .. } => format!("; {}", self.strings[src.0 as usize]),
                 Instruction::Closure(func) => {
                     format!("; {}", self.functions[func.0 as usize].pretty_name())
                 }
+                Instruction::GetGlobal { src, .. } => format!("; {}", self.strings[src.0 as usize]),
+                Instruction::SetGlobal { dst, .. } => format!("; {}", self.strings[dst.0 as usize]),
                 _ => String::new(),
             };
             writeln!(f, "{i:4} {line_str} {instr:?} {clarification}")?;

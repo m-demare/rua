@@ -10,7 +10,10 @@ use std::{
 };
 
 use crate::{
-    compiler::{bytecode::FnHandle, locals::LocalHandle, upvalues::UpvalueHandle},
+    compiler::{
+        bytecode::{BinArgs, FnHandle, UnArgs},
+        upvalues::UpvalueHandle,
+    },
     eval::{
         macros::trace_gc,
         vals::{closure::Closure, IntoRuaVal},
@@ -22,7 +25,7 @@ use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
 
 use crate::{
-    compiler::bytecode::Instruction,
+    compiler::bytecode::Instruction as I,
     eval::{
         native_functions::default_global,
         vals::{string::RuaString, table::Table, EvalError, RuaVal},
@@ -61,7 +64,7 @@ impl Vm {
         let global = Table::new().into();
 
         let mut vm = Self {
-            stack: Vec::with_capacity(STACK_SIZE),
+            stack: vec![RuaVal::nil(); 10], //TODO
             frames: Vec::new(),
             global,
             identifiers: Trie::new(),
@@ -76,7 +79,7 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
-        let first_frame_start = self.stack.len().saturating_sub(1); // Top level function isn't pushed to the stack
+        let first_frame_start = 0; //TODO
         #[cfg(test)]
         println!(
             "Started tracing {:?}, starting at stack {first_frame_start}\n\n",
@@ -105,89 +108,91 @@ impl Vm {
             self.trace(&frame);
             let instr = frame.curr_instr();
             match instr {
-                Instruction::Return => {
-                    if let Some(val) = self.return_op(&mut frame, false, first_frame_id) {
+                I::Return { src } => {
+                    if let Some(val) = self.return_op(&mut frame, Some(src), first_frame_id) {
                         return Ok(val);
                     }
                 }
-                Instruction::ReturnNil => {
-                    if let Some(val) = self.return_op(&mut frame, true, first_frame_id) {
+                I::ReturnNil => {
+                    if let Some(val) = self.return_op(&mut frame, None, first_frame_id) {
                         return Ok(val);
                     }
                 }
-                Instruction::Pop => {
+                I::Pop => {
                     self.pop();
                 }
-                Instruction::Number(c) => {
-                    let constant = frame.read_number(c);
-                    self.push(constant.into());
+                I::Number { dst, src } => {
+                    let constant = frame.read_number(src);
+                    self.set_stack_at(dst.into(), constant.into());
                 }
-                Instruction::String(c) => {
-                    let constant = frame.read_string(c);
-                    self.push(constant.into());
+                I::String { dst, src } => {
+                    let constant = frame.read_string(src);
+                    self.set_stack_at(dst.into(), constant.into());
                 }
-                Instruction::True => self.push(true.into()),
-                Instruction::False => self.push(false.into()),
-                Instruction::Nil => self.push(RuaVal::nil()),
-                Instruction::Neg => {
-                    trace_err(self.unary_op(|v| Ok((-v.as_number()?).into())), &frame)?;
+                I::True { dst } => self.set_stack_at(dst.into(), true.into()),
+                I::False { dst } => self.set_stack_at(dst.into(), false.into()),
+                I::Nil { dst } => self.set_stack_at(dst.into(), RuaVal::nil()),
+                I::Neg(args) => {
+                    trace_err(self.unary_op(args, |v| Ok((-v.as_number()?).into())), &frame)?
                 }
-                Instruction::Not => trace_err(self.unary_op(|v| Ok((!v.truthy()).into())), &frame)?,
-                Instruction::Len => trace_err(self.len_op(), &frame)?,
-                Instruction::Add => trace_err(self.number_binary_op(|a, b| a + b), &frame)?,
-                Instruction::Sub => trace_err(self.number_binary_op(|a, b| a - b), &frame)?,
-                Instruction::Mul => trace_err(self.number_binary_op(|a, b| a * b), &frame)?,
-                Instruction::Div => trace_err(self.number_binary_op(|a, b| a / b), &frame)?,
-                Instruction::Mod => trace_err(self.number_binary_op(|a, b| a % b), &frame)?,
-                Instruction::Pow => trace_err(self.number_binary_op(f64::powf), &frame)?,
-                Instruction::Eq => trace_err(self.binary_op(|a, b| Ok((a == b).into())), &frame)?,
-                Instruction::Lt => trace_err(self.number_binary_op(|a, b| a < b), &frame)?,
-                Instruction::Gt => trace_err(self.number_binary_op(|a, b| a > b), &frame)?,
-                Instruction::Neq => trace_err(self.binary_op(|a, b| Ok((a != b).into())), &frame)?,
-                Instruction::Le => trace_err(self.number_binary_op(|a, b| a <= b), &frame)?,
-                Instruction::Ge => trace_err(self.number_binary_op(|a, b| a >= b), &frame)?,
-                Instruction::StrConcat => trace_err(self.str_concat(), &frame)?,
-                Instruction::SetGlobal(key) => {
-                    let val = self.peek(0);
-                    let key = frame.read_string(key);
+                I::Not(args) => {
+                    trace_err(self.unary_op(args, |v| Ok((!v.truthy()).into())), &frame)?
+                }
+                I::Len(args) => trace_err(self.len_op(args), &frame)?,
+                I::Add(args) => trace_err(self.number_binary_op(args, |a, b| a + b), &frame)?,
+                I::Sub(args) => trace_err(self.number_binary_op(args, |a, b| a - b), &frame)?,
+                I::Mul(args) => trace_err(self.number_binary_op(args, |a, b| a * b), &frame)?,
+                I::Div(args) => trace_err(self.number_binary_op(args, |a, b| a / b), &frame)?,
+                I::Mod(args) => trace_err(self.number_binary_op(args, |a, b| a % b), &frame)?,
+                I::Pow(args) => trace_err(self.number_binary_op(args, f64::powf), &frame)?,
+                I::Eq(args) => trace_err(self.binary_op(args, |a, b| Ok((a == b).into())), &frame)?,
+                I::Lt(args) => trace_err(self.number_binary_op(args, |a, b| a < b), &frame)?,
+                I::Gt(args) => trace_err(self.number_binary_op(args, |a, b| a > b), &frame)?,
+                I::Neq(args) => {
+                    trace_err(self.binary_op(args, |a, b| Ok((a != b).into())), &frame)?
+                }
+                I::Le(args) => trace_err(self.number_binary_op(args, |a, b| a <= b), &frame)?,
+                I::Ge(args) => trace_err(self.number_binary_op(args, |a, b| a >= b), &frame)?,
+                I::StrConcat(args) => trace_err(self.str_concat(args), &frame)?,
+                I::SetGlobal { dst, src } => {
+                    let val = self.stack_at(src.into());
+                    let key = frame.read_string(dst);
                     self.global.insert(key.into(), val);
-                    self.pop();
                 }
-                Instruction::GetGlobal(key) => {
-                    let key = frame.read_string(key);
-                    self.push(self.global.get(&key.into()).into());
+                I::GetGlobal { dst, src } => {
+                    let key = frame.read_string(src);
+                    self.set_stack_at(dst.into(), self.global.get(&key.into()).into());
                 }
-                Instruction::Call(nargs) => self.call(nargs, &mut frame)?,
-                Instruction::SetLocal(local) => self.set_local(&frame, local),
-                Instruction::GetLocal(local) => {
-                    let val = self.stack_at(frame.stack_start() + local.pos());
-                    self.push(val);
+                I::Call { base, nargs } => self.call(base, nargs, &mut frame)?,
+                I::Mv(UnArgs { dst, src }) => {
+                    let val = self.stack_at(frame.stack_start() + src as usize);
+                    self.set_stack_at(dst.into(), val);
                 }
-                Instruction::JmpIfFalsePop(offset) => {
+                I::JmpIfFalsePop(offset) => {
                     let val = self.pop();
                     if !val.truthy() {
                         frame.rel_jmp(offset - 1);
                     }
                 }
-                Instruction::JmpIfFalse(offset) => {
+                I::JmpIfFalse(offset) => {
                     let val = self.peek(0);
                     if !val.truthy() {
                         frame.rel_jmp(offset - 1);
                     }
                 }
-                Instruction::JmpIfTrue(offset) => {
+                I::JmpIfTrue(offset) => {
                     let val = self.peek(0);
                     if val.truthy() {
                         frame.rel_jmp(offset - 1);
                     }
                 }
-                Instruction::Jmp(offset) => frame.rel_jmp(offset - 1),
-                Instruction::Loop(offset) => frame.rel_loop(offset + 1),
-                Instruction::NewTable(size) => {
+                I::Jmp(offset) => frame.rel_jmp(offset - 1),
+                I::Loop(offset) => frame.rel_loop(offset + 1),
+                I::NewTable(size) => {
                     let table = self.new_table(size);
                     self.push(table);
                 }
-                Instruction::InsertKeyVal => {
+                I::InsertKeyVal => {
                     let table_val = self.peek(0);
                     let val = self.peek(1);
                     let key = self.peek(2);
@@ -196,7 +201,7 @@ impl Vm {
                     self.drop(3);
                     self.push(table_val);
                 }
-                Instruction::InsertValKey => {
+                I::InsertValKey => {
                     let table_val = self.peek(0);
                     let key = self.peek(1);
                     let val = self.peek(2);
@@ -205,46 +210,38 @@ impl Vm {
                     self.drop(3);
                     self.push(table_val);
                 }
-                Instruction::Index => {
-                    let key = self.pop();
-                    let table = self.pop();
+                I::Index(BinArgs { dst, lhs, rhs }) => {
+                    let table = self.stack_at(lhs.into());
+                    let key = self.stack_at(rhs.into());
                     let table = trace_err(table.as_table(), &frame)?;
-                    self.push(table.get(&key).into());
+                    self.set_stack_at(dst.into(), table.get(&key).into());
                 }
-                Instruction::Closure(c) => {
+                I::Closure(c) => {
                     self.closure(&mut frame, c);
                 }
-                Instruction::CloseUpvalue => {
+                I::CloseUpvalue => {
                     self.close_upvalues(self.stack.len() - 1);
                     self.pop();
                 }
-                Instruction::GetUpvalue(up) => {
+                I::GetUpvalue(up) => {
                     let val = frame.closure().get_upvalue_val(self, up);
                     self.push(val);
                 }
-                Instruction::SetUpvalue(up) => {
+                I::SetUpvalue(up) => {
                     self.set_upvalue(&mut frame, up);
                 }
-                Instruction::Upvalue(_) => {
-                    unreachable!("Instruction::Upvalue must be handled by Instruction::Closure")
+                I::Upvalue(_) => {
+                    unreachable!("I::Upvalue must be handled by I::Closure")
                 }
-                Instruction::Multiassign(n) => {
+                I::Multiassign(n) => {
                     self.multiassign(n, &mut frame)?;
-                }
-                #[cfg(debug_assertions)]
-                Instruction::CheckStack(n_locals) => {
-                    debug_assert_eq!(
-                        frame.stack_start() + n_locals as usize,
-                        self.stack.len(),
-                        "Stack invariant broken: statement had non-zero effect on stack. Expected size: {}",
-                        frame.stack_start() + n_locals as usize);
                 }
             }
         }
     }
 
-    fn call(&mut self, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        let func = self.peek(nargs as usize);
+    fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
+        let func = self.stack_at(base as usize);
         match func.into_callable() {
             Ok(Left(closure)) => {
                 if closure.function().arity() < nargs {
@@ -264,7 +261,8 @@ impl Vm {
                 Ok(())
             }
             Ok(Right(f)) => {
-                let args: Vec<RuaVal> = self.stack_peek_n(nargs as usize).to_vec();
+                let args =
+                    self.stack[base as usize + 1..base as usize + 1 + nargs as usize].to_vec();
                 let retval = match f.call(&args, self) {
                     Ok(v) => v,
                     Err(mut e) => {
@@ -273,7 +271,7 @@ impl Vm {
                     }
                 };
                 self.drop(nargs as usize + 1); // drop args and function itself
-                self.push(retval);
+                self.set_stack_at(base.into(), retval);
                 Ok(())
             }
             Err(e) => {
@@ -286,11 +284,14 @@ impl Vm {
     fn return_op(
         &mut self,
         frame: &mut CallFrame,
-        is_nil: bool,
+        ret_src: Option<u8>,
         first_frame_id: usize,
     ) -> Option<RuaVal> {
         self.close_upvalues(frame.stack_start());
-        let retval = if is_nil { RuaVal::nil() } else { self.pop() };
+        let retval = match ret_src {
+            Some(src) => self.stack_at(src.into()),
+            None => RuaVal::nil(),
+        };
         self.stack.truncate(frame.stack_start());
         if frame.id() == first_frame_id {
             return Some(retval);
@@ -310,7 +311,7 @@ impl Vm {
         let upvalue_count = f.upvalue_count();
         let mut closure = Closure::new(f);
         for _ in 0..upvalue_count {
-            if let Instruction::Upvalue(up) = frame.curr_instr() {
+            if let I::Upvalue(up) = frame.curr_instr() {
                 match up.location() {
                     Left(local) => {
                         self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
@@ -330,35 +331,35 @@ impl Vm {
     fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
         let mut keys_in_stack = 0;
         let n = n as usize;
-        for i in 0..n {
-            match frame.curr_instr() {
-                Instruction::SetLocal(local) => self.set_local(&*frame, local),
-                Instruction::SetUpvalue(up) => self.set_upvalue(frame, up),
-                Instruction::SetGlobal(s) => {
-                    let val = self.peek(0);
-                    let key = frame.read_string(s);
-                    self.global.insert(key.into(), val);
-                    self.pop();
-                }
-                Instruction::InsertKeyVal => {
-                    let val = self.peek(0);
-                    let key = self.peek(n - i + keys_in_stack);
-                    let table = self.peek(n - i + keys_in_stack + 1);
-                    let table = trace_err(table.as_table(), &*frame)?;
-                    table.insert(key, val);
-                    self.pop();
-                    keys_in_stack += 2;
-                }
-                i => unreachable!("{i:?} cannot be part of Instruction::Multiassign"),
-            }
-        }
+        // for i in 0..n {
+        //     match frame.curr_instr() {
+        //         I::SetLocal(local) => self.set_local(&*frame, local),
+        //         I::SetUpvalue(up) => self.set_upvalue(frame, up),
+        //         I::SetGlobal(s) => {
+        //             let val = self.peek(0);
+        //             let key = frame.read_string(s);
+        //             self.global.insert(key.into(), val);
+        //             self.pop();
+        //         }
+        //         I::InsertKeyVal => {
+        //             let val = self.peek(0);
+        //             let key = self.peek(n - i + keys_in_stack);
+        //             let table = self.peek(n - i + keys_in_stack + 1);
+        //             let table = trace_err(table.as_table(), &*frame)?;
+        //             table.insert(key, val);
+        //             self.pop();
+        //             keys_in_stack += 2;
+        //         }
+        //         i => unreachable!("{i:?} cannot be part of I::Multiassign"),
+        //     }
+        // }
         self.drop(keys_in_stack);
         Ok(())
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn len_op(&mut self) -> Result<(), EvalError> {
-        self.unary_op(|v| Ok(((v.len())? as f64).into()))
+    fn len_op(&mut self, args: UnArgs) -> Result<(), EvalError> {
+        self.unary_op(args, |v| Ok(((v.len())? as f64).into()))
     }
 
     fn set_upvalue(&mut self, frame: &mut CallFrame, up: UpvalueHandle) {
@@ -366,43 +367,40 @@ impl Vm {
         frame.closure().set_upvalue(self, up, val);
     }
 
-    fn set_local(&mut self, frame: &CallFrame, local: LocalHandle) {
-        let val = self.pop();
-        self.set_stack_at(frame.stack_start() + local.pos(), val);
-    }
-
-    fn stack_peek_n(&mut self, nargs: usize) -> &[RuaVal] {
-        &self.stack[self.stack.len() - nargs..self.stack.len()]
-    }
-
-    fn unary_op<F: Fn(RuaVal) -> RuaResultUntraced>(&mut self, f: F) -> Result<(), EvalError> {
-        let a = self.pop();
-        self.push(f(a)?);
+    fn unary_op<F: Fn(RuaVal) -> RuaResultUntraced>(
+        &mut self,
+        args: UnArgs,
+        f: F,
+    ) -> Result<(), EvalError> {
+        let a = self.stack_at(args.src.into());
+        self.set_stack_at(args.dst.into(), f(a)?);
         Ok(())
     }
 
     fn binary_op<F: Fn(RuaVal, RuaVal) -> RuaResultUntraced>(
         &mut self,
+        args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        let b = self.pop();
-        let a = self.pop();
-        self.push(f(a, b)?);
+        let a = self.stack_at(args.lhs.into());
+        let b = self.stack_at(args.rhs.into());
+        self.set_stack_at(args.dst.into(), f(a, b)?);
         Ok(())
     }
 
     fn number_binary_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
         &mut self,
+        args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        self.binary_op(|a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
+        self.binary_op(args, |a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
     }
 
-    fn str_concat(&mut self) -> Result<(), EvalError> {
-        let b = self.pop();
-        let a = self.pop();
+    fn str_concat(&mut self, args: BinArgs) -> Result<(), EvalError> {
+        let a = self.stack_at(args.lhs.into());
+        let b = self.stack_at(args.rhs.into());
         let res = [a.into_str()?, b.into_str()?].concat().into_rua(self);
-        self.push(res);
+        self.set_stack_at(args.dst.into(), res);
         Ok(())
     }
 
