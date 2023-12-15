@@ -7,7 +7,7 @@ use std::iter::Peekable;
 
 use crate::eval::Vm;
 
-use self::tokens::{lookup_char, lookup_comparison, lookup_keyword, BinaryOp, Token, TokenType};
+use self::tokens::{lookup_char, lookup_comparison, lookup_keyword, Token, TokenType};
 use self::{
     chars::{is_alphabetic, is_numeric, is_space},
     utils::{eat_while_peeking, read_decimals},
@@ -100,7 +100,7 @@ where
                 self.input.next();
                 return Token { ttype: TokenType::DOTDOTDOT, line: self.line };
             }
-            return Token { ttype: TokenType::BINARY_OP(BinaryOp::DOTDOT), line: self.line };
+            return Token { ttype: TokenType::DOTDOT, line: self.line };
         }
 
         match self.input.peek() {

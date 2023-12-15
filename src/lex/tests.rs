@@ -3,10 +3,7 @@
 use pretty_assertions::assert_eq;
 
 use super::tokens::TokenType as TT;
-use super::{
-    tokens::{BinaryOp, Token, UnaryOp},
-    Tokenizer,
-};
+use super::{tokens::Token, Tokenizer};
 use crate::eval::Vm;
 
 macro_rules! test_lex {
@@ -111,25 +108,25 @@ fn lex_ops() {
             Token { ttype: id!(b"a"), line: 1 },
             Token { ttype: TT::ASSIGN, line: 1 },
             Token { ttype: id!(b"a"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::LE), line: 1 },
+            Token { ttype: TT::LE, line: 1 },
             Token { ttype: id!(b"b"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::AND), line: 1 },
+            Token { ttype: TT::AND, line: 1 },
             Token { ttype: id!(b"a"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::PLUS), line: 1 },
+            Token { ttype: TT::PLUS, line: 1 },
             Token { ttype: id!(b"b"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::OR), line: 1 },
+            Token { ttype: TT::OR, line: 1 },
             Token { ttype: id!(b"a"), line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::EXP), line: 1 },
+            Token { ttype: TT::EXP, line: 1 },
             Token { ttype: id!(b"b"), line: 1 },
             Token { ttype: TT::LPAREN, line: 2 },
             Token { ttype: id!(b"c"), line: 2 },
             Token { ttype: TT::MINUS, line: 2 },
             Token { ttype: id!(b"d"), line: 2 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::GT), line: 2 },
+            Token { ttype: TT::GT, line: 2 },
             Token { ttype: id!(b"e"), line: 2 },
             Token { ttype: TT::RPAREN, line: 2 },
             Token { ttype: TT::SEMICOLON, line: 2 },
-            Token { ttype: TT::UNARY_OP(UnaryOp::LEN), line: 2 },
+            Token { ttype: TT::LEN, line: 2 },
             Token { ttype: id!(b"f"), line: 2 },
         ]
     );
@@ -153,7 +150,7 @@ fn lex_dots() {
         ".\n..\n...\n.123",
         vec![
             Token { ttype: TT::DOT, line: 1 },
-            Token { ttype: TT::BINARY_OP(BinaryOp::DOTDOT), line: 2 },
+            Token { ttype: TT::DOTDOT, line: 2 },
             Token { ttype: TT::DOTDOTDOT, line: 3 },
             Token { ttype: TT::NUMBER(0.123), line: 4 },
         ]

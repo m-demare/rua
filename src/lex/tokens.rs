@@ -9,8 +9,32 @@ pub enum TokenType {
     STRING(RuaString),
     IDENTIFIER(RuaString),
 
-    BINARY_OP(BinaryOp),
-    UNARY_OP(UnaryOp),
+    // Arithmetic operators
+    PLUS,
+    TIMES,
+    DIV,
+    MOD,
+    EXP,
+
+    // Comparison operators
+    EQ,
+    NEQ,
+    LE,
+    GE,
+    LT,
+    GT,
+
+    // Logic operators
+    AND,
+    OR,
+
+    // String operators
+    DOTDOT,
+
+    // Unary operators
+    NOT,
+    LEN,
+
     MINUS,
 
     ASSIGN,
@@ -53,38 +77,6 @@ pub enum TokenType {
     IDENTIFIER_DUMMY,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[allow(clippy::upper_case_acronyms, non_camel_case_types)]
-pub enum BinaryOp {
-    // Arithmetic operators
-    PLUS,
-    TIMES,
-    DIV,
-    MOD,
-    EXP,
-
-    // Comparison operators
-    EQ,
-    NEQ,
-    LE,
-    GE,
-    LT,
-    GT,
-
-    // Logic operators
-    AND,
-    OR,
-
-    DOTDOT,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[allow(clippy::upper_case_acronyms, non_camel_case_types)]
-pub enum UnaryOp {
-    NOT,
-    LEN,
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub ttype: TokenType,
@@ -94,7 +86,7 @@ pub struct Token {
 pub const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
     use TokenType as T;
     Some(match identifier {
-        b"and" => T::BINARY_OP(BinaryOp::AND),
+        b"and" => T::AND,
         b"break" => T::BREAK,
         b"do" => T::DO,
         b"else" => T::ELSE,
@@ -107,8 +99,8 @@ pub const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
         b"in" => T::IN,
         b"local" => T::LOCAL,
         b"nil" => T::NIL,
-        b"not" => T::UNARY_OP(UnaryOp::NOT),
-        b"or" => T::BINARY_OP(BinaryOp::OR),
+        b"not" => T::NOT,
+        b"or" => T::OR,
         b"repeat" => T::REPEAT,
         b"return" => T::RETURN,
         b"then" => T::THEN,
@@ -123,13 +115,13 @@ pub const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
 pub(super) fn lookup_char(ch: u8) -> TokenType {
     use TokenType as T;
     match ch {
-        b'+' => T::BINARY_OP(BinaryOp::PLUS),
+        b'+' => T::PLUS,
         b'-' => T::MINUS,
-        b'*' => T::BINARY_OP(BinaryOp::TIMES),
-        b'/' => T::BINARY_OP(BinaryOp::DIV),
-        b'%' => T::BINARY_OP(BinaryOp::MOD),
-        b'^' => T::BINARY_OP(BinaryOp::EXP),
-        b'#' => T::UNARY_OP(UnaryOp::LEN),
+        b'*' => T::TIMES,
+        b'/' => T::DIV,
+        b'%' => T::MOD,
+        b'^' => T::EXP,
+        b'#' => T::LEN,
 
         b'=' => T::ASSIGN,
         b'(' => T::LPAREN,
@@ -153,16 +145,16 @@ pub(super) fn lookup_comparison(ch: u8, has_eq: bool) -> TokenType {
 
     if has_eq {
         match ch {
-            b'<' => T::BINARY_OP(BinaryOp::LE),
-            b'>' => T::BINARY_OP(BinaryOp::GE),
-            b'=' => T::BINARY_OP(BinaryOp::EQ),
-            b'~' => T::BINARY_OP(BinaryOp::NEQ),
+            b'<' => T::LE,
+            b'>' => T::GE,
+            b'=' => T::EQ,
+            b'~' => T::NEQ,
             _ => T::ILLEGAL(((ch as char).to_string() + "=").into_boxed_str()),
         }
     } else {
         match ch {
-            b'<' => T::BINARY_OP(BinaryOp::LT),
-            b'>' => T::BINARY_OP(BinaryOp::GT),
+            b'<' => T::LT,
+            b'>' => T::GT,
             b'=' => T::ASSIGN,
             _ => T::ILLEGAL((ch as char).to_string().into_boxed_str()),
         }
