@@ -56,14 +56,16 @@ fn test_locals() {
 fn test_assign_local() {
     let input = "
         local a = 5
-        a = 3
+        a = a + 3
         return -a";
 
     test_compile(input, |_| {
         Ok(Chunk::new(
             vec![
                 I::Number { dst: 0, src: NumberHandle(0) },
-                I::Number { dst: 0, src: NumberHandle(1) },
+                I::Number { dst: 1, src: NumberHandle(1) },
+                I::Add(BinArgs { dst: 1, lhs: 0, rhs: 1 }),
+                I::Mv(UnArgs { dst: 0, src: 1 }),
                 I::Neg(UnArgs { dst: 1, src: 0 }),
                 I::Return { src: 1 },
                 I::ReturnNil,
@@ -71,7 +73,7 @@ fn test_assign_local() {
             vec![5.0, 3.0],
             Vec::new(),
             Vec::new(),
-            vec![(0, 2), (4, 2), (0, 1)],
+            vec![(0, 2), (3, 1), (0, 1), (4, 2), (0, 1)],
         ))
     });
 }
@@ -85,8 +87,8 @@ fn test_globals() {
     test_compile(input, |vm| {
         Ok(Chunk::new(
             vec![
-                I::Number { dst: 1, src: NumberHandle(0) },
                 I::GetGlobal { dst: 0, src: StringHandle(1) },
+                I::Number { dst: 1, src: NumberHandle(0) },
                 I::Add(BinArgs { dst: 0, lhs: 0, rhs: 1 }),
                 I::SetGlobal { dst: StringHandle(0), src: 0 },
                 I::GetGlobal { dst: 0, src: StringHandle(0) },
