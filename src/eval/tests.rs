@@ -75,6 +75,15 @@ test_interpret!(
     |_| Ok(16.0.into())
 );
 
+test_interpret!(
+    modifying_used_local,
+    "
+    local a = 5
+    a = a + a + a
+    return a",
+    |_| Ok(15.0.into())
+);
+
 test_interpret!(nativefn_tostring, "return type(tostring(5))", |vm| Ok((*b"string").into_rua(vm)));
 test_interpret!(
     nativefn_tonumber,

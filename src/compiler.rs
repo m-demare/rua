@@ -152,25 +152,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn expression(
-        &mut self,
-        precedence: Precedence,
-        dst: Option<ExprDst>,
-    ) -> Result<ExprDesc, ParseError> {
-        let prefix_desc = self.prefix_exp(dst)?;
-        let desc = self.infix_exp(prefix_desc, precedence, dst)?;
-        match dst {
-            Some(dst) if self.rh == 0 => {
-                let reg = self.into_reg(&desc, dst, true)?;
-                Ok(ExprDesc::new(ExprKind::Local(reg)))
-            }
-            _ => Ok(desc),
-        }
+    fn expression(&mut self, precedence: Precedence) -> Result<ExprDesc, ParseError> {
+        let prefix_desc = self.prefix_exp()?;
+        self.infix_exp(prefix_desc, precedence)
     }
 
-    fn group_expression(&mut self, dst: Option<ExprDst>) -> Result<ExprDesc, ParseError> {
+    fn group_expression(&mut self) -> Result<ExprDesc, ParseError> {
         let rh = self.rh;
-        let desc = self.expression(Precedence::Lowest, dst)?;
+        let desc = self.expression(Precedence::Lowest)?;
         debug_assert_eq!(self.rh, rh);
         consume!(self; (TT::RPAREN));
         Ok(desc)
@@ -180,14 +169,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         &mut self.context.chunk
     }
 
-    fn emit_number(&mut self, val: f64, line: usize, dst: ExprDst) -> Result<u8, ParseError> {
-        self.current_chunk().add_number(dst.0, val, line)?;
-        Ok(dst.0)
+    fn emit_number(&mut self, dst: u8, val: f64, line: usize) -> Result<usize, ParseError> {
+        self.current_chunk().add_number(dst, val, line)
     }
 
-    fn emit_string(&mut self, val: RuaString, line: usize, dst: ExprDst) -> Result<u8, ParseError> {
-        self.current_chunk().add_string(dst.0, val, line)?;
-        Ok(dst.0)
+    fn emit_string(&mut self, dst: u8, val: RuaString, line: usize) -> Result<usize, ParseError> {
+        self.current_chunk().add_string(dst, val, line)
     }
 
     fn tmp(&mut self) -> Result<u8, ParseError> {
@@ -210,73 +197,25 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk().add_closure(val, upvalues, line)
     }
 
-    fn into_reg(&mut self, desc: &ExprDesc, dst: ExprDst, force: bool) -> Result<u8, ParseError> {
-        match &desc.kind {
-            ExprKind::Local(r) | ExprKind::Tmp(r) => {
-                if force {
-                    self.instruction(I::Mv(UnArgs { dst: dst.0, src: *r }), 0);
-                    Ok(dst.0)
-                } else {
-                    Ok(*r)
-                }
-            }
-            ExprKind::Number(n) => self.emit_number(*n, 0, dst),
-            ExprKind::String(s) => self.emit_string(s.clone(), 0, dst),
-            ExprKind::Function(f) => todo!(),
-            ExprKind::True => {
-                self.instruction(I::True { dst: dst.0 }, 0);
-                Ok(dst.0)
-            }
-            ExprKind::False => {
-                self.instruction(I::False { dst: dst.0 }, 0);
-                Ok(dst.0)
-            }
-            ExprKind::Nil => {
-                self.instruction(I::Nil { dst: dst.0 }, 0);
-                Ok(dst.0)
-            }
-        }
-    }
-
-    fn into_tmp_reg(&mut self, desc: &ExprDesc) -> Result<u8, ParseError> {
-        let tmp = self.tmp()?;
-        self.into_reg(desc, ExprDst(tmp), false)
-    }
-
-    fn dst_or_tmp(&mut self, dst: Option<ExprDst>) -> Result<u8, ParseError> {
-        match dst {
-            Some(d) => Ok(d.0),
-            None => self.tmp(),
-        }
-    }
-
-    fn unary(&mut self, op: TT, line: usize, dst: Option<ExprDst>) -> Result<ExprDesc, ParseError> {
+    fn unary(&mut self, op: TT, line: usize) -> Result<ExprDesc, ParseError> {
         let rh = self.rh;
-        let inner_desc = self.expression(Precedence::Prefix, dst)?;
+        let inner_desc = self.expression(Precedence::Prefix)?;
         debug_assert_eq!(self.rh, rh);
-        let dst = self.dst_or_tmp(dst)?;
-        let src = self.into_reg(&inner_desc, ExprDst(dst), false)?;
-        match op {
+        let src = inner_desc.into_reg(self, None)?;
+        let dst = self.tmp()?;
+        let instr_idx = match op {
             TT::NOT => self.instruction(I::Not(UnArgs { dst, src }), line),
             TT::LEN => self.instruction(I::Len(UnArgs { dst, src }), line),
             TT::MINUS => self.instruction(I::Neg(UnArgs { dst, src }), line),
             _ => unreachable!("Invalid unary"),
         };
-        Ok(ExprDesc::new(ExprKind::Local(dst)))
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
     }
 
-    fn is_tmp(&self, desc: &ExprDesc) -> bool {
-        if let ExprDesc { kind: ExprKind::Local(reg) } = desc {
-            *reg >= self.context.locals.len()
-        } else {
-            true
-        }
-    }
-
-    fn prefix_exp(&mut self, dst: Option<ExprDst>) -> Result<ExprDesc, ParseError> {
+    fn prefix_exp(&mut self) -> Result<ExprDesc, ParseError> {
         match self.next_token() {
-            Some(Token { ttype: t @ TT::NOT | t @ TT::LEN | t @ TT::MINUS, line, .. }) => {
-                return self.unary(t, line, dst)
+            Some(Token { ttype: t @ (TT::NOT | TT::LEN | TT::MINUS), line, .. }) => {
+                self.unary(t, line)
             }
             Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => self.named_variable(id, line),
             Some(Token { ttype: TT::NUMBER(n), line, .. }) => {
@@ -290,18 +229,18 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::TRUE, line, .. }) => Ok(ExprDesc::new(ExprKind::True)),
             Some(Token { ttype: TT::FALSE, line, .. }) => Ok(ExprDesc::new(ExprKind::False)),
             Some(Token { ttype: TT::NIL, line, .. }) => Ok(ExprDesc::new(ExprKind::Nil)),
-            Some(Token { ttype: TT::LPAREN, .. }) => return self.group_expression(dst),
+            Some(Token { ttype: TT::LPAREN, .. }) => self.group_expression(),
             // Some(Token { ttype: TT::LBRACE, line, .. }) => return self.table_literal(line),
             // Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_expr(line),
             Some(t) => {
                 let line = t.line;
-                return Err(ParseError::UnexpectedTokenWithErrorMsg(
+                Err(ParseError::UnexpectedTokenWithErrorMsg(
                     Box::new(t),
                     "an expression".into(),
                     line,
-                ));
+                ))
             }
-            None => return Err(ParseError::UnexpectedEOF),
+            None => Err(ParseError::UnexpectedEOF),
         }
     }
 
@@ -314,9 +253,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             Ok(ExprDesc::new(ExprKind::Local(dst)))
         } else {
             let id = self.new_string_constant(id)?;
-            let dst = self.tmp()?;
-            self.instruction(I::GetGlobal { dst, src: id }, line);
-            Ok(ExprDesc::new(ExprKind::Local(dst)))
+            Ok(ExprDesc::new(ExprKind::Global(id)))
         }
     }
 
@@ -332,7 +269,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         &mut self,
         mut lhs_desc: ExprDesc,
         precedence: Precedence,
-        dst: Option<ExprDst>,
     ) -> Result<ExprDesc, ParseError> {
         macro_rules! binary {
             ($t: expr, $instr: ident, $line: expr) => {{
@@ -342,18 +278,18 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     break Ok(lhs_desc);
                 }
                 self.next_token();
-                if self.is_tmp(&lhs_desc) {
+                if lhs_desc.is_tmp() {
                     self.rh += 1;
                 }
-                let rhs = self.expression(new_precedence, None)?;
-                let rhs = self.into_tmp_reg(&rhs)?;
-                if self.is_tmp(&lhs_desc) {
+                let rhs = self.expression(new_precedence)?;
+                let rhs = rhs.into_reg(self, None)?;
+                if lhs_desc.is_tmp() {
                     self.rh -= 1;
                 }
-                let lhs = self.into_tmp_reg(&lhs_desc)?;
-                let dst = self.dst_or_tmp(dst)?;
-                self.instruction(I::$instr(BinArgs { dst, lhs, rhs }), line);
-                lhs_desc = ExprDesc::new(ExprKind::Local(dst));
+                let lhs = lhs_desc.into_reg(self, None)?;
+                let dst = self.tmp()?;
+                let instr_idx = self.instruction(I::$instr(BinArgs { dst, lhs, rhs }), line);
+                lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
             }};
         }
 
@@ -372,7 +308,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Some(Token { ttype: t @ TT::LT, line, .. }) => binary!(t, Lt, line),
                 Some(Token { ttype: t @ TT::GT, line, .. }) => binary!(t, Gt, line),
                 Some(Token { ttype: t @ TT::DOTDOT, line, .. }) => {
-                    binary!(t, StrConcat, line)
+                    binary!(t, StrConcat, line);
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
                     binary!(t, Index, line);
@@ -394,7 +330,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
                 Some(Token { ttype: TT::LPAREN | TT::STRING(_) | TT::LBRACE, line, .. }) => {
                     if precedence < Precedence::Call {
-                        self.call_expr(*line)?;
+                        lhs_desc = self.call_expr(lhs_desc, *line)?;
                     } else {
                         break Ok(lhs_desc);
                     }
@@ -405,12 +341,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                         self.next_token();
                         let id = self.identifier()?;
                         self.rh += 1;
-                        let key = self.emit_string(id, line, ExprDst(self.rh))?;
+                        let key = self.emit_string(self.rh, id, line)?;
                         self.rh -= 1;
                         let rh = self.rh;
-                        let lhs = self.into_tmp_reg(&lhs_desc)?;
-                        self.instruction(I::Index(BinArgs { dst: rh, lhs, rhs: key }), line);
-                        lhs_desc = ExprDesc::new(ExprKind::Local(rh));
+                        let lhs = lhs_desc.into_reg(self, None)?;
+                        let instr_idx =
+                            self.instruction(I::Index(BinArgs { dst: rh, lhs, rhs: rh + 1 }), line);
+                        lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: rh, instr_idx });
                     } else {
                         break Ok(lhs_desc);
                     }
@@ -431,7 +368,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             return Ok(());
         }
 
-        let desc = self.expression(Precedence::Lowest, None)?;
+        let desc = self.expression(Precedence::Lowest)?;
         debug_assert_eq!(self.rh, 0);
         match self.peek_token() {
             Some(Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. }) | None => {}
@@ -442,7 +379,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 ))
             }
         }
-        let src = self.into_tmp_reg(&desc)?;
+        let src = desc.into_reg(self, None)?;
         self.instruction(I::Return { src }, line);
         Ok(())
     }
@@ -473,11 +410,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 let dst = if let Some(local) = locals.next() {
                     let handle = self.context.locals.declare(local)?;
                     handles.push(handle);
-                    Some(ExprDst(handle.into()))
+                    Some(handle.into())
                 } else {
                     None
                 };
-                self.expression(Precedence::Lowest, dst)?;
+                let val = self.expression(Precedence::Lowest)?;
+                if let Some(dst) = dst {
+                    val.into_reg(self, Some(dst))?;
+                }
                 debug_assert_eq!(self.rh, 0);
                 match_token!(self, TT::COMMA)
             } {}
@@ -506,7 +446,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     //     }
     // }
 
-    #[must_use = "Use consume!(self; (TT::IDENTIFIER(_))) if you don't care about the value"]
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(id),
@@ -524,8 +463,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn assign_or_call_st(&mut self, line: usize) -> Result<(), ParseError> {
-        let code_len = self.current_chunk().code().len();
-        let desc = self.expression(Precedence::Lowest, None)?;
+        let dst = self.expression(Precedence::Lowest)?;
         debug_assert_eq!(self.rh, 0);
         match self.peek_token() {
             Some(Token { ttype: TT::ASSIGN, line, .. }) => {
@@ -535,14 +473,18 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     // return self.multiassign(line);
                 }
                 self.next_token();
-                let (dst, op) = self.convert_to_assign(code_len, &desc, line)?;
-                let val = self.expression(Precedence::Lowest, dst)?;
+                let val = self.expression(Precedence::Lowest)?;
                 debug_assert_eq!(self.rh, 0);
-                if let Some(mut op) = op {
-                    let src = self.into_tmp_reg(&val)?;
-                    op.change_src(src);
-                    self.instruction(op, line);
-                }
+                match dst.kind {
+                    ExprKind::Local(r) => {
+                        val.into_reg(self, Some(r))?;
+                    }
+                    ExprKind::Global(dst) => {
+                        let src = val.into_reg(self, None)?;
+                        self.instruction(I::SetGlobal { dst, src }, line);
+                    }
+                    _ => return Err(ParseError::InvalidAssignLHS(line)),
+                };
             }
             Some(Token { ttype: TT::COMMA, line, .. }) => {
                 let line = *line;
@@ -594,35 +536,16 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     //     Ok(())
     // }
 
-    fn convert_to_assign(
-        &mut self,
-        prev_code_len: usize,
-        desc: &ExprDesc,
-        line: usize,
-    ) -> Result<(Option<ExprDst>, Option<Instruction>), ParseError> {
-        if let ExprDesc { kind: ExprKind::Local(dst) } = desc {
-            if prev_code_len == self.current_chunk().code().len() {
-                return Ok((Some(ExprDst(*dst)), None));
-            }
-            match self.pop_instruction().expect("Code is larger than it was") {
-                I::GetGlobal { dst, src } => Ok((None, Some(I::SetGlobal { dst: src, src: dst }))),
-                I::GetUpvalue(..) => todo!(), //Ok((None, Some(I::SetUpvalue(up)))),
-                I::Index(..) => todo!(),      //Ok(I::InsertKeyVal),
-                _ => Err(ParseError::InvalidAssignLHS(line)),
-            }
-        } else {
-            return Err(ParseError::InvalidAssignLHS(line));
-        }
-    }
-
-    fn call_expr(&mut self, line: usize) -> Result<(), ParseError> {
+    fn call_expr(&mut self, lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
         debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
+        let base = self.tmp()?;
+        lhs_desc.into_reg(self, Some(base))?;
         let rh = self.rh;
         self.rh += 1;
         let cant_args = match self.next_token() {
             Some(Token { ttype: TT::LPAREN, .. }) => self.arg_list()?,
             Some(Token { ttype: TT::STRING(s), line, .. }) => {
-                self.emit_string(s, line, ExprDst(self.rh))?;
+                self.emit_string(self.rh, s, line)?;
                 self.rh += 1;
                 1
             }
@@ -635,9 +558,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         self.rh -= cant_args + 1;
         debug_assert_eq!(self.rh, rh);
-        let base = self.tmp()?;
-        self.instruction(I::Call { base, nargs: cant_args }, line);
-        Ok(())
+        let instr_idx = self.instruction(I::Call { base, nargs: cant_args }, line);
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx }))
     }
 
     fn arg_list(&mut self) -> Result<u8, ParseError> {
@@ -650,8 +572,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 return Err(ParseError::TooManyArgs);
             }
             cant_args += 1;
-            let item = self.expression(Precedence::Lowest, None)?;
-            self.into_tmp_reg(&item)?;
+            let item = self.expression(Precedence::Lowest)?;
+            item.into_reg(self, None)?;
             self.rh += 1;
             match_token!(self, TT::COMMA)
         } {}
@@ -662,7 +584,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn if_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::IF);
         self.next_token();
-        self.expression(Precedence::Lowest, None)?;
+        self.expression(Precedence::Lowest)?;
         debug_assert_eq!(self.rh, 0);
         consume!(self; (TT::THEN));
         let if_jmp = self.jmp_if_false_pop(u16::MAX, line);
@@ -695,7 +617,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::WHILE);
         self.next_token();
         let loop_start = self.current_chunk().code().len();
-        self.expression(Precedence::Lowest, None)?;
+        self.expression(Precedence::Lowest)?;
         debug_assert_eq!(self.rh, 0);
         let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
         self.do_block(true)?;
@@ -794,7 +716,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let jmp = self.jmp_if_false(0, line);
         self.instruction(I::Pop, line);
 
-        self.expression(Precedence::And, None)?;
+        self.expression(Precedence::And)?;
 
         self.patch_jmp(jmp, line)?;
         Ok(todo!())
@@ -804,7 +726,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let jmp = self.jmp_if_true(0, line);
         self.instruction(I::Pop, line);
 
-        self.expression(Precedence::Or, None)?;
+        self.expression(Precedence::Or)?;
 
         self.patch_jmp(jmp, line)?;
 
@@ -1072,7 +994,8 @@ impl CompilerCtxt {
 #[derive(Debug)]
 enum ExprKind {
     Local(u8),
-    Tmp(u8),
+    Global(StringHandle),
+    Tmp { reg: u8, instr_idx: usize },
     Number(f64),
     String(RuaString),
     Function(FnHandle),
@@ -1087,10 +1010,63 @@ struct ExprDesc {
 }
 
 impl ExprDesc {
-    fn new(kind: ExprKind) -> Self {
+    const fn new(kind: ExprKind) -> Self {
         Self { kind }
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-struct ExprDst(u8);
+    fn into_reg<T: Iterator<Item = u8> + Clone>(
+        self,
+        compiler: &mut Compiler<'_, T>,
+        dst: Option<u8>,
+    ) -> Result<u8, ParseError> {
+        match (self.kind, dst) {
+            (ExprKind::Local(r), Some(dst)) => {
+                if r != dst {
+                    compiler.instruction(I::Mv(UnArgs { dst, src: r }), 0);
+                }
+                Ok(dst)
+            }
+            (ExprKind::Local(r), None) => Ok(r),
+            (ExprKind::Tmp { reg, instr_idx }, Some(dst)) => {
+                compiler.instruction(I::Mv(UnArgs { dst, src: reg }), 0); // TODO change instr_idx's dst if possible
+                Ok(dst)
+            }
+            (ExprKind::Tmp { reg, .. }, None) => Ok(reg),
+            (ExprKind::Global(g), dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.instruction(I::GetGlobal { dst, src: g }, 0);
+                Ok(dst)
+            }
+            (ExprKind::Number(n), dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.emit_number(dst, n, 0)?;
+                Ok(dst)
+            }
+            (ExprKind::String(s), dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.emit_string(dst, s, 0)?;
+                Ok(dst)
+            }
+            (ExprKind::Function(f), dst) => todo!(),
+            (ExprKind::True, dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.instruction(I::True { dst }, 0);
+                Ok(dst)
+            }
+            (ExprKind::False, dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.instruction(I::False { dst }, 0);
+                Ok(dst)
+            }
+            (ExprKind::Nil, dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                compiler.instruction(I::Nil { dst }, 0);
+                Ok(dst)
+            }
+        }
+    }
+
+    const fn is_tmp(&self) -> bool {
+        !matches!(self.kind, ExprKind::Local(..))
+    }
+}

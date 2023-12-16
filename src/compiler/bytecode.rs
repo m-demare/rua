@@ -66,56 +66,6 @@ pub enum Instruction {
     Multiassign(u8),
 }
 
-impl Instruction {
-    pub(crate) fn change_src(&mut self, new_src: u8) {
-        match self {
-            Self::Return { src } => std::mem::replace(src, new_src),
-            Self::ReturnNil => unreachable!(),
-            Self::Number { .. } => unreachable!(),
-            Self::String { .. } => unreachable!(),
-            Self::True { .. } => unreachable!(),
-            Self::False { .. } => unreachable!(),
-            Self::Nil { .. } => unreachable!(),
-            Self::Neg(UnArgs { src, .. }) => std::mem::replace(src, new_src),
-            Self::Not(UnArgs { src, .. }) => std::mem::replace(src, new_src),
-            Self::Len(UnArgs { src, .. }) => std::mem::replace(src, new_src),
-            Self::Add(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Sub(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Mul(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Div(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Mod(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Pow(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Eq(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Lt(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Gt(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Neq(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Le(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::Ge(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::StrConcat(BinArgs { rhs, .. }) => std::mem::replace(rhs, new_src),
-            Self::GetGlobal { .. } => unreachable!(),
-            Self::SetGlobal { src, .. } => std::mem::replace(src, new_src),
-            Self::Call { base, .. } => std::mem::replace(base, new_src),
-            Self::Pop => todo!(),
-            Self::Mv(UnArgs { src, .. }) => std::mem::replace(src, new_src),
-            Self::JmpIfFalse(_) => todo!(),
-            Self::JmpIfTrue(_) => todo!(),
-            Self::Jmp(_) => todo!(),
-            Self::Loop(_) => todo!(),
-            Self::JmpIfFalsePop(_) => todo!(),
-            Self::NewTable(_) => todo!(),
-            Self::InsertKeyVal => todo!(),
-            Self::InsertValKey => todo!(),
-            Self::Index(_) => todo!(),
-            Self::Closure(_) => todo!(),
-            Self::Upvalue(_) => todo!(),
-            Self::CloseUpvalue => todo!(),
-            Self::GetUpvalue(_) => todo!(),
-            Self::SetUpvalue(_) => todo!(),
-            Self::Multiassign(_) => todo!(),
-        };
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BinArgs {
     pub dst: u8,
@@ -225,16 +175,19 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<(), ParseError> {
+    pub fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<usize, ParseError> {
         let c = add_constant!(val, self.numbers, NumberHandle);
-        self.add_instruction(Instruction::Number { dst, src: c }, line);
-        Ok(())
+        Ok(self.add_instruction(Instruction::Number { dst, src: c }, line))
     }
 
-    pub fn add_string(&mut self, dst: u8, val: RuaString, line: usize) -> Result<(), ParseError> {
+    pub fn add_string(
+        &mut self,
+        dst: u8,
+        val: RuaString,
+        line: usize,
+    ) -> Result<usize, ParseError> {
         let c = add_constant!(val, self.strings, StringHandle);
-        self.add_instruction(Instruction::String { dst, src: c }, line);
-        Ok(())
+        Ok(self.add_instruction(Instruction::String { dst, src: c }, line))
     }
 
     pub fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
@@ -337,12 +290,14 @@ impl Debug for Chunk {
             };
             let clarification = match instr {
                 Instruction::Number { src, .. } => format!("; {}", self.numbers[src.0 as usize]),
-                Instruction::String { src, .. } => format!("; {}", self.strings[src.0 as usize]),
                 Instruction::Closure(func) => {
                     format!("; {}", self.functions[func.0 as usize].pretty_name())
                 }
-                Instruction::GetGlobal { src, .. } => format!("; {}", self.strings[src.0 as usize]),
-                Instruction::SetGlobal { dst, .. } => format!("; {}", self.strings[dst.0 as usize]),
+                Instruction::String { src: s, .. }
+                | Instruction::GetGlobal { src: s, .. }
+                | Instruction::SetGlobal { dst: s, .. } => {
+                    format!("; \"{}\"", self.strings[s.0 as usize])
+                }
                 _ => String::new(),
             };
             writeln!(f, "{i:4} {line_str} {instr:?} {clarification}")?;

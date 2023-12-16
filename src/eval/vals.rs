@@ -192,6 +192,7 @@ impl Debug for RuaValInner {
         match self {
             Self::Closure(closure) => write!(f, "function ({})", closure.function().pretty_name()),
             Self::NativeFunction(_) => write!(f, "native function"),
+            Self::String(s) => write!(f, "\"{s}\""),
             _ => write!(f, "{self}"),
         }
     }
