@@ -36,6 +36,10 @@ impl CallFrame {
         instr
     }
 
+    pub fn skip_instr(&mut self) {
+        self.ip += 1;
+    }
+
     pub fn rel_jmp(&mut self, offset: u16) {
         self.ip += offset as usize;
     }

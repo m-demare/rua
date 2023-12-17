@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     compiler::{
-        bytecode::{BinArgs, FnHandle, UnArgs},
+        bytecode::{BinArgs, FnHandle, JmpArgs, UnArgs},
         upvalues::UpvalueHandle,
     },
     eval::{
@@ -132,6 +132,10 @@ impl Vm {
                 I::True { dst } => self.set_stack_at(dst.into(), true.into()),
                 I::False { dst } => self.set_stack_at(dst.into(), false.into()),
                 I::Nil { dst } => self.set_stack_at(dst.into(), RuaVal::nil()),
+                I::LFalseSkip { dst } => {
+                    self.set_stack_at(dst.into(), false.into());
+                    frame.skip_instr()
+                }
                 I::Neg(args) => {
                     trace_err(self.unary_op(args, |v| Ok((-v.as_number()?).into())), &frame)?
                 }
@@ -145,15 +149,29 @@ impl Vm {
                 I::Div(args) => trace_err(self.number_binary_op(args, |a, b| a / b), &frame)?,
                 I::Mod(args) => trace_err(self.number_binary_op(args, |a, b| a % b), &frame)?,
                 I::Pow(args) => trace_err(self.number_binary_op(args, f64::powf), &frame)?,
-                I::Eq(args) => trace_err(self.binary_op(args, |a, b| Ok((a == b).into())), &frame)?,
-                I::Lt(args) => trace_err(self.number_binary_op(args, |a, b| a < b), &frame)?,
-                I::Gt(args) => trace_err(self.number_binary_op(args, |a, b| a > b), &frame)?,
-                I::Neq(args) => {
-                    trace_err(self.binary_op(args, |a, b| Ok((a != b).into())), &frame)?
-                }
-                I::Le(args) => trace_err(self.number_binary_op(args, |a, b| a <= b), &frame)?,
-                I::Ge(args) => trace_err(self.number_binary_op(args, |a, b| a >= b), &frame)?,
                 I::StrConcat(args) => trace_err(self.str_concat(args), &frame)?,
+                I::Eq(args) => {
+                    trace_err(self.skip_if(args, |a, b| Ok(a == b), &mut frame), &frame)?
+                }
+                I::Neq(args) => {
+                    trace_err(self.skip_if(args, |a, b| Ok(a != b), &mut frame), &frame)?
+                }
+                I::Lt(args) => trace_err(
+                    self.skip_if(args, |a, b| Ok(a.as_number()? < b.as_number()?), &mut frame),
+                    &frame,
+                )?,
+                I::Gt(args) => trace_err(
+                    self.skip_if(args, |a, b| Ok(a.as_number()? > b.as_number()?), &mut frame),
+                    &frame,
+                )?,
+                I::Le(args) => trace_err(
+                    self.skip_if(args, |a, b| Ok(a.as_number()? <= b.as_number()?), &mut frame),
+                    &frame,
+                )?,
+                I::Ge(args) => trace_err(
+                    self.skip_if(args, |a, b| Ok(a.as_number()? >= b.as_number()?), &mut frame),
+                    &frame,
+                )?,
                 I::SetGlobal { dst, src } => {
                     let val = self.stack_at(src.into());
                     let key = frame.read_string(dst);
@@ -402,6 +420,20 @@ impl Vm {
         let res = [a.into_str()?, b.into_str()?].concat().into_rua(self);
         self.set_stack_at(args.dst.into(), res);
         Ok(())
+    }
+
+    fn skip_if<F: FnOnce(RuaVal, RuaVal) -> Result<bool, EvalError>>(
+        &self,
+        args: JmpArgs,
+        pred: F,
+        frame: &mut CallFrame,
+    ) -> Result<(), EvalError> {
+        let (a, b) = (self.stack_at(args.lhs.into()), self.stack_at(args.rhs.into()));
+        if pred(a, b)? {
+            frame.skip_instr()
+        }
+        Ok(())
+        // TODO optimize JMPs to avoid another instr dispatch cycle
     }
 
     fn push(&mut self, val: RuaVal) {

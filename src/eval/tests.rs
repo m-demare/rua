@@ -109,9 +109,15 @@ test_interpret!(nativefn_math_cos, "return math.cos(math.pi)", |_| Ok((-1.0).int
 test_interpret!(nativefn_math_sin, "return math.sin(0)", |_| Ok(0.0.into()));
 test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(std::f64::consts::E.into()));
 
-// test_interpret!(if_true, "if 5>=5 then return 1 end", |_| Ok(1.0.into()));
-// test_interpret!(if_false, "if 4>=5 then return 1 end", |_| Ok(RuaVal::nil()));
-// test_interpret!(if_false2, "if 4>=5 then return 1 end return true", |_| Ok(true.into()));
+test_interpret!(if_eq_true, "a = 5; if 5==a then return 1 end", |_| Ok(1.0.into()));
+test_interpret!(if_eq_false, "a = 4; if 5==a then return 1 end", |_| Ok(RuaVal::nil()));
+
+test_interpret!(if_ge_true, "a = 5; if 5>=a then return 1 end", |_| Ok(1.0.into()));
+test_interpret!(if_ge_false, "a = 4; if a>=5 then return 1 end", |_| Ok(RuaVal::nil()));
+test_interpret!(if_gt_true, "a = 4; if 5>a then return 1 end return true", |_| Ok(1.0.into()));
+
+test_interpret!(if_le_true, "a = 4; if a<=5 then return 1 end", |_| Ok(1.0.into()));
+test_interpret!(if_lt_false, "a = 4; if 5<a then return 1 end return true", |_| Ok(true.into()));
 
 // test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
 // test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));

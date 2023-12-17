@@ -19,6 +19,7 @@ pub enum Instruction {
     True { dst: u8 },
     False { dst: u8 },
     Nil { dst: u8 },
+    LFalseSkip { dst: u8 },
 
     Neg(UnArgs),
     Not(UnArgs),
@@ -30,13 +31,14 @@ pub enum Instruction {
     Div(BinArgs),
     Mod(BinArgs),
     Pow(BinArgs),
-    Eq(BinArgs),
-    Lt(BinArgs),
-    Gt(BinArgs),
-    Neq(BinArgs),
-    Le(BinArgs),
-    Ge(BinArgs),
     StrConcat(BinArgs),
+
+    Eq(JmpArgs),
+    Neq(JmpArgs),
+    Lt(JmpArgs),
+    Gt(JmpArgs),
+    Le(JmpArgs),
+    Ge(JmpArgs),
 
     GetGlobal { dst: u8, src: StringHandle },
     SetGlobal { dst: StringHandle, src: u8 },
@@ -69,6 +71,12 @@ pub enum Instruction {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BinArgs {
     pub dst: u8,
+    pub lhs: u8,
+    pub rhs: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct JmpArgs {
     pub lhs: u8,
     pub rhs: u8,
 }
@@ -203,6 +211,10 @@ impl Chunk {
             self.lines.push((line, 1));
         }
         self.code.len() - 1
+    }
+
+    pub(super) fn replace_instruction(&mut self, instr: Instruction, idx: usize) {
+        self.code[idx] = instr;
     }
 
     pub fn pop_instruction(&mut self) -> Option<Instruction> {

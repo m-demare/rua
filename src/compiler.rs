@@ -15,7 +15,9 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Chunk, FnHandle, Instruction as I, Instruction, ParseError, StringHandle, UnArgs},
+    bytecode::{
+        Chunk, FnHandle, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs,
+    },
     locals::{LocalHandle, Locals},
     upvalues::{UpvalueHandle, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
@@ -131,6 +133,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::FOR, line, .. } => {
                     let line = *line;
                     // self.for_st(line)?;
+                }
+                Token { ttype: TT::SEMICOLON, .. } => {
+                    self.next_token();
                 }
                 t => {
                     return Err(ParseError::UnexpectedToken(
@@ -284,50 +289,116 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk().pop_instruction()
     }
 
+    fn binary<F: FnOnce(BinArgs) -> Instruction>(
+        &mut self,
+        lhs_desc: ExprDesc,
+        i: F,
+        line: usize,
+        precedence: Precedence,
+    ) -> Result<ExprDesc, ParseError> {
+        let rhs_desc = self.expression(precedence)?;
+        let lhs = lhs_desc.into_reg(self, None)?;
+        let rhs = rhs_desc.into_reg(self, None)?;
+        self.free2reg(lhs, rhs);
+
+        let dst = self.tmp()?;
+        let instr_idx = self.instruction(i(BinArgs { dst, lhs, rhs }), line);
+
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+    }
+
+    fn comparison<F: FnOnce(JmpArgs) -> Instruction>(
+        &mut self,
+        lhs_desc: ExprDesc,
+        i: F,
+        line: usize,
+        precedence: Precedence,
+    ) -> Result<ExprDesc, ParseError> {
+        let rhs_desc = self.expression(precedence)?;
+        let lhs = lhs_desc.into_reg(self, None)?;
+        let rhs = rhs_desc.into_reg(self, None)?;
+        self.free2reg(lhs, rhs);
+
+        self.instruction(i(JmpArgs { lhs, rhs }), line);
+
+        let instr_idx = self.instruction(I::Jmp(0), line);
+        return Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }));
+    }
+
     fn infix_exp(
         &mut self,
         mut lhs_desc: ExprDesc,
         precedence: Precedence,
     ) -> Result<ExprDesc, ParseError> {
-        macro_rules! binary {
-            ($t: expr, $instr: ident, $line: expr) => {{
-                let line = *$line;
+        macro_rules! validate_precedence {
+            ($t: expr) => {{
                 let new_precedence = precedence_of_binary(&$t);
                 if precedence >= new_precedence {
                     break Ok(lhs_desc);
                 }
                 self.next_token();
-                let rhs_desc = self.expression(new_precedence)?;
-                let lhs = lhs_desc.into_reg(self, None)?;
-                let rhs = rhs_desc.into_reg(self, None)?;
-                self.free2reg(lhs, rhs);
-                let dst = self.tmp()?;
-                let instr_idx = self.instruction(I::$instr(BinArgs { dst, lhs, rhs }), line);
-                lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
+                new_precedence
             }};
         }
 
         loop {
             match self.peek_token() {
-                Some(Token { ttype: t @ TT::PLUS, line, .. }) => binary!(t, Add, line),
-                Some(Token { ttype: t @ TT::MINUS, line, .. }) => binary!(t, Sub, line),
-                Some(Token { ttype: t @ TT::TIMES, line, .. }) => binary!(t, Mul, line),
-                Some(Token { ttype: t @ TT::DIV, line, .. }) => binary!(t, Div, line),
-                Some(Token { ttype: t @ TT::MOD, line, .. }) => binary!(t, Mod, line),
-                Some(Token { ttype: t @ TT::EXP, line, .. }) => binary!(t, Pow, line),
+                Some(Token { ttype: t @ TT::PLUS, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Add, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::MINUS, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Sub, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::TIMES, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Mul, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::DIV, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Div, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::MOD, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Mod, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::EXP, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Pow, line, new_precedence)?;
+                }
 
-                Some(Token { ttype: t @ TT::EQ, line, .. }) => binary!(t, Eq, line),
-                Some(Token { ttype: t @ TT::NEQ, line, .. }) => binary!(t, Neq, line),
-                Some(Token { ttype: t @ TT::LE, line, .. }) => binary!(t, Le, line),
-                Some(Token { ttype: t @ TT::GE, line, .. }) => binary!(t, Ge, line),
-                Some(Token { ttype: t @ TT::LT, line, .. }) => binary!(t, Lt, line),
-                Some(Token { ttype: t @ TT::GT, line, .. }) => binary!(t, Gt, line),
-
+                Some(Token { ttype: t @ TT::EQ, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Eq, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::NEQ, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Neq, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::LT, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Lt, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::GT, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Gt, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::LE, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Le, line, new_precedence)?;
+                }
+                Some(Token { ttype: t @ TT::GE, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.comparison(lhs_desc, I::Ge, line, new_precedence)?;
+                }
                 Some(Token { ttype: t @ TT::DOTDOT, line, .. }) => {
-                    binary!(t, StrConcat, line);
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::StrConcat, line, new_precedence)?;
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
-                    binary!(t, Index, line);
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(lhs_desc, I::Index, line, new_precedence)?;
                     consume!(self; (TT::RBRACK));
                 }
                 Some(Token { ttype: TT::AND, line, .. }) => {
@@ -600,21 +671,25 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn if_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::IF);
         self.next_token();
-        self.expression(Precedence::Lowest)?;
+        let cond = self.expression(Precedence::Lowest)?;
         consume!(self; (TT::THEN));
-        let if_jmp = self.jmp_if_false_pop(u16::MAX, line);
         self.scoped_block()?;
 
         match self.next_token() {
             Some(Token { ttype: TT::END, .. }) => {
-                self.patch_jmp(if_jmp, line)?;
+                if let ExprKind::Jmp { instr_idx } = cond.kind {
+                    self.patch_jmp(instr_idx, line)?;
+                } else {
+                    todo!("Jmps without comparisons")
+                }
             }
             Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
-                let else_jmp = self.jmp(0, line);
-                self.patch_jmp(if_jmp, line)?;
-                self.scoped_block()?;
-                self.patch_jmp(else_jmp, line_else)?;
-                consume!(self; (TT::END));
+                todo!();
+                // let else_jmp = self.jmp(0, line);
+                // self.patch_jmp(if_jmp, line)?;
+                // self.scoped_block()?;
+                // self.patch_jmp(else_jmp, line_else)?;
+                // consume!(self; (TT::END));
             }
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
@@ -1016,6 +1091,7 @@ enum ExprKind {
     True,
     False,
     Nil,
+    Jmp { instr_idx: usize },
 }
 
 #[derive(Debug)]
@@ -1077,11 +1153,14 @@ impl ExprDesc {
                 compiler.instruction(I::Nil { dst }, 0);
                 Ok(dst)
             }
+            (ExprKind::Jmp { instr_idx }, dst) => {
+                let dst = dst.map_or_else(|| compiler.tmp(), Ok)?;
+                debug_assert!(matches!(compiler.context.chunk.code()[*instr_idx], I::Jmp(..)));
+                compiler.context.chunk.replace_instruction(I::LFalseSkip { dst }, *instr_idx);
+                compiler.instruction(I::True { dst }, 0);
+                Ok(dst)
+            }
         }
-    }
-
-    const fn is_tmp(&self) -> bool {
-        !matches!(self.kind, ExprKind::Local(..))
     }
 
     fn free_reg<T: Iterator<Item = u8> + Clone>(&self, compiler: &mut Compiler<'_, T>) {
