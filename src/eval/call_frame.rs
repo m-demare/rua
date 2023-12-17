@@ -40,8 +40,8 @@ impl CallFrame {
         self.ip += 1;
     }
 
-    pub fn rel_jmp(&mut self, offset: u16) {
-        self.ip += offset as usize;
+    pub fn rel_jmp(&mut self, offset: i16) {
+        self.ip = (self.ip as isize + offset as isize) as usize;
     }
 
     pub fn rel_loop(&mut self, offset: u16) {

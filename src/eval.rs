@@ -172,6 +172,26 @@ impl Vm {
                     self.skip_if(args, |a, b| Ok(a.as_number()? >= b.as_number()?), &mut frame),
                     &frame,
                 )?,
+                I::Test { src } => {
+                    let val = self.stack_at(src.into());
+                    if val.truthy() {
+                        frame.skip_instr()
+                    }
+                }
+                I::TestSet { dst, src } => {
+                    let val = self.stack_at(src.into());
+                    if val.truthy() {
+                        frame.skip_instr()
+                    }
+                    self.set_stack_at(dst.into(), val);
+                }
+                I::UntestSet { dst, src } => {
+                    let val = self.stack_at(src.into());
+                    if !val.truthy() {
+                        frame.skip_instr()
+                    }
+                    self.set_stack_at(dst.into(), val);
+                }
                 I::SetGlobal { dst, src } => {
                     let val = self.stack_at(src.into());
                     let key = frame.read_string(dst);
@@ -186,26 +206,7 @@ impl Vm {
                     let val = self.stack_at(frame.stack_start() + src as usize);
                     self.set_stack_at(dst.into(), val);
                 }
-                I::JmpIfFalsePop(offset) => {
-                    let val = self.pop();
-                    if !val.truthy() {
-                        frame.rel_jmp(offset - 1);
-                    }
-                }
-                I::JmpIfFalse(offset) => {
-                    let val = self.peek(0);
-                    if !val.truthy() {
-                        frame.rel_jmp(offset - 1);
-                    }
-                }
-                I::JmpIfTrue(offset) => {
-                    let val = self.peek(0);
-                    if val.truthy() {
-                        frame.rel_jmp(offset - 1);
-                    }
-                }
                 I::Jmp(offset) => frame.rel_jmp(offset - 1),
-                I::Loop(offset) => frame.rel_loop(offset + 1),
                 I::NewTable(size) => {
                     let table = self.new_table(size);
                     self.push(table);

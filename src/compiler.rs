@@ -181,13 +181,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk().add_string(dst, val, line)
     }
 
+    const MAX_TMPS: u8 = 250;
     fn tmp(&mut self) -> Result<u8, ParseError> {
-        if self.rh == u8::MAX {
-            return Err(ParseError::TooManyLocals); // TODO new error
-        }
         let dst = (self.rh as u16 + self.context.locals.len() as u16)
             .try_into()
             .map_err(|_| ParseError::TooManyLocals)?;
+        if dst >= Self::MAX_TMPS {
+            return Err(ParseError::TooManyLocals); // TODO new error
+        }
         self.rh += 1;
         Ok(dst)
     }
@@ -239,7 +240,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             TT::MINUS => self.instruction(I::Neg(UnArgs { dst, src }), line),
             _ => unreachable!("Invalid unary"),
         };
-        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx, reloc: true }))
     }
 
     fn prefix_exp(&mut self) -> Result<ExprDesc, ParseError> {
@@ -304,7 +305,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let dst = self.tmp()?;
         let instr_idx = self.instruction(i(BinArgs { dst, lhs, rhs }), line);
 
-        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx, reloc: true }))
+    }
+
+    fn cond_jmp(&mut self, i: Instruction, line: usize) -> usize {
+        self.instruction(i, line);
+        self.instruction(I::Jmp(0), line)
     }
 
     fn comparison<F: FnOnce(JmpArgs) -> Instruction>(
@@ -319,9 +325,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let rhs = rhs_desc.into_reg(self, None)?;
         self.free2reg(lhs, rhs);
 
-        self.instruction(i(JmpArgs { lhs, rhs }), line);
-
-        let instr_idx = self.instruction(I::Jmp(0), line);
+        let instr_idx = self.cond_jmp(i(JmpArgs { lhs, rhs }), line);
         return Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }));
     }
 
@@ -401,19 +405,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     lhs_desc = self.binary(lhs_desc, I::Index, line, new_precedence)?;
                     consume!(self; (TT::RBRACK));
                 }
-                Some(Token { ttype: TT::AND, line, .. }) => {
-                    if precedence < Precedence::And {
-                        lhs_desc = self.and(*line)?;
-                    } else {
-                        break Ok(lhs_desc);
-                    }
+                Some(Token { ttype: t @ TT::AND, line, .. }) => {
+                    let (line, _new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.and(lhs_desc, line)?;
                 }
-                Some(Token { ttype: TT::OR, line, .. }) => {
-                    if precedence < Precedence::Or {
-                        lhs_desc = self.or(*line)?;
-                    } else {
-                        break Ok(lhs_desc);
-                    }
+                Some(Token { ttype: t @ TT::OR, line, .. }) => {
+                    let (line, _new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.or(lhs_desc, line)?;
                 }
                 Some(Token { ttype: TT::LPAREN | TT::STRING(_) | TT::LBRACE, line, .. }) => {
                     if precedence < Precedence::Call {
@@ -433,7 +431,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                         self.free2reg(lhs, rhs);
                         let dst = self.tmp()?;
                         let instr_idx = self.instruction(I::Index(BinArgs { dst, lhs, rhs }), line);
-                        lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
+                        lhs_desc =
+                            ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx, reloc: true });
                     } else {
                         break Ok(lhs_desc);
                     }
@@ -645,7 +644,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.free_n_reg(cant_args);
         debug_assert_eq!(self.rh, rh + 1);
         let instr_idx = self.instruction(I::Call { base, nargs: cant_args }, line);
-        Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx }))
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx, reloc: false }))
     }
 
     fn arg_list(&mut self) -> Result<u8, ParseError> {
@@ -671,27 +670,25 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn if_st(&mut self, line: usize) -> Result<(), ParseError> {
         debug_peek_token!(self, TT::IF);
         self.next_token();
-        let cond = self.expression(Precedence::Lowest)?;
+        let mut cond = self.expression(Precedence::Lowest)?;
+        let jmp_idx = cond.skip_if_false(self, line, false)?;
+        cond.free_reg(self);
         consume!(self; (TT::THEN));
         self.scoped_block()?;
 
         match self.next_token() {
             Some(Token { ttype: TT::END, .. }) => {
-                if let ExprKind::Jmp { instr_idx } = cond.kind {
-                    self.patch_jmp(instr_idx, line)?;
-                } else {
-                    todo!("Jmps without comparisons")
+                if let Some(jmp_idx) = jmp_idx {
+                    self.patch_jmp_here(jmp_idx, line)?;
                 }
             }
             Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
                 let else_jmp = self.jmp(0, line);
-                if let ExprKind::Jmp { instr_idx } = cond.kind {
-                    self.patch_jmp(instr_idx, line)?;
-                } else {
-                    todo!("Jmps without comparisons")
+                if let Some(jmp_idx) = jmp_idx {
+                    self.patch_jmp_here(jmp_idx, line)?;
                 }
                 self.scoped_block()?;
-                self.patch_jmp(else_jmp, line_else)?;
+                self.patch_jmp_here(else_jmp, line_else)?;
                 consume!(self; (TT::END));
             }
             Some(Token { ttype: TT::ELSEIF, .. }) => todo!(),
@@ -712,11 +709,11 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.next_token();
         let loop_start = self.current_chunk().code().len();
         self.expression(Precedence::Lowest)?;
-        let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
+        // let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
         self.do_block(true)?;
 
-        self.loop_to(loop_start, line)?;
-        self.patch_jmp(exit_jmp, line)?;
+        // self.loop_to(loop_start, line)?;
+        // self.patch_jmp_here(exit_jmp, line)?;
 
         Ok(())
     }
@@ -779,51 +776,87 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn jmp(&mut self, to: u16, line: usize) -> usize {
+    fn jmp(&mut self, to: i16, line: usize) -> usize {
         self.instruction(I::Jmp(to), line)
     }
 
-    fn loop_to(&mut self, target: usize, line: usize) -> Result<usize, ParseError> {
-        let offset = Chunk::offset(self.current_chunk().code().len(), target)
-            .or(Err(ParseError::JmpTooFar(line)))?;
-        Ok(self.instruction(I::Loop(offset), line))
+    fn patch_jmp_here(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
+        let to = self.current_chunk().code().len() - 1;
+        self.patch_jmp(jmp, to, line)
     }
 
-    fn jmp_if_false_pop(&mut self, to: u16, line: usize) -> usize {
-        self.instruction(I::JmpIfFalsePop(to), line)
+    fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
+        self.current_chunk().patch_jmp(jmp, to, line)
     }
 
-    fn jmp_if_false(&mut self, to: u16, line: usize) -> usize {
-        self.instruction(I::JmpIfFalse(to), line)
+    fn negate_cond(&mut self, instr_idx: usize) {
+        self.current_chunk().negate_cond(instr_idx)
     }
 
-    fn jmp_if_true(&mut self, to: u16, line: usize) -> usize {
-        self.instruction(I::JmpIfTrue(to), line)
+    fn get_jmp_dst(&mut self, jmp_idx: usize) -> Option<usize> {
+        let offset = match self.current_chunk().code()[jmp_idx] {
+            Instruction::Jmp(offset) => offset,
+            i => unreachable!("non Jmp instruction in jmp list {i:?}"),
+        };
+        if offset == 0 {
+            None
+        } else {
+            Some(jmp_idx + offset as usize + 1)
+        }
     }
 
-    fn patch_jmp(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
-        self.current_chunk().patch_jmp(jmp, line)
+    fn concat_jmp_lists(
+        &mut self,
+        l1: &mut Option<usize>,
+        l2: Option<usize>,
+    ) -> Result<(), ParseError> {
+        match (&l1, l2) {
+            (_, None) => {}
+            (None, Some(_)) => {
+                *l1 = l2;
+            }
+            (Some(l1), Some(l2)) => {
+                let mut list = *l1;
+                while let Some(dst) = self.get_jmp_dst(list) {
+                    list = dst;
+                }
+                self.patch_jmp(l2, list, 0)?;
+            }
+        };
+        Ok(())
     }
 
-    fn and(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
-        let jmp = self.jmp_if_false(0, line);
-        self.instruction(I::Pop, line);
+    fn and(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
+        let jmp = lhs_desc.skip_if_false(self, line, true)?;
 
-        self.expression(Precedence::And)?;
+        let tmp = self.tmp()?;
+        let rhs_desc = self.expression(Precedence::And)?;
 
-        self.patch_jmp(jmp, line)?;
-        Ok(todo!())
+        self.concat_jmp_lists(&mut lhs_desc.f_jmp, rhs_desc.f_jmp)?;
+        if let Some(jmp) = jmp {
+            self.patch_jmp_here(jmp, line)?;
+        }
+        lhs_desc.into_reg(self, Some(tmp))?;
+        rhs_desc.into_reg(self, Some(tmp))?;
+        rhs_desc.free_reg(self);
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: tmp, instr_idx: usize::MAX, reloc: false }))
     }
 
-    fn or(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
-        let jmp = self.jmp_if_true(0, line);
-        self.instruction(I::Pop, line);
+    fn or(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
+        let jmp = lhs_desc.skip_if_true(self, line)?;
 
-        self.expression(Precedence::Or)?;
+        let tmp = self.tmp()?;
 
-        self.patch_jmp(jmp, line)?;
+        let rhs_desc = self.expression(Precedence::Or)?;
 
-        Ok(todo!())
+        self.concat_jmp_lists(&mut lhs_desc.t_jmp, rhs_desc.t_jmp)?;
+        if let Some(jmp) = jmp {
+            self.patch_jmp_here(jmp, line)?;
+        }
+        lhs_desc.into_reg(self, Some(tmp))?;
+        rhs_desc.into_reg(self, Some(tmp))?;
+        rhs_desc.free_reg(self);
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: tmp, instr_idx: usize::MAX, reloc: false }))
     }
 
     // fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
@@ -1088,7 +1121,7 @@ impl CompilerCtxt {
 enum ExprKind {
     Local(u8),
     Global(StringHandle),
-    Tmp { reg: u8, instr_idx: usize },
+    Tmp { reg: u8, instr_idx: usize, reloc: bool },
     Number(f64),
     String(RuaString),
     Function(FnHandle),
@@ -1101,11 +1134,13 @@ enum ExprKind {
 #[derive(Debug)]
 struct ExprDesc {
     kind: ExprKind,
+    t_jmp: Option<usize>,
+    f_jmp: Option<usize>,
 }
 
 impl ExprDesc {
     const fn new(kind: ExprKind) -> Self {
-        Self { kind }
+        Self { kind, t_jmp: None, f_jmp: None }
     }
 
     fn into_reg<T: Iterator<Item = u8> + Clone>(
@@ -1121,8 +1156,12 @@ impl ExprDesc {
                 Ok(dst)
             }
             (ExprKind::Local(r), None) => Ok(*r),
-            (ExprKind::Tmp { reg, instr_idx }, Some(dst)) => {
-                compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0); // TODO change instr_idx's dst if possible
+            (ExprKind::Tmp { reg, instr_idx, reloc }, Some(dst)) => {
+                if *reloc {
+                    compiler.current_chunk().chg_dst_of(*instr_idx, dst);
+                } else {
+                    compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0);
+                }
                 Ok(dst)
             }
             (ExprKind::Tmp { reg, .. }, None) => Ok(*reg),
@@ -1172,5 +1211,56 @@ impl ExprDesc {
             ExprKind::Tmp { reg, .. } => compiler.free_reg(*reg),
             _ => {}
         }
+    }
+
+    fn skip_if_false<T: Iterator<Item = u8> + Clone>(
+        &mut self,
+        compiler: &mut Compiler<'_, T>,
+        line: usize,
+        store_val: bool,
+    ) -> Result<Option<usize>, ParseError> {
+        let jmp = match &self.kind {
+            ExprKind::Jmp { instr_idx } => Some(*instr_idx),
+            ExprKind::Number(_) | ExprKind::String(_) | ExprKind::Function(_) | ExprKind::True => {
+                None
+            }
+            _ => {
+                let src = self.into_reg(compiler, None)?;
+                compiler.free_reg(src);
+                if store_val {
+                    let jmp_idx = compiler.cond_jmp(I::TestSet { dst: u8::MAX, src }, line);
+                    self.kind = ExprKind::Tmp { reg: u8::MAX, instr_idx: jmp_idx - 1, reloc: true };
+                    Some(jmp_idx)
+                } else {
+                    let jmp_idx = compiler.cond_jmp(I::Test { src }, line);
+                    Some(jmp_idx)
+                }
+            }
+        };
+        compiler.concat_jmp_lists(&mut self.f_jmp, jmp)?;
+        Ok(jmp)
+    }
+
+    fn skip_if_true<T: Iterator<Item = u8> + Clone>(
+        &mut self,
+        compiler: &mut Compiler<'_, T>,
+        line: usize,
+    ) -> Result<Option<usize>, ParseError> {
+        let jmp = match &self.kind {
+            ExprKind::Jmp { instr_idx } => {
+                compiler.negate_cond(*instr_idx - 1);
+                Some(*instr_idx)
+            }
+            ExprKind::False | ExprKind::Nil => None,
+            _ => {
+                let src = self.into_reg(compiler, None)?;
+                compiler.free_reg(src);
+                let jmp_idx = compiler.cond_jmp(I::UntestSet { dst: u8::MAX, src }, line);
+                self.kind = ExprKind::Tmp { reg: u8::MAX, instr_idx: jmp_idx - 1, reloc: true };
+                Some(jmp_idx)
+            }
+        };
+        compiler.concat_jmp_lists(&mut self.t_jmp, jmp)?;
+        Ok(jmp)
     }
 }

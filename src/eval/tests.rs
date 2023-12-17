@@ -67,8 +67,7 @@ test_interpret!(
 test_interpret!(
     local_vars,
     "
-    local foo = 5 + 8
-    local bar = 3
+    local foo, bar = 5 + 8, 3
     local foo = foo + bar
     return foo
     ",
@@ -122,10 +121,39 @@ test_interpret!(if_lt_false, "a = 4; if 5<a then return 1 end return true", |_| 
 test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
 test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));
 
-// test_interpret!(and, "return true and 5", |_| Ok(5.0.into()));
-// test_interpret!(and_shortciruit, "return false and nil + nil", |_| Ok(false.into()));
-// test_interpret!(or, "return false or 'test'", |vm| Ok((*b"test").into_rua(vm)));
-// test_interpret!(or_shortciruit, "return 2 or nil + nil", |_| Ok(2.0.into()));
+test_interpret!(if_local_true, "local a = 2; if a then return 1 else return 2 end", |_| Ok(
+    1.0.into()
+));
+test_interpret!(if_local_false, "local a = false; if a then return 1 else return 2 end", |_| Ok(
+    2.0.into()
+));
+
+test_interpret!(and, "local a = true; return a and 5", |_| Ok(5.0.into()));
+test_interpret!(and2, "local a = 3; return a>2 and 5", |_| Ok(5.0.into()));
+test_interpret!(and_shortciruit, "local a = false; return a and nil + nil", |_| Ok(false.into()));
+test_interpret!(and_shortciruit2, "return false and nil + nil", |_| Ok(false.into()));
+test_interpret!(or, "return false or 'test'", |vm| Ok((*b"test").into_rua(vm)));
+test_interpret!(or_shortciruit, "return 2 or nil + nil", |_| Ok(2.0.into()));
+
+test_interpret!(
+    many_and,
+    "
+    local t, f = true, false;
+    return t and (2 and f)",
+    |_| Ok(false.into())
+);
+
+test_interpret!(
+    many_and2,
+    "
+    local t, f = true, false;
+    return (t and t) and f",
+    |_| Ok(false.into())
+);
+
+// test_interpret!(many_and3, "
+//     t = true; f= false;
+//     return (f and t) and t", |_| Ok(false.into()));
 
 // test_interpret!(
 //     while_statement,

@@ -39,6 +39,9 @@ pub enum Instruction {
     Gt(JmpArgs),
     Le(JmpArgs),
     Ge(JmpArgs),
+    Test { src: u8 },
+    TestSet { dst: u8, src: u8 },
+    UntestSet { dst: u8, src: u8 },
 
     GetGlobal { dst: u8, src: StringHandle },
     SetGlobal { dst: StringHandle, src: u8 },
@@ -48,11 +51,7 @@ pub enum Instruction {
 
     Mv(UnArgs),
 
-    JmpIfFalse(u16),
-    JmpIfTrue(u16),
-    Jmp(u16),
-    Loop(u16),
-    JmpIfFalsePop(u16),
+    Jmp(i16), // TODO i24?
 
     NewTable(u16),
     InsertKeyVal,
@@ -233,29 +232,41 @@ impl Chunk {
         }
     }
 
-    pub fn patch_jmp(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {
+    pub fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
         use Instruction as I;
-        debug_assert!(matches!(
-            self.code[jmp],
-            I::JmpIfTrue(_) | I::JmpIfFalsePop(_) | I::JmpIfFalse(_) | I::Jmp(_)
-        ));
 
-        let offset = Self::offset(self.code.len(), jmp).or(Err(ParseError::JmpTooFar(line)))?;
+        let offset = Self::offset(to, jmp).or(Err(ParseError::JmpTooFar(line)))?;
 
         match self.code.get(jmp) {
-            Some(I::JmpIfFalsePop(_)) => self.code[jmp] = I::JmpIfFalsePop(offset),
-            Some(I::JmpIfFalse(_)) => self.code[jmp] = I::JmpIfFalse(offset),
-            Some(I::JmpIfTrue(_)) => self.code[jmp] = I::JmpIfTrue(offset),
             Some(I::Jmp(_)) => self.code[jmp] = I::Jmp(offset),
-            _ => unreachable!("Tried to patch a non Jmp instruction"),
+            i => unreachable!("Tried to patch a non Jmp instruction {i:?}"),
         }
 
         Ok(())
     }
 
-    pub fn offset(from: usize, to: usize) -> Result<u16, TryFromIntError> {
-        debug_assert!(from >= to);
-        let offset = from - to;
+    pub fn negate_cond(&mut self, instr_idx: usize) {
+        use Instruction as I;
+        let new_instr = match self.code.get(instr_idx) {
+            Some(I::Eq(JmpArgs { lhs, rhs })) => I::Neq(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Neq(JmpArgs { lhs, rhs })) => I::Eq(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Lt(JmpArgs { lhs, rhs })) => I::Le(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Gt(JmpArgs { lhs, rhs })) => I::Ge(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Le(JmpArgs { lhs, rhs })) => I::Gt(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Ge(JmpArgs { lhs, rhs })) => I::Lt(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::TestSet { dst, src }) => I::UntestSet { dst: *dst, src: *src },
+            Some(I::UntestSet { dst, src }) => I::TestSet { dst: *dst, src: *src },
+            i => unreachable!("Tried to negate a non conditional instruction {i:?}"),
+        };
+        self.code[instr_idx] = new_instr;
+    }
+
+    pub fn chg_dst_of(&mut self, instr_idx: usize, dst: u8) {
+        self.code[instr_idx].chg_dst(dst)
+    }
+
+    pub fn offset(from: usize, to: usize) -> Result<i16, TryFromIntError> {
+        let offset = from as isize - to as isize + 1;
         offset.try_into()
     }
 
@@ -275,6 +286,38 @@ impl Chunk {
 
     pub fn nfunctions(&self) -> usize {
         self.functions.len()
+    }
+}
+
+impl Instruction {
+    fn chg_dst(&mut self, new_dst: u8) {
+        match self {
+            Instruction::Number { dst, .. } => *dst = new_dst,
+            Instruction::String { dst, .. } => *dst = new_dst,
+            Instruction::True { dst, .. } => *dst = new_dst,
+            Instruction::False { dst, .. } => *dst = new_dst,
+            Instruction::Nil { dst, .. } => *dst = new_dst,
+            Instruction::LFalseSkip { dst, .. } => *dst = new_dst,
+            Instruction::Neg(i) => i.dst = new_dst,
+            Instruction::Not(i) => i.dst = new_dst,
+            Instruction::Len(i) => i.dst = new_dst,
+            Instruction::Add(i) => i.dst = new_dst,
+            Instruction::Sub(i) => i.dst = new_dst,
+            Instruction::Mul(i) => i.dst = new_dst,
+            Instruction::Div(i) => i.dst = new_dst,
+            Instruction::Mod(i) => i.dst = new_dst,
+            Instruction::Pow(i) => i.dst = new_dst,
+            Instruction::StrConcat(i) => i.dst = new_dst,
+            Instruction::TestSet { dst, .. } => *dst = new_dst,
+            Instruction::UntestSet { dst, .. } => *dst = new_dst,
+            Instruction::GetGlobal { dst, .. } => *dst = new_dst,
+            Instruction::Mv(i) => i.dst = new_dst,
+            Instruction::NewTable(_) => todo!(),
+            Instruction::Index(i) => i.dst = new_dst,
+            Instruction::Closure(_) => todo!(),
+            Instruction::GetUpvalue(_) => todo!(),
+            i => unreachable!("Cannot change dst of {i:?}"),
+        }
     }
 }
 
