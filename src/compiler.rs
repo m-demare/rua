@@ -684,13 +684,17 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
             }
             Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
-                todo!();
-                // let else_jmp = self.jmp(0, line);
-                // self.patch_jmp(if_jmp, line)?;
-                // self.scoped_block()?;
-                // self.patch_jmp(else_jmp, line_else)?;
-                // consume!(self; (TT::END));
+                let else_jmp = self.jmp(0, line);
+                if let ExprKind::Jmp { instr_idx } = cond.kind {
+                    self.patch_jmp(instr_idx, line)?;
+                } else {
+                    todo!("Jmps without comparisons")
+                }
+                self.scoped_block()?;
+                self.patch_jmp(else_jmp, line_else)?;
+                consume!(self; (TT::END));
             }
+            Some(Token { ttype: TT::ELSEIF, .. }) => todo!(),
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
                     t.into(),

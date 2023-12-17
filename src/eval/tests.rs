@@ -119,8 +119,8 @@ test_interpret!(if_gt_true, "a = 4; if 5>a then return 1 end return true", |_| O
 test_interpret!(if_le_true, "a = 4; if a<=5 then return 1 end", |_| Ok(1.0.into()));
 test_interpret!(if_lt_false, "a = 4; if 5<a then return 1 end return true", |_| Ok(true.into()));
 
-// test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
-// test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));
+test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
+test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));
 
 // test_interpret!(and, "return true and 5", |_| Ok(5.0.into()));
 // test_interpret!(and_shortciruit, "return false and nil + nil", |_| Ok(false.into()));
