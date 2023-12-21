@@ -178,6 +178,12 @@ impl Vm {
                         frame.skip_instr()
                     }
                 }
+                I::Untest { src } => {
+                    let val = self.stack_at(src.into());
+                    if !val.truthy() {
+                        frame.skip_instr()
+                    }
+                }
                 I::TestSet { dst, src } => {
                     let val = self.stack_at(src.into());
                     if val.truthy() {

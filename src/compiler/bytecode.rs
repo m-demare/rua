@@ -40,6 +40,7 @@ pub enum Instruction {
     Le(JmpArgs),
     Ge(JmpArgs),
     Test { src: u8 },
+    Untest { src: u8 },
     TestSet { dst: u8, src: u8 },
     UntestSet { dst: u8, src: u8 },
 
@@ -250,8 +251,8 @@ impl Chunk {
         let new_instr = match self.code.get(instr_idx) {
             Some(I::Eq(JmpArgs { lhs, rhs })) => I::Neq(JmpArgs { lhs: *lhs, rhs: *rhs }),
             Some(I::Neq(JmpArgs { lhs, rhs })) => I::Eq(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Lt(JmpArgs { lhs, rhs })) => I::Le(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Gt(JmpArgs { lhs, rhs })) => I::Ge(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Lt(JmpArgs { lhs, rhs })) => I::Ge(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::Gt(JmpArgs { lhs, rhs })) => I::Le(JmpArgs { lhs: *lhs, rhs: *rhs }),
             Some(I::Le(JmpArgs { lhs, rhs })) => I::Gt(JmpArgs { lhs: *lhs, rhs: *rhs }),
             Some(I::Ge(JmpArgs { lhs, rhs })) => I::Lt(JmpArgs { lhs: *lhs, rhs: *rhs }),
             Some(I::TestSet { dst, src }) => I::UntestSet { dst: *dst, src: *src },
@@ -266,7 +267,7 @@ impl Chunk {
     }
 
     pub fn offset(from: usize, to: usize) -> Result<i16, TryFromIntError> {
-        let offset = from as isize - to as isize + 1;
+        let offset = from as isize - to as isize;
         offset.try_into()
     }
 
@@ -286,6 +287,13 @@ impl Chunk {
 
     pub fn nfunctions(&self) -> usize {
         self.functions.len()
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn validate_srcs_and_dsts(&self) {
+        if let Some(invalid) = self.code.iter().position(|i| !i.has_valid_regs()) {
+            panic!("Found instruction with invalid regs (idx {invalid}). Code: {:?}", self.code)
+        }
     }
 }
 
@@ -308,8 +316,20 @@ impl Instruction {
             Instruction::Mod(i) => i.dst = new_dst,
             Instruction::Pow(i) => i.dst = new_dst,
             Instruction::StrConcat(i) => i.dst = new_dst,
-            Instruction::TestSet { dst, .. } => *dst = new_dst,
-            Instruction::UntestSet { dst, .. } => *dst = new_dst,
+            Instruction::TestSet { dst, src } => {
+                if new_dst == *src {
+                    *self = Instruction::Test { src: *src }
+                } else {
+                    *dst = new_dst
+                }
+            }
+            Instruction::UntestSet { dst, src } => {
+                if new_dst == *src {
+                    *self = Instruction::Untest { src: *src }
+                } else {
+                    *dst = new_dst
+                }
+            }
             Instruction::GetGlobal { dst, .. } => *dst = new_dst,
             Instruction::Mv(i) => i.dst = new_dst,
             Instruction::NewTable(_) => todo!(),
@@ -317,6 +337,68 @@ impl Instruction {
             Instruction::Closure(_) => todo!(),
             Instruction::GetUpvalue(_) => todo!(),
             i => unreachable!("Cannot change dst of {i:?}"),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn has_valid_regs(&self) -> bool {
+        fn validate(reg: u8) -> bool {
+            reg < 255
+        }
+        fn validate_bin(args: BinArgs) -> bool {
+            validate(args.dst) && validate(args.lhs) && validate(args.rhs)
+        }
+        fn validate_un(args: UnArgs) -> bool {
+            validate(args.dst) && validate(args.src)
+        }
+        fn validate_jmp(args: JmpArgs) -> bool {
+            validate(args.lhs) && validate(args.rhs)
+        }
+        match self {
+            Instruction::Number { dst, .. } => validate(*dst),
+            Instruction::String { dst, .. } => validate(*dst),
+            Instruction::True { dst, .. } => validate(*dst),
+            Instruction::False { dst, .. } => validate(*dst),
+            Instruction::Nil { dst, .. } => validate(*dst),
+            Instruction::LFalseSkip { dst, .. } => validate(*dst),
+            Instruction::Neg(i) => validate_un(*i),
+            Instruction::Not(i) => validate_un(*i),
+            Instruction::Len(i) => validate_un(*i),
+            Instruction::Add(i) => validate_bin(*i),
+            Instruction::Sub(i) => validate_bin(*i),
+            Instruction::Mul(i) => validate_bin(*i),
+            Instruction::Div(i) => validate_bin(*i),
+            Instruction::Mod(i) => validate_bin(*i),
+            Instruction::Pow(i) => validate_bin(*i),
+            Instruction::StrConcat(i) => validate_bin(*i),
+            Instruction::TestSet { dst, src } => validate(*dst) && validate(*src),
+            Instruction::UntestSet { dst, src } => validate(*dst) && validate(*src),
+            Instruction::GetGlobal { dst, .. } => validate(*dst),
+            Instruction::SetGlobal { src, .. } => validate(*src),
+            Instruction::Mv(i) => validate_un(*i),
+            Instruction::NewTable(_) => todo!(),
+            Instruction::Index(i) => validate_bin(*i),
+            Instruction::Closure(_) => todo!(),
+            Instruction::GetUpvalue(_) => todo!(),
+            Instruction::Return { src } => validate(*src),
+            Instruction::ReturnNil => true,
+            Instruction::Eq(i) => validate_jmp(*i),
+            Instruction::Neq(i) => validate_jmp(*i),
+            Instruction::Lt(i) => validate_jmp(*i),
+            Instruction::Gt(i) => validate_jmp(*i),
+            Instruction::Le(i) => validate_jmp(*i),
+            Instruction::Ge(i) => validate_jmp(*i),
+            Instruction::Test { src } => validate(*src),
+            Instruction::Untest { src } => validate(*src),
+            Instruction::Call { base, .. } => validate(*base),
+            Instruction::Pop => todo!(),
+            Instruction::Jmp(_) => true,
+            Instruction::InsertKeyVal => todo!(),
+            Instruction::InsertValKey => todo!(),
+            Instruction::Upvalue(_) => todo!(),
+            Instruction::CloseUpvalue => todo!(),
+            Instruction::SetUpvalue(_) => todo!(),
+            Instruction::Multiassign(_) => todo!(),
         }
     }
 }

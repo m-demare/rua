@@ -130,8 +130,17 @@ test_interpret!(if_local_false, "local a = false; if a then return 1 else return
 
 test_interpret!(and, "local a = true; return a and 5", |_| Ok(5.0.into()));
 test_interpret!(and2, "local a = 3; return a>2 and 5", |_| Ok(5.0.into()));
+test_interpret!(
+    and3,
+    "
+    a = 1; b = 2
+    return a + b and 5 + b",
+    |_| Ok(7.0.into())
+);
+
 test_interpret!(and_shortciruit, "local a = false; return a and nil + nil", |_| Ok(false.into()));
 test_interpret!(and_shortciruit2, "return false and nil + nil", |_| Ok(false.into()));
+
 test_interpret!(or, "return false or 'test'", |vm| Ok((*b"test").into_rua(vm)));
 test_interpret!(or_shortciruit, "return 2 or nil + nil", |_| Ok(2.0.into()));
 
@@ -151,9 +160,99 @@ test_interpret!(
     |_| Ok(false.into())
 );
 
-// test_interpret!(many_and3, "
-//     t = true; f= false;
-//     return (f and t) and t", |_| Ok(false.into()));
+test_interpret!(
+    many_and3,
+    "
+    t = true; f= false;
+    return (f and t) and t",
+    |_| Ok(false.into())
+);
+
+test_interpret!(
+    many_or,
+    "
+    t = true; f= false;
+    return (f or t) or t",
+    |_| Ok(true.into())
+);
+
+test_interpret!(
+    many_or2,
+    "
+    t = true; f= false;
+    return (f or f) or t",
+    |_| Ok(true.into())
+);
+
+test_interpret!(
+    many_or3,
+    "
+    t = true; f= false;
+    return (f or t) or f",
+    |_| Ok(true.into())
+);
+
+test_interpret!(
+    many_or4,
+    "
+    t = true; f= false;
+    return f or (t or f)",
+    |_| Ok(true.into())
+);
+
+test_interpret!(
+    if_and,
+    "
+    t = true; f= false;
+    if t and t then return 1
+    else return 2 end",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
+    if_and2,
+    "
+    a = 4; b = 5
+    if a>2 and b<=5 then return 1
+    else return 2 end",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
+    if_and3,
+    "
+    a = 4; b = 5
+    if a>4 and b<=5 then return 1
+    else return 2 end",
+    |_| Ok(2.0.into())
+);
+
+test_interpret!(
+    if_or,
+    "
+    t = true; f= false;
+    if f or t then return 1
+    else return 2 end",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
+    if_or2,
+    "
+    a = 4; b = 5
+    if a>4 or b>=5 then return 1
+    else return 2 end",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
+    if_or3,
+    "
+    a = 4; b = 5
+    if a>4 or b>=6 then return 1
+    else return 2 end",
+    |_| Ok(2.0.into())
+);
 
 // test_interpret!(
 //     while_statement,
