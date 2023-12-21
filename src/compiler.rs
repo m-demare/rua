@@ -592,7 +592,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             _ => {
                 match self.current_chunk().code().last().expect("Just parsed an expression") {
                     // TODO not all expressions output instructions now
-                    I::Call { .. } => {}
+                    I::Call { .. } => {
+                        dst.free_reg(self);
+                    }
                     _ => return Err(ParseError::UnexpectedExpression(line)),
                 }
             }
@@ -717,12 +719,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::WHILE);
         self.next_token();
         let loop_start = self.pc();
-        self.expression(Precedence::Lowest)?;
-        // let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
+        let mut cond = self.expression(Precedence::Lowest)?;
+        let exit_jmp = cond.skip_if_false(self, line, false)?;
         self.do_block(true)?;
 
-        // self.loop_to(loop_start, line)?;
-        // self.patch_jmp_here(exit_jmp, line)?;
+        self.jmp_to(loop_start, line)?;
+        if let Some(exit_jmp) = exit_jmp {
+            self.patch_jmp_here(exit_jmp, line)?;
+        }
 
         Ok(())
     }
@@ -785,8 +789,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn jmp(&mut self, to: i16, line: usize) -> usize {
-        self.instruction(I::Jmp(to), line)
+    fn jmp(&mut self, offset: i16, line: usize) -> usize {
+        self.instruction(I::Jmp(offset), line)
+    }
+
+    fn jmp_to(&mut self, to: usize, line: usize) -> Result<usize, ParseError> {
+        let pc = self.pc();
+        let offset = Chunk::offset(to, pc).or(Err(ParseError::JmpTooFar(line)))?;
+        Ok(self.instruction(I::Jmp(offset), line))
     }
 
     fn patch_jmp_here(&mut self, jmp: usize, line: usize) -> Result<(), ParseError> {

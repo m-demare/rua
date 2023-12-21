@@ -254,15 +254,16 @@ test_interpret!(
     |_| Ok(2.0.into())
 );
 
-// test_interpret!(
-//     while_statement,
-//     "local i = 0
-//     while i < 42 do
-//         i = i + 1
-//     end
-//     return i",
-//     |_| Ok(42.0.into())
-// );
+test_interpret!(
+    while_statement,
+    "local i = 0
+    while i < 42 do
+        i = i + 1
+    end
+    print(i)
+    return i",
+    |_| Ok(42.0.into())
+);
 
 // test_interpret!(
 //     function,
