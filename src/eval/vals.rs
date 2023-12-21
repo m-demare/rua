@@ -69,8 +69,11 @@ impl RuaVal {
         }
     }
 
-    pub fn into_str(self) -> Result<Rc<[u8]>, EvalError> {
-        self.try_into()
+    pub fn as_str(&self) -> Result<Rc<[u8]>, EvalError> {
+        match &self.0 {
+            RuaValInner::String(s) => Ok(s.inner().clone()),
+            v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),
+        }
     }
 
     pub const fn truthy(&self) -> bool {

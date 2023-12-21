@@ -48,7 +48,6 @@ pub enum Instruction {
     SetGlobal { dst: StringHandle, src: u8 },
 
     Call { base: u8, nargs: u8 },
-    Pop,
 
     Mv(UnArgs),
 
@@ -391,7 +390,6 @@ impl Instruction {
             Instruction::Test { src } => validate(*src),
             Instruction::Untest { src } => validate(*src),
             Instruction::Call { base, .. } => validate(*base),
-            Instruction::Pop => todo!(),
             Instruction::Jmp(_) => true,
             Instruction::InsertKeyVal => todo!(),
             Instruction::InsertValKey => todo!(),

@@ -118,9 +118,6 @@ impl Vm {
                         return Ok(val);
                     }
                 }
-                I::Pop => {
-                    self.pop();
-                }
                 I::Number { dst, src } => {
                     let constant = frame.read_number(src);
                     self.set_stack_at(dst.into(), constant.into());
@@ -189,19 +186,19 @@ impl Vm {
                     if val.truthy() {
                         frame.skip_instr()
                     }
-                    self.set_stack_at(dst.into(), val);
+                    self.set_stack_at(dst.into(), val.clone());
                 }
                 I::UntestSet { dst, src } => {
                     let val = self.stack_at(src.into());
                     if !val.truthy() {
                         frame.skip_instr()
                     }
-                    self.set_stack_at(dst.into(), val);
+                    self.set_stack_at(dst.into(), val.clone());
                 }
                 I::SetGlobal { dst, src } => {
                     let val = self.stack_at(src.into());
                     let key = frame.read_string(dst);
-                    self.global.insert(key.into(), val);
+                    self.global.insert(key.into(), val.clone());
                 }
                 I::GetGlobal { dst, src } => {
                     let key = frame.read_string(src);
@@ -210,7 +207,7 @@ impl Vm {
                 I::Call { base, nargs } => self.call(base, nargs, &mut frame)?,
                 I::Mv(UnArgs { dst, src }) => {
                     let val = self.stack_at(frame.stack_start() + src as usize);
-                    self.set_stack_at(dst.into(), val);
+                    self.set_stack_at(dst.into(), val.clone());
                 }
                 I::Jmp(offset) => frame.rel_jmp(offset - 1),
                 I::NewTable(size) => {
@@ -266,7 +263,7 @@ impl Vm {
     }
 
     fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        let func = self.stack_at(base as usize);
+        let func = self.stack_at(base as usize).clone();
         match func.into_callable() {
             Ok(Left(closure)) => {
                 if closure.function().arity() < nargs {
@@ -314,7 +311,7 @@ impl Vm {
     ) -> Option<RuaVal> {
         self.close_upvalues(frame.stack_start());
         let retval = match ret_src {
-            Some(src) => self.stack_at(src.into()),
+            Some(src) => self.stack_at(src.into()).clone(),
             None => RuaVal::nil(),
         };
         self.stack.truncate(frame.stack_start());
@@ -392,7 +389,7 @@ impl Vm {
         frame.closure().set_upvalue(self, up, val);
     }
 
-    fn unary_op<F: Fn(RuaVal) -> RuaResultUntraced>(
+    fn unary_op<F: Fn(&RuaVal) -> RuaResultUntraced>(
         &mut self,
         args: UnArgs,
         f: F,
@@ -402,7 +399,7 @@ impl Vm {
         Ok(())
     }
 
-    fn binary_op<F: Fn(RuaVal, RuaVal) -> RuaResultUntraced>(
+    fn binary_op<F: Fn(&RuaVal, &RuaVal) -> RuaResultUntraced>(
         &mut self,
         args: BinArgs,
         f: F,
@@ -424,12 +421,12 @@ impl Vm {
     fn str_concat(&mut self, args: BinArgs) -> Result<(), EvalError> {
         let a = self.stack_at(args.lhs.into());
         let b = self.stack_at(args.rhs.into());
-        let res = [a.into_str()?, b.into_str()?].concat().into_rua(self);
+        let res = [a.as_str()?, b.as_str()?].concat().into_rua(self);
         self.set_stack_at(args.dst.into(), res);
         Ok(())
     }
 
-    fn skip_if<F: FnOnce(RuaVal, RuaVal) -> Result<bool, EvalError>>(
+    fn skip_if<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
         &self,
         args: JmpArgs,
         pred: F,
@@ -460,8 +457,8 @@ impl Vm {
         self.stack.truncate(self.stack.len() - n);
     }
 
-    fn stack_at(&self, idx: usize) -> RuaVal {
-        self.stack[idx].clone()
+    fn stack_at(&self, idx: usize) -> &RuaVal {
+        &self.stack[idx]
     }
 
     fn set_stack_at(&mut self, idx: usize, val: RuaVal) {
