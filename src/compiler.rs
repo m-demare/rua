@@ -34,7 +34,6 @@ pub struct Compiler<'vm, T: Iterator<Item = u8> + Clone> {
     peeked_token: Option<Token>,
     context: CompilerCtxt,
     context_stack: Vec<CompilerCtxt>,
-    rh: u8,
 }
 
 #[allow(unused_parens)]
@@ -42,13 +41,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn new(mut tokens: Tokenizer<'vm, T>) -> Self {
         let name = tokens.vm().new_string((*b"<main>").into());
         let peeked_token = tokens.next();
-        Self {
-            tokens,
-            context: CompilerCtxt::main(name),
-            context_stack: Vec::new(),
-            peeked_token,
-            rh: 0,
-        }
+        Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new(), peeked_token }
     }
 
     fn compile_fn(&mut self) -> Result<(Function, Upvalues), ParseError> {
@@ -61,7 +54,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
             let arity = fn_ctxt.arity;
             let name = fn_ctxt.name;
-            let func = Function::new(fn_ctxt.chunk, arity, name, fn_ctxt.upvalues.len());
+            let func = Function::new(
+                fn_ctxt.chunk,
+                arity,
+                name,
+                fn_ctxt.max_used_regs,
+                fn_ctxt.upvalues.len(),
+            );
             Ok((func, fn_ctxt.upvalues))
         } else {
             unreachable!("compile_fn must have a parent context")
@@ -78,7 +77,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         let arity = self.context.arity;
         let name = self.context.name;
-        let func = Function::new(self.context.chunk, arity, name, 0);
+        let func = Function::new(self.context.chunk, arity, name, self.context.max_used_regs, 0);
         Ok(func)
     }
 
@@ -107,7 +106,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn block(&mut self) -> Result<(), ParseError> {
         while let Some(token) = self.peek_token() {
-            debug_assert_eq!(self.rh, 0);
+            debug_assert_eq!(self.context.rh, 0);
             match token {
                 Token { ttype: TT::RETURN, line, .. } => {
                     let line = *line;
@@ -124,7 +123,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::FUNCTION, line, .. } => {
                     let line = *line;
                     self.next_token();
-                    // self.function_st(line, false)?;
+                    self.function_st(line, false)?;
                 }
                 Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. } => break,
                 Token { ttype: TT::IF, line, .. } => {
@@ -191,15 +190,26 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk_mut().add_string(dst, val, line)
     }
 
+    fn declare_local(&mut self, s: RuaString) -> Result<LocalHandle, ParseError> {
+        let local = self.context.locals.declare(s)?;
+        self.context.max_used_regs = self.context.max_used_regs.max(
+            (self.context.rh as u16 + self.context.locals.len() as u16)
+                .try_into()
+                .map_err(|_| ParseError::TooManyLocals)?,
+        );
+        Ok(local)
+    }
+
     const MAX_TMPS: u8 = 250;
     fn tmp(&mut self) -> Result<u8, ParseError> {
-        let dst = (self.rh as u16 + self.context.locals.len() as u16)
+        let dst = (self.context.rh as u16 + self.context.locals.len() as u16)
             .try_into()
             .map_err(|_| ParseError::TooManyLocals)?;
         if dst >= Self::MAX_TMPS {
             return Err(ParseError::TooManyLocals); // TODO new error
         }
-        self.rh += 1;
+        self.context.rh += 1;
+        self.context.max_used_regs = self.context.max_used_regs.max(dst + 1);
         Ok(dst)
     }
 
@@ -209,8 +219,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn free_reg(&mut self, r: u8) {
         if self.is_tmp(r) {
-            self.rh -= 1;
-            debug_assert_eq!(r, self.context.locals.len() + self.rh);
+            self.context.rh -= 1;
+            debug_assert_eq!(r, self.context.locals.len() + self.context.rh);
         }
     }
 
@@ -223,7 +233,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn free_n_reg(&mut self, n: u8) {
-        self.rh -= n;
+        self.context.rh -= n;
     }
 
     fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
@@ -232,11 +242,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn emit_closure(
         &mut self,
+        dst: u8,
         val: Function,
         upvalues: Upvalues,
         line: usize,
     ) -> Result<(), ParseError> {
-        self.current_chunk_mut().add_closure(val, upvalues, line)
+        self.current_chunk_mut().add_closure(dst, val, upvalues, line)
     }
 
     fn unary(&mut self, op: TT, line: usize) -> Result<ExprDesc, ParseError> {
@@ -487,7 +498,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.next_token();
 
         let mut locals = match self.next_token() {
-            // Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
+            Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => vec![id],
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
@@ -506,7 +517,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         if match_token!(self, TT::ASSIGN) {
             while {
                 let dst = if let Some(local) = locals.next() {
-                    let handle = self.context.locals.declare(local)?;
+                    let handle = self.declare_local(local)?;
                     handles.push(handle);
                     Some(handle.into())
                 } else {
@@ -517,12 +528,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     val.to_reg(self, dst)?;
                     val.free_reg(self);
                 }
-                debug_assert_eq!(self.rh, 0);
+                debug_assert_eq!(self.context.rh, 0);
                 match_token!(self, TT::COMMA)
             } {}
         }
         for local in locals {
-            let handle = self.context.locals.declare(local)?;
+            let handle = self.declare_local(local)?;
             handles.push(handle);
             self.instruction(Instruction::Nil { dst: handle.into() }, line);
         }
@@ -636,7 +647,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn call_expr(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
         debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
-        let rh = self.rh;
+        let rh = self.context.rh;
         let base = self.tmp()?;
         lhs_desc.to_reg(self, base)?;
         let cant_args = match self.next_token() {
@@ -654,7 +665,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         };
 
         self.free_n_reg(cant_args);
-        debug_assert_eq!(self.rh, rh + 1);
+        debug_assert_eq!(self.context.rh, rh + 1);
         self.instruction(I::Call { base, nargs: cant_args }, line);
         Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx: None }))
     }
@@ -670,7 +681,11 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             }
             cant_args += 1;
             let mut item = self.expression(Precedence::Lowest)?;
-            item.free_reg(self);
+            if let ExprKind::Tmp { reg, .. } = item.kind {
+                if reg != u8::MAX {
+                    self.free_reg(reg)
+                }
+            }
             let dst = self.tmp()?;
             item.to_reg(self, dst)?;
             match_token!(self, TT::COMMA)
@@ -739,16 +754,16 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     //     let id = self.identifier()?;
     //     consume!(self; (TT::ASSIGN));
     //     self.expression(Precedence::Lowest)?;
-    //     let from = self.context.locals.declare(empty_str.clone())?;
+    //     let from = self.declare_local(empty_str.clone())?;
     //     consume!(self; (TT::COMMA));
     //     self.expression(Precedence::Lowest)?;
-    //     let to = self.context.locals.declare(empty_str.clone())?;
+    //     let to = self.declare_local(empty_str.clone())?;
     //     if match_token!(self, (TT::COMMA)) {
     //         self.expression(Precedence::Lowest)?;
     //     } else {
     //         self.emit_number(1.0, line)?;
     //     }
-    //     let step = self.context.locals.declare(empty_str)?;
+    //     let step = self.declare_local(empty_str)?;
 
     //     let loop_start = self.pc();
     //     self.instruction(I::Le(BinArgs { dst: self.rh, lhs: from.into(), rhs: to.into() }), line);
@@ -756,7 +771,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     //     self.begin_scope();
 
-    //     let it_var = self.context.locals.declare(id)?;
+    //     let it_var = self.declare_local(id)?;
     //     self.instruction(I::Mv(UnArgs { dst: it_var.into(), src: from.into() }), 0);
     //     self.do_block(false)?;
 
@@ -913,20 +928,23 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(rhs_desc)
     }
 
-    // fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
-    //     let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt(line)), Ok)?;
-    //     let (function, upvalues) = self.function(id.clone())?;
+    fn function_st(&mut self, line: usize, local: bool) -> Result<(), ParseError> {
+        let id = self.identifier().map_or(Err(ParseError::UnnamedFunctionSt(line)), Ok)?;
+        let (function, upvalues) = self.function(id.clone())?;
 
-    //     self.emit_closure(function, upvalues, line)?;
-    //     if local {
-    //         self.context.locals.declare(id)?;
-    //     } else {
-    //         let id = self.new_string_constant(id)?;
-    //         let src = self.dst()?;
-    //         self.instruction(I::SetGlobal { dst: id, src }, line);
-    //     }
-    //     Ok(())
-    // }
+        if local {
+            let loc = self.declare_local(id)?;
+            self.context.locals.make_usable(loc);
+            self.emit_closure(loc.into(), function, upvalues, line)?;
+        } else {
+            let id = self.new_string_constant(id)?;
+            let src = self.tmp()?;
+            self.emit_closure(src.into(), function, upvalues, line)?;
+            self.free_reg(src);
+            self.instruction(I::SetGlobal { dst: id, src }, line);
+        }
+        Ok(())
+    }
 
     // fn function_expr(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
     //     if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
@@ -938,19 +956,20 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     //     Ok(todo!())
     // }
 
-    // fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
-    //     consume!(self; (TT::LPAREN));
-    //     let mut locals = Locals::new();
-    //     locals.declare(id.clone())?;
-    //     let arity = self.parameter_list(&mut locals)?;
+    fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
+        consume!(self; (TT::LPAREN));
+        let mut locals = Locals::new();
+        let loc = locals.declare(id.clone())?;
+        locals.make_usable(loc);
+        let arity = self.parameter_list(&mut locals)?;
 
-    //     let old_ctxt =
-    //         std::mem::replace(&mut self.context, CompilerCtxt::for_function(locals, arity, id));
-    //     self.context_stack.push(old_ctxt);
-    //     let retval = self.compile_fn();
-    //     consume!(self; (TT::END));
-    //     retval
-    // }
+        let old_ctxt =
+            std::mem::replace(&mut self.context, CompilerCtxt::for_function(locals, arity, id));
+        self.context_stack.push(old_ctxt);
+        let retval = self.compile_fn();
+        consume!(self; (TT::END));
+        retval
+    }
 
     fn parameter_list(&mut self, locals: &mut Locals) -> Result<u8, ParseError> {
         let mut arity = 0;
@@ -959,7 +978,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
         while {
             arity += 1;
-            locals.declare(self.identifier()?)?;
+            let loc = locals.declare(self.identifier()?)?;
+            locals.make_usable(loc);
             match_token!(self, TT::COMMA)
         } {}
         consume!(self; (TT::RPAREN));
@@ -1099,6 +1119,8 @@ struct CompilerCtxt {
     upvalues: Upvalues,
     arity: u8,
     name: RuaString,
+    max_used_regs: u8,
+    rh: u8,
 }
 
 impl CompilerCtxt {
@@ -1109,11 +1131,21 @@ impl CompilerCtxt {
             upvalues: Upvalues::default(),
             arity: 0,
             name,
+            max_used_regs: 0,
+            rh: 0,
         }
     }
 
     fn for_function(locals: Locals, arity: u8, name: RuaString) -> Self {
-        Self { locals, chunk: Chunk::default(), upvalues: Upvalues::default(), arity, name }
+        Self {
+            locals,
+            chunk: Chunk::default(),
+            upvalues: Upvalues::default(),
+            arity,
+            name,
+            max_used_regs: 0,
+            rh: 0,
+        }
     }
 
     fn resolve_local(&self, id: &RuaString) -> Option<LocalHandle> {

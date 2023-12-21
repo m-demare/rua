@@ -42,7 +42,7 @@ mod call_frame;
 mod macros;
 mod tests;
 
-const STACK_SIZE: usize = u8::MAX as usize;
+const MIN_STACK_SIZE: usize = u8::MAX as usize;
 
 pub struct Vm {
     stack: Vec<RuaVal>,
@@ -64,7 +64,7 @@ impl Vm {
         let global = Table::new().into();
 
         let mut vm = Self {
-            stack: vec![RuaVal::nil(); 10], //TODO
+            stack: Vec::with_capacity(MIN_STACK_SIZE),
             frames: Vec::new(),
             global,
             identifiers: Trie::new(),
@@ -79,13 +79,11 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
-        let first_frame_start = 0; //TODO
+        let og_len = self.stack.len();
         #[cfg(test)]
-        println!(
-            "Started tracing {:?}, starting at stack {first_frame_start}\n\n",
-            closure.function()
-        );
-        let frame = CallFrame::new(closure, first_frame_start);
+        println!("Started tracing {:?}, starting at stack {og_len}\n\n", closure.function());
+        self.stack.resize(og_len + closure.function().max_used_regs() as usize, RuaVal::nil());
+        let frame = CallFrame::new(closure, og_len, og_len);
         let first_frame_id = frame.id();
         match self.interpret_error_boundary(frame) {
             Ok(v) => Ok(v),
@@ -94,7 +92,7 @@ impl Vm {
                     e.push_stack_trace(frame.func_name(), frame.curr_line());
                     frame.id() != first_frame_id
                 }) {}
-                self.stack.truncate(first_frame_start);
+                self.stack.truncate(og_len);
                 Err(e)
             }
         }
@@ -120,99 +118,109 @@ impl Vm {
                 }
                 I::Number { dst, src } => {
                     let constant = frame.read_number(src);
-                    self.set_stack_at(dst.into(), constant.into());
+                    self.set_stack_at(&frame, dst, constant.into());
                 }
                 I::String { dst, src } => {
                     let constant = frame.read_string(src);
-                    self.set_stack_at(dst.into(), constant.into());
+                    self.set_stack_at(&frame, dst, constant.into());
                 }
-                I::True { dst } => self.set_stack_at(dst.into(), true.into()),
-                I::False { dst } => self.set_stack_at(dst.into(), false.into()),
-                I::Nil { dst } => self.set_stack_at(dst.into(), RuaVal::nil()),
+                I::True { dst } => self.set_stack_at(&frame, dst, true.into()),
+                I::False { dst } => self.set_stack_at(&frame, dst, false.into()),
+                I::Nil { dst } => self.set_stack_at(&frame, dst, RuaVal::nil()),
                 I::LFalseSkip { dst } => {
-                    self.set_stack_at(dst.into(), false.into());
+                    self.set_stack_at(&frame, dst, false.into());
                     frame.skip_instr()
                 }
-                I::Neg(args) => {
-                    trace_err(self.unary_op(args, |v| Ok((-v.as_number()?).into())), &frame)?
-                }
+                I::Neg(args) => trace_err(
+                    self.unary_op(&frame, args, |v| Ok((-v.as_number()?).into())),
+                    &frame,
+                )?,
                 I::Not(args) => {
-                    trace_err(self.unary_op(args, |v| Ok((!v.truthy()).into())), &frame)?
+                    trace_err(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame)?
                 }
-                I::Len(args) => trace_err(self.len_op(args), &frame)?,
-                I::Add(args) => trace_err(self.number_binary_op(args, |a, b| a + b), &frame)?,
-                I::Sub(args) => trace_err(self.number_binary_op(args, |a, b| a - b), &frame)?,
-                I::Mul(args) => trace_err(self.number_binary_op(args, |a, b| a * b), &frame)?,
-                I::Div(args) => trace_err(self.number_binary_op(args, |a, b| a / b), &frame)?,
-                I::Mod(args) => trace_err(self.number_binary_op(args, |a, b| a % b), &frame)?,
-                I::Pow(args) => trace_err(self.number_binary_op(args, f64::powf), &frame)?,
-                I::StrConcat(args) => trace_err(self.str_concat(args), &frame)?,
+                I::Len(args) => trace_err(self.len_op(&frame, args), &frame)?,
+                I::Add(args) => {
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a + b), &frame)?
+                }
+                I::Sub(args) => {
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a - b), &frame)?
+                }
+                I::Mul(args) => {
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a * b), &frame)?
+                }
+                I::Div(args) => {
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a / b), &frame)?
+                }
+                I::Mod(args) => {
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a % b), &frame)?
+                }
+                I::Pow(args) => trace_err(self.number_binary_op(&frame, args, f64::powf), &frame)?,
+                I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
                 I::Eq(args) => {
-                    trace_err(self.skip_if(args, |a, b| Ok(a == b), &mut frame), &frame)?
+                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a == b)), &frame)?
                 }
                 I::Neq(args) => {
-                    trace_err(self.skip_if(args, |a, b| Ok(a != b), &mut frame), &frame)?
+                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a != b)), &frame)?
                 }
                 I::Lt(args) => trace_err(
-                    self.skip_if(args, |a, b| Ok(a.as_number()? < b.as_number()?), &mut frame),
+                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? < b.as_number()?)),
                     &frame,
                 )?,
                 I::Gt(args) => trace_err(
-                    self.skip_if(args, |a, b| Ok(a.as_number()? > b.as_number()?), &mut frame),
+                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? > b.as_number()?)),
                     &frame,
                 )?,
                 I::Le(args) => trace_err(
-                    self.skip_if(args, |a, b| Ok(a.as_number()? <= b.as_number()?), &mut frame),
+                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? <= b.as_number()?)),
                     &frame,
                 )?,
                 I::Ge(args) => trace_err(
-                    self.skip_if(args, |a, b| Ok(a.as_number()? >= b.as_number()?), &mut frame),
+                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? >= b.as_number()?)),
                     &frame,
                 )?,
                 I::Test { src } => {
-                    let val = self.stack_at(src.into());
+                    let val = self.stack_at(&frame, src);
                     if val.truthy() {
                         frame.skip_instr()
                     }
                 }
                 I::Untest { src } => {
-                    let val = self.stack_at(src.into());
+                    let val = self.stack_at(&frame, src);
                     if !val.truthy() {
                         frame.skip_instr()
                     }
                 }
                 I::TestSet { dst, src } => {
-                    let val = self.stack_at(src.into());
+                    let val = self.stack_at(&frame, src);
                     if val.truthy() {
                         frame.skip_instr()
                     }
-                    self.set_stack_at(dst.into(), val.clone());
+                    self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::UntestSet { dst, src } => {
-                    let val = self.stack_at(src.into());
+                    let val = self.stack_at(&frame, src);
                     if !val.truthy() {
                         frame.skip_instr()
                     }
-                    self.set_stack_at(dst.into(), val.clone());
+                    self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::SetGlobal { dst, src } => {
-                    let val = self.stack_at(src.into());
+                    let val = self.stack_at(&frame, src);
                     let key = frame.read_string(dst);
                     self.global.insert(key.into(), val.clone());
                 }
                 I::GetGlobal { dst, src } => {
                     let key = frame.read_string(src);
-                    self.set_stack_at(dst.into(), self.global.get(&key.into()).into());
+                    self.set_stack_at(&frame, dst, self.global.get(&key.into()).into());
                 }
                 I::Call { base, nargs } => self.call(base, nargs, &mut frame)?,
                 I::Mv(UnArgs { dst, src }) => {
-                    let val = self.stack_at(frame.stack_start() + src as usize);
-                    self.set_stack_at(dst.into(), val.clone());
+                    let val = self.stack_at(&frame, src);
+                    self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::Jmp(offset) => frame.rel_jmp(offset - 1),
                 I::NewTable(size) => {
                     let table = self.new_table(size);
-                    self.push(table);
                 }
                 I::InsertKeyVal => {
                     let table_val = self.peek(0);
@@ -220,8 +228,6 @@ impl Vm {
                     let key = self.peek(2);
                     let table = trace_err(table_val.as_table(), &frame)?;
                     table.insert(key, val);
-                    self.drop(3);
-                    self.push(table_val);
                 }
                 I::InsertValKey => {
                     let table_val = self.peek(0);
@@ -229,25 +235,21 @@ impl Vm {
                     let val = self.peek(2);
                     let table = trace_err(table_val.as_table(), &frame)?;
                     table.insert(key, val);
-                    self.drop(3);
-                    self.push(table_val);
                 }
                 I::Index(BinArgs { dst, lhs, rhs }) => {
-                    let table = self.stack_at(lhs.into());
-                    let key = self.stack_at(rhs.into());
+                    let table = self.stack_at(&frame, lhs);
+                    let key = self.stack_at(&frame, rhs);
                     let table = trace_err(table.as_table(), &frame)?;
-                    self.set_stack_at(dst.into(), table.get(&key).into());
+                    self.set_stack_at(&frame, dst, table.get(&key).into());
                 }
-                I::Closure(c) => {
-                    self.closure(&mut frame, c);
+                I::Closure { dst, src } => {
+                    self.closure(&mut frame, dst, src);
                 }
                 I::CloseUpvalue => {
                     self.close_upvalues(self.stack.len() - 1);
-                    self.pop();
                 }
                 I::GetUpvalue(up) => {
                     let val = frame.closure().get_upvalue_val(self, up);
-                    self.push(val);
                 }
                 I::SetUpvalue(up) => {
                     self.set_upvalue(&mut frame, up);
@@ -263,22 +265,29 @@ impl Vm {
     }
 
     fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        let func = self.stack_at(base as usize).clone();
+        let func = self.stack_at(&frame, base).clone();
         match func.into_callable() {
             Ok(Left(closure)) => {
                 if closure.function().arity() < nargs {
-                    self.drop((nargs - closure.function().arity()) as usize);
+                    // self.drop((nargs - closure.function().arity()) as usize);
                 }
                 for _ in 0..closure.function().arity().saturating_sub(nargs) {
-                    self.push(RuaVal::nil());
+                    // self.push(RuaVal::nil());
                 }
+                let og_len = self.stack.len();
                 let stack_start_pos = self.get_frame_start(closure.function().arity() as usize);
+                self.stack.resize(
+                    stack_start_pos + closure.function().max_used_regs() as usize,
+                    RuaVal::nil(),
+                );
                 #[cfg(test)]
                 println!(
                     "Started tracing {:?}, starting at stack {stack_start_pos}",
                     closure.function()
                 );
-                let old_frame = std::mem::replace(frame, CallFrame::new(closure, stack_start_pos));
+                frame.set_ret_pos(base);
+                let old_frame =
+                    std::mem::replace(frame, CallFrame::new(closure, stack_start_pos, og_len));
                 self.frames.push(old_frame);
                 Ok(())
             }
@@ -292,8 +301,7 @@ impl Vm {
                         return Err(e);
                     }
                 };
-                self.drop(nargs as usize + 1); // drop args and function itself
-                self.set_stack_at(base.into(), retval);
+                self.set_stack_at(&frame, base, retval);
                 Ok(())
             }
             Err(e) => {
@@ -311,16 +319,16 @@ impl Vm {
     ) -> Option<RuaVal> {
         self.close_upvalues(frame.stack_start());
         let retval = match ret_src {
-            Some(src) => self.stack_at(src.into()).clone(),
+            Some(src) => self.stack_at(frame, src).clone(),
             None => RuaVal::nil(),
         };
-        self.stack.truncate(frame.stack_start());
+        self.stack.truncate(frame.prev_stack_size());
         if frame.id() == first_frame_id {
             return Some(retval);
         }
         match self.frames.pop() {
             Some(f) => {
-                self.push(retval);
+                self.set_stack_at(&f, f.ret_pos(), retval);
                 *frame = f;
                 None
             }
@@ -328,7 +336,7 @@ impl Vm {
         }
     }
 
-    fn closure(&mut self, frame: &mut CallFrame, f: FnHandle) {
+    fn closure(&mut self, frame: &mut CallFrame, dst: u8, f: FnHandle) {
         let f = frame.read_function(f);
         let upvalue_count = f.upvalue_count();
         let mut closure = Closure::new(f);
@@ -347,7 +355,7 @@ impl Vm {
             }
         }
         let closure = Rc::new(closure).into_rua(self);
-        self.push(closure);
+        self.set_stack_at(&frame, dst, closure);
     }
 
     fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
@@ -375,64 +383,67 @@ impl Vm {
         //         i => unreachable!("{i:?} cannot be part of I::Multiassign"),
         //     }
         // }
-        self.drop(keys_in_stack);
+        // self.drop(keys_in_stack);
         Ok(())
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn len_op(&mut self, args: UnArgs) -> Result<(), EvalError> {
-        self.unary_op(args, |v| Ok(((v.len())? as f64).into()))
+    fn len_op(&mut self, frame: &CallFrame, args: UnArgs) -> Result<(), EvalError> {
+        self.unary_op(frame, args, |v| Ok(((v.len())? as f64).into()))
     }
 
     fn set_upvalue(&mut self, frame: &mut CallFrame, up: UpvalueHandle) {
-        let val = self.pop();
-        frame.closure().set_upvalue(self, up, val);
+        // let val = self.pop();
+        // frame.closure().set_upvalue(self, up, val);
     }
 
     fn unary_op<F: Fn(&RuaVal) -> RuaResultUntraced>(
         &mut self,
+        frame: &CallFrame,
         args: UnArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        let a = self.stack_at(args.src.into());
-        self.set_stack_at(args.dst.into(), f(a)?);
+        let a = self.stack_at(frame, args.src);
+        self.set_stack_at(&frame, args.dst, f(a)?);
         Ok(())
     }
 
     fn binary_op<F: Fn(&RuaVal, &RuaVal) -> RuaResultUntraced>(
         &mut self,
+        frame: &CallFrame,
         args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        let a = self.stack_at(args.lhs.into());
-        let b = self.stack_at(args.rhs.into());
-        self.set_stack_at(args.dst.into(), f(a, b)?);
+        let a = self.stack_at(frame, args.lhs);
+        let b = self.stack_at(frame, args.rhs);
+        self.set_stack_at(&frame, args.dst, f(a, b)?);
         Ok(())
     }
 
     fn number_binary_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
         &mut self,
+        frame: &CallFrame,
         args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        self.binary_op(args, |a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
+        self.binary_op(frame, args, |a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
     }
 
-    fn str_concat(&mut self, args: BinArgs) -> Result<(), EvalError> {
-        let a = self.stack_at(args.lhs.into());
-        let b = self.stack_at(args.rhs.into());
+    fn str_concat(&mut self, frame: &CallFrame, args: BinArgs) -> Result<(), EvalError> {
+        let a = self.stack_at(frame, args.lhs);
+        let b = self.stack_at(frame, args.rhs);
         let res = [a.as_str()?, b.as_str()?].concat().into_rua(self);
-        self.set_stack_at(args.dst.into(), res);
+        self.set_stack_at(&frame, args.dst, res);
         Ok(())
     }
 
     fn skip_if<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
         &self,
+        frame: &mut CallFrame,
         args: JmpArgs,
         pred: F,
-        frame: &mut CallFrame,
     ) -> Result<(), EvalError> {
-        let (a, b) = (self.stack_at(args.lhs.into()), self.stack_at(args.rhs.into()));
+        let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
         if pred(a, b)? {
             frame.skip_instr()
         }
@@ -440,28 +451,27 @@ impl Vm {
         // TODO optimize JMPs to avoid another instr dispatch cycle
     }
 
-    fn push(&mut self, val: RuaVal) {
-        self.stack.push(val);
-    }
-
-    fn pop(&mut self) -> RuaVal {
-        self.stack.pop().expect("Stack shouldn't be empty")
-    }
+    // fn pop(&mut self) -> RuaVal {
+    //     self.stack.pop().expect("Stack shouldn't be empty")
+    // }
 
     fn peek(&self, back: usize) -> RuaVal {
         self.stack[self.stack.len() - 1 - back].clone()
     }
 
-    fn drop(&mut self, n: usize) {
-        debug_assert!(self.stack.len() >= n);
-        self.stack.truncate(self.stack.len() - n);
+    fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
+        &self.stack[frame.stack_start() + idx as usize]
     }
 
-    fn stack_at(&self, idx: usize) -> &RuaVal {
+    fn stack_at_abs(&self, idx: usize) -> &RuaVal {
         &self.stack[idx]
     }
 
-    fn set_stack_at(&mut self, idx: usize, val: RuaVal) {
+    fn set_stack_at(&mut self, frame: &CallFrame, idx: u8, val: RuaVal) {
+        self.stack[frame.stack_start() + idx as usize] = val;
+    }
+
+    fn set_stack_at_abs(&mut self, idx: usize, val: RuaVal) {
         self.stack[idx] = val;
     }
 
@@ -516,8 +526,8 @@ impl Vm {
 
     #[cfg(test)] // TODO add cfg for tracing
     fn trace(&self, frame: &CallFrame) {
-        for el in &self.stack {
-            println!("[ {el:?} ]");
+        for (i, el) in self.stack.iter().enumerate() {
+            println!("[ {el:?} ] {}", if i == frame.stack_start() { "<-" } else { "" });
         }
         frame.print_curr_instr();
     }

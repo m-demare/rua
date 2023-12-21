@@ -56,7 +56,7 @@ impl Closure {
         let upvalues = self.upvalues.borrow();
         let location: &Either<_, _> = &upvalues[up.get()].borrow();
         match location {
-            Left(idx) => vm.stack_at(*idx),
+            Left(idx) => vm.stack_at_abs(*idx).clone(),
             Right(v) => v.clone(),
         }
     }
@@ -67,7 +67,7 @@ impl Closure {
             let location: &Either<_, _> = &upvalues[up.get()].borrow();
             match location {
                 Left(idx) => {
-                    vm.set_stack_at(*idx, val);
+                    vm.set_stack_at_abs(*idx, val);
                     return;
                 }
                 Right(_) => {

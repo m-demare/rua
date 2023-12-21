@@ -3,7 +3,7 @@
 use crate::compiler::compile;
 
 use super::{
-    vals::{EvalError, EvalErrorTraced, IntoRuaVal, RuaVal},
+    vals::{EvalError, EvalErrorTraced, IntoRuaVal, RuaVal, RuaType},
     Vm,
 };
 
@@ -20,7 +20,7 @@ fn test_interpret_aux<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalErrorTraced>>(
     let res = vm.interpret(prog.into());
     let expected = output(&mut vm);
     assert_eq!(res, expected);
-    // assert_eq!(vm.stack(), &Vec::new());
+    assert_eq!(vm.stack(), &Vec::new());
 }
 
 macro_rules! test_interpret {
@@ -265,89 +265,89 @@ test_interpret!(
     |_| Ok(42.0.into())
 );
 
-// test_interpret!(
-//     function,
-//     "
-// local function foo()
-//     return 1337
-// end
-// return foo()",
-//     |_| Ok(1337.0.into())
-// );
-// test_interpret!(
-//     function_shadows_outer_var,
-//     "
-// local n = 5
-// function add(n, m)
-//     return n + m
-// end
-// return add(1, 2)",
-//     |_| Ok(3.0.into())
-// );
+test_interpret!(
+    function,
+    "
+local function foo()
+    return 1337
+end
+return foo()",
+    |_| Ok(1337.0.into())
+);
+test_interpret!(
+    function_shadows_outer_var,
+    "
+local n = 5
+function add(n, m)
+    return n + m
+end
+return add(1, 2)",
+    |_| Ok(3.0.into())
+);
 
-// test_interpret!(
-//     recursion,
-//     "
-// local function fact(n)
-//     if n < 2 then return 1 end
-//     return n * fact(n-1)
-// end
-// return fact(5)",
-//     |_| Ok(120.0.into())
-// );
-// test_interpret!(
-//     recursion2,
-//     "
-// function global_fact(n)
-//     if n < 2 then return 1 end
-//     return n * global_fact(n-1)
-// end
-// return global_fact(5)",
-//     |_| Ok(120.0.into())
-// );
+test_interpret!(
+    recursion,
+    "
+local function fact(n)
+    if n < 2 then return 1 end
+    return n * fact(n-1)
+end
+return fact(5)",
+    |_| Ok(120.0.into())
+);
+test_interpret!(
+    recursion2,
+    "
+function global_fact(n)
+    if n < 2 then return 1 end
+    return n * global_fact(n-1)
+end
+return global_fact(5)",
+    |_| Ok(120.0.into())
+);
 
-// test_interpret!(
-//     stack_trace1,
-//     "
-// function bar()
-//     return 1+nil
-// end
-// function foo()
-//     bar()
-// end
-// foo()",
-//     |_| Err(EvalErrorTraced::new(
-//         EvalError::TypeError { expected: RuaType::Number, got: RuaType::Nil },
-//         vec![("bar".into(), 3), ("foo".into(), 6), ("<main>".into(), 8)]
-//     ))
-// );
-// test_interpret!(
-//     stack_trace2,
-//     "function foo()
-//     assert(false, 'custom error')
-// end
-// foo()",
-//     |vm| Err(EvalErrorTraced::new(
-//         EvalError::AssertionFailed(Some((*b"custom error").into_rua(vm))),
-//         vec![("assert".into(), 0), ("foo".into(), 2), ("<main>".into(), 4)]
-//     ))
-// );
+test_interpret!(
+    stack_trace1,
+    "
+function bar()
+    return 1+nil
+end
+function foo()
+    bar()
+end
+foo()",
+    |_| Err(EvalErrorTraced::new(
+        EvalError::TypeError { expected: RuaType::Number, got: RuaType::Nil },
+        vec![("bar".into(), 3), ("foo".into(), 6), ("<main>".into(), 8)]
+    ))
+);
+test_interpret!(
+    stack_trace2,
+    "function foo()
+    assert(false, 'custom error')
+end
+foo()",
+    |vm| Err(EvalErrorTraced::new(
+        EvalError::AssertionFailed(Some((*b"custom error").into_rua(vm))),
+        vec![("assert".into(), 0), ("foo".into(), 2), ("<main>".into(), 4)]
+    ))
+);
 
-// test_interpret!(
-//     native_non_native_nested_call,
-//     "
-// function foo()
-//     local function bar()
-//         local function baz()
-//             return 7
-//         end
-//         return baz()
-//     end
-//     return pcall(bar)
-// end
-// return foo()",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    native_non_native_nested_call,
+    "
+function foo()
+    local function bar()
+        local function baz()
+            return 7
+        end
+        return baz()
+    end
+    return pcall(bar)
+end
+return foo()",
+    |_| Ok(7.0.into())
+);
 
 // test_interpret!(
 //     table_index_num1,

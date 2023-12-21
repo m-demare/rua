@@ -15,13 +15,22 @@ pub struct CallFrame {
     ip: usize,
     start: usize,
     id: usize,
+    ret_pos: u8,
+    prev_stack_size: usize,
 }
 
 #[invariant(self.closure.function().chunk().code().len() >= self.ip, "Invalid IP")]
 impl CallFrame {
-    pub fn new(closure: Rc<Closure>, start: usize) -> Self {
+    pub fn new(closure: Rc<Closure>, start: usize, prev_stack_size: usize) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        Self { closure, ip: 0, start, id: COUNTER.fetch_add(1, Ordering::Relaxed) }
+        Self {
+            closure,
+            ip: 0,
+            start,
+            id: COUNTER.fetch_add(1, Ordering::Relaxed),
+            ret_pos: 0,
+            prev_stack_size,
+        }
     }
 
     #[cfg(test)]
@@ -76,8 +85,20 @@ impl CallFrame {
         self.closure.function().chunk().line_at(self.ip)
     }
 
-    pub fn closure(&mut self) -> &Rc<Closure> {
+    pub fn closure(&self) -> &Rc<Closure> {
         &self.closure
+    }
+
+    pub fn set_ret_pos(&mut self, ret_pos: u8) {
+        self.ret_pos = ret_pos
+    }
+
+    pub fn ret_pos(&self) -> u8 {
+        self.ret_pos
+    }
+
+    pub fn prev_stack_size(&self) -> usize {
+        self.prev_stack_size
     }
 }
 

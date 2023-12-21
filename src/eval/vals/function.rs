@@ -15,6 +15,7 @@ struct FunctionInner {
     chunk: Chunk,
     arity: u8,
     name: RuaString,
+    max_used_regs: u8,
     upvalue_count: u8,
 }
 
@@ -34,8 +35,14 @@ pub struct FunctionContext<'vm> {
 }
 
 impl Function {
-    pub fn new(chunk: Chunk, arity: u8, name: RuaString, upvalue_count: u8) -> Self {
-        Self { inner: Rc::new(FunctionInner { chunk, arity, name, upvalue_count }) }
+    pub fn new(
+        chunk: Chunk,
+        arity: u8,
+        name: RuaString,
+        max_used_regs: u8,
+        upvalue_count: u8,
+    ) -> Self {
+        Self { inner: Rc::new(FunctionInner { chunk, arity, name, max_used_regs, upvalue_count }) }
     }
 
     pub fn chunk(&self) -> &Chunk {
@@ -56,6 +63,10 @@ impl Function {
 
     pub fn upvalue_count(&self) -> u8 {
         self.inner.upvalue_count
+    }
+
+    pub fn max_used_regs(&self) -> u8 {
+        self.inner.max_used_regs
     }
 }
 

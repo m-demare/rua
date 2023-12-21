@@ -58,7 +58,7 @@ pub enum Instruction {
     InsertValKey,
     Index(BinArgs),
 
-    Closure(FnHandle),
+    Closure { dst: u8, src: FnHandle },
     Upvalue(Upvalue),
     CloseUpvalue,
     GetUpvalue(UpvalueHandle),
@@ -170,12 +170,13 @@ impl Chunk {
 
     pub fn add_closure(
         &mut self,
+        dst: u8,
         func: Function,
         upvalues: Upvalues,
         line: usize,
     ) -> Result<(), ParseError> {
-        let c = add_constant!(func, self.functions, FnHandle, false);
-        self.add_instruction(Instruction::Closure(c), line);
+        let src = add_constant!(func, self.functions, FnHandle, false);
+        self.add_instruction(Instruction::Closure { dst, src }, line);
         for up in upvalues {
             self.add_instruction(Instruction::Upvalue(up), line);
         }
@@ -333,7 +334,7 @@ impl Instruction {
             Instruction::Mv(i) => i.dst = new_dst,
             Instruction::NewTable(_) => todo!(),
             Instruction::Index(i) => i.dst = new_dst,
-            Instruction::Closure(_) => todo!(),
+            Instruction::Closure { dst, .. } => *dst = new_dst,
             Instruction::GetUpvalue(_) => todo!(),
             i => unreachable!("Cannot change dst of {i:?}"),
         }
@@ -377,7 +378,7 @@ impl Instruction {
             Instruction::Mv(i) => validate_un(*i),
             Instruction::NewTable(_) => todo!(),
             Instruction::Index(i) => validate_bin(*i),
-            Instruction::Closure(_) => todo!(),
+            Instruction::Closure { dst, .. } => validate(*dst),
             Instruction::GetUpvalue(_) => todo!(),
             Instruction::Return { src } => validate(*src),
             Instruction::ReturnNil => true,
@@ -425,8 +426,8 @@ impl Debug for Chunk {
             };
             let clarification = match instr {
                 Instruction::Number { src, .. } => format!("; {}", self.numbers[src.0 as usize]),
-                Instruction::Closure(func) => {
-                    format!("; {}", self.functions[func.0 as usize].pretty_name())
+                Instruction::Closure { src, .. } => {
+                    format!("; {}", self.functions[src.0 as usize].pretty_name())
                 }
                 Instruction::String { src: s, .. }
                 | Instruction::GetGlobal { src: s, .. }
