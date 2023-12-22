@@ -1122,13 +1122,14 @@ impl CompilerCtxt {
     }
 
     fn for_function(locals: Locals, arity: u8, name: RuaString) -> Self {
+        let max_used_regs = locals.len();
         Self {
             locals,
             chunk: Chunk::default(),
             upvalues: Upvalues::default(),
             arity,
             name,
-            max_used_regs: 0,
+            max_used_regs,
             rh: 0,
         }
     }

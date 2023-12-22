@@ -421,24 +421,24 @@ test_interpret!(
     |_| Ok(true.into())
 );
 
-// test_interpret!(
-//     call_with_less_args,
-//     "
-// function foo(a, b, c)
-//     return c
-// end
-// return foo()",
-//     |_| Ok(RuaVal::nil())
-// );
-// test_interpret!(
-//     call_with_more_args,
-//     "
-// function foo(arg)
-//     return arg
-// end
-// return foo(1, 2)",
-//     |_| Ok(1.0.into())
-// );
+test_interpret!(
+    call_with_less_args,
+    "
+function foo(a, b, c)
+    return c
+end
+return foo()",
+    |_| Ok(RuaVal::nil())
+);
+test_interpret!(
+    call_with_more_args,
+    "
+function foo(arg)
+    return arg
+end
+return foo(1, 2)",
+    |_| Ok(1.0.into())
+);
 
 // test_interpret!(
 //     closure_read_local,

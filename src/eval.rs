@@ -262,18 +262,15 @@ impl Vm {
         let func = self.stack_at(frame, base).clone();
         match func.into_callable() {
             Ok(Left(closure)) => {
-                if closure.function().arity() < nargs {
-                    // self.drop((nargs - closure.function().arity()) as usize);
-                }
-                for _ in 0..closure.function().arity().saturating_sub(nargs) {
-                    // self.push(RuaVal::nil());
-                }
                 let og_len = self.stack.len();
-                let stack_start_pos = self.get_frame_start(closure.function().arity() as usize);
+                let stack_start_pos = self.get_frame_start(nargs as usize);
                 self.stack.resize(
                     stack_start_pos + closure.function().max_used_regs() as usize,
                     RuaVal::nil(),
                 );
+                for i in 0..closure.function().arity().saturating_sub(nargs) {
+                    self.set_stack_at(frame, base + nargs + i, RuaVal::nil());
+                }
                 #[cfg(test)]
                 println!(
                     "Started tracing {:?}, starting at stack {stack_start_pos}",
