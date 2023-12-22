@@ -440,42 +440,43 @@ return foo(1, 2)",
     |_| Ok(1.0.into())
 );
 
-// test_interpret!(
-//     closure_read_local,
-//     "
-// local val = 1337
-// local function foo()
-//     return val
-// end
-// return foo()",
-//     |_| Ok(1337.0.into())
-// );
-// test_interpret!(
-//     closure_write_local,
-//     "
-// local val = 1337
-// local function foo()
-//     val = 123
-// end
-// foo()
-// return val",
-//     |_| Ok(123.0.into())
-// );
+test_interpret!(
+    closure_read_local,
+    "
+local val = 1337
+local function foo()
+    return val
+end
+return foo()",
+    |_| Ok(1337.0.into())
+);
+test_interpret!(
+    closure_write_local,
+    "
+local val = 1337
+local function foo()
+    val = 123
+end
+foo()
+return val",
+    |_| Ok(123.0.into())
+);
 
-// test_interpret!(
-//     more_closures1,
-//     "
-// local function foo(n)
-//     local function bar(m)
-//         n = n + 1
-//         return n + m
-//     end
-//     return bar
-// end
-// local f = foo(3)
-// return f(5) + f(2)",
-//     |_| Ok(16.0.into())
-// );
+test_interpret!(
+    more_closures1,
+    "
+    local function foo(n)
+        local function bar(m)
+            n = n + 1
+            return n + m
+        end
+        print(n)
+        return bar
+    end
+    local f = foo(3)
+    return f(5) + f(2)",
+    |_| Ok(16.0.into())
+);
 // test_interpret!(
 //     more_closures2,
 //     "
@@ -489,85 +490,85 @@ return foo(1, 2)",
 //     |_| Ok(42.0.into())
 // );
 
-// test_interpret!(
-//     many_closures_reference_same_local,
-//     "
-// local function foo()
-//     local val = 3
-//     local function bar()
-//         return val
-//     end
-//     local function baz()
-//         val = val + 2
-//         return val
-//     end
-//     local ret = bar()
-//     ret = ret + baz()
-//     ret = ret * bar()
-//     return ret
-// end
-// return foo()",
-//     |_| Ok(40.0.into())
-// );
+test_interpret!(
+    many_closures_reference_same_local,
+    "
+local function foo()
+    local val = 3
+    local function bar()
+        return val
+    end
+    local function baz()
+        val = val + 2
+        return val
+    end
+    local ret = bar()
+    ret = ret + baz()
+    ret = ret * bar()
+    return ret
+end
+return foo()",
+    |_| Ok(40.0.into())
+);
 
-// test_interpret!(
-//     closure_that_outlive_variable_from_block,
-//     "
-// local function foo()
-//     local func
-//     if true then
-//         local val = 1337
-//         local function bar()
-//             return val
-//         end
-//         func = bar
-//     end
-//     return func()
-// end
-// return foo()",
-//     |_| Ok(1337.0.into())
-// );
+test_interpret!(
+    closure_that_outlive_variable_from_block,
+    "
+local function foo()
+    local func
+    if true then
+        local val = 1337
+        local function bar()
+            return val
+        end
+        func = bar
+    end
+    return func()
+end
+return foo()",
+    |_| Ok(1337.0.into())
+);
 
-// test_interpret!(
-//     closure_that_outlive_variable_from_parent_function,
-//     "
-// local function foo()
-//     local val = 1337
-//     local function bar()
-//         return val
-//     end
-//     return bar
-// end
-// local b = foo()
-// return b()",
-//     |_| Ok(1337.0.into())
-// );
+test_interpret!(
+    closure_that_outlive_variable_from_parent_function,
+    "
+local function foo()
+    local val = 1337
+    local function bar()
+        return val
+    end
+    return bar
+end
+local b = foo()
+return b()",
+    |_| Ok(1337.0.into())
+);
 
-// test_interpret!(
-//     closures_share_closed_over_variable,
-//     "
-// local function foo()
-//     local val = 1
-//     local function create_set_and_get()
-//         local function set(v)
-//             val = v
-//         end
-//         local function get()
-//             return val
-//         end
-//         return {set, get}
-//     end
-//     return create_set_and_get()
-// end
-// local t = foo()
-// set = t[1]
-// get = t[2]
-// local res = get()
-// set(5)
-// res = res + get()
-// return res",
-//     |_| Ok(6.0.into())
-// );
+test_interpret!(
+    closures_share_closed_over_variable,
+    "
+local function foo()
+    local val = 1
+    local function create_set_and_get()
+        local function set(v)
+            val = v
+        end
+        local function get()
+            return val
+        end
+        return {set, get}
+    end
+    return create_set_and_get()
+end
+local t = foo()
+set = t[1]
+get = t[2]
+local res = get()
+set(5)
+res = res + get()
+return res",
+    |_| Ok(6.0.into())
+);
 
 // test_interpret!(
 //     table_field_assignment1,

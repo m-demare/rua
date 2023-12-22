@@ -95,13 +95,15 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn end_scope(&mut self) {
+        let mut any_captured = false;
+        let to = self.context.locals.len();
         self.context.locals.end_scope(|local| {
-            if local.is_captured() {
-                self.context.chunk.add_instruction(I::CloseUpvalue, 0);
-            } else {
-                // self.context.chunk.add_instruction(I::Pop, 0);
-            }
+            any_captured |= local.is_captured();
         });
+        let from = self.context.locals.len();
+        if any_captured {
+            self.context.chunk.add_instruction(I::CloseUpvalues { from, to }, 0);
+        }
     }
 
     fn block(&mut self) -> Result<(), ParseError> {
@@ -579,10 +581,19 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                         val.to_reg(self, reg)?;
                         val.free_reg(self);
                     }
-                    ExprKind::Global(dst) => {
+                    ExprKind::Global(id) => {
                         let src = val.to_any_reg(self)?;
-                        let dst = self.new_string_constant(dst)?;
+                        let dst = self.new_string_constant(id)?;
                         self.instruction(I::SetGlobal { dst, src }, line);
+                        self.free_reg(src);
+                    }
+                    ExprKind::Upvalue(id) => {
+                        let src = val.to_any_reg(self)?;
+                        let dst = self
+                            .context
+                            .resolve_upvalue(&id, &mut self.context_stack)?
+                            .expect("Got invalid upvalue");
+                        self.instruction(I::SetUpvalue { dst, src }, line);
                         self.free_reg(src);
                     }
                     _ => return Err(ParseError::InvalidAssignLHS(line)),
@@ -1338,7 +1349,11 @@ impl ExprDesc {
                 compiler.instruction(I::GetGlobal { dst, src }, 0);
             }
             ExprKind::Upvalue(up) => {
-                todo!()
+                let src = compiler
+                    .context
+                    .resolve_upvalue(up, &mut compiler.context_stack)?
+                    .expect("Got invalid upvalue");
+                compiler.instruction(I::GetUpvalue { dst, src }, 0);
             }
             ExprKind::Number(n) => {
                 compiler.emit_number(dst, *n, 0)?;

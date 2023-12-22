@@ -10,10 +10,7 @@ use std::{
 };
 
 use crate::{
-    compiler::{
-        bytecode::{BinArgs, FnHandle, JmpArgs, UnArgs},
-        upvalues::UpvalueHandle,
-    },
+    compiler::bytecode::{BinArgs, FnHandle, JmpArgs, UnArgs},
     eval::{
         macros::trace_gc,
         vals::{closure::Closure, IntoRuaVal},
@@ -239,14 +236,16 @@ impl Vm {
                 I::Closure { dst, src } => {
                     self.closure(&mut frame, dst, src);
                 }
-                I::CloseUpvalue => {
-                    self.close_upvalues(self.stack.len() - 1);
+                I::CloseUpvalues { from, to } => {
+                    self.close_upvalues(from.into(), to.into());
                 }
-                I::GetUpvalue(up) => {
-                    let val = frame.closure().get_upvalue_val(self, up);
+                I::GetUpvalue { dst, src } => {
+                    let val = frame.closure().get_upvalue_val(self, src);
+                    self.set_stack_at(&frame, dst, val);
                 }
-                I::SetUpvalue(up) => {
-                    self.set_upvalue(&mut frame, up);
+                I::SetUpvalue { dst, src } => {
+                    let val = self.stack_at(&frame, src);
+                    frame.closure().set_upvalue(self, dst, val.clone());
                 }
                 I::Upvalue(_) => {
                     unreachable!("I::Upvalue must be handled by I::Closure")
@@ -263,7 +262,7 @@ impl Vm {
         match func.into_callable() {
             Ok(Left(closure)) => {
                 let og_len = self.stack.len();
-                let stack_start_pos = self.get_frame_start(nargs as usize);
+                let stack_start_pos = self.get_frame_start(&frame, base);
                 self.stack.resize(
                     stack_start_pos + closure.function().max_used_regs() as usize,
                     RuaVal::nil(),
@@ -283,8 +282,8 @@ impl Vm {
                 Ok(())
             }
             Ok(Right(f)) => {
-                let args =
-                    self.stack[base as usize + 1..base as usize + 1 + nargs as usize].to_vec();
+                let arg_start = base as usize + frame.stack_start() + 1;
+                let args = self.stack[arg_start..arg_start + nargs as usize].to_vec();
                 let retval = match f.call(&args, self) {
                     Ok(v) => v,
                     Err(mut e) => {
@@ -308,9 +307,12 @@ impl Vm {
         ret_src: Option<u8>,
         first_frame_id: usize,
     ) -> Option<RuaVal> {
-        self.close_upvalues(frame.stack_start());
+        self.close_upvalues(frame.stack_start(), self.stack.len());
         let retval = match ret_src {
-            Some(src) => self.stack_at(frame, src).clone(),
+            Some(src) => std::mem::replace(
+                &mut self.stack[frame.stack_start() + src as usize],
+                RuaVal::nil(),
+            ),
             None => RuaVal::nil(),
         };
         self.stack.truncate(frame.prev_stack_size());
@@ -381,11 +383,6 @@ impl Vm {
     #[allow(clippy::cast_precision_loss)]
     fn len_op(&mut self, frame: &CallFrame, args: UnArgs) -> Result<(), EvalError> {
         self.unary_op(frame, args, |v| Ok(((v.len())? as f64).into()))
-    }
-
-    fn set_upvalue(&mut self, frame: &mut CallFrame, up: UpvalueHandle) {
-        // let val = self.pop();
-        // frame.closure().set_upvalue(self, up, val);
     }
 
     fn unary_op<F: Fn(&RuaVal) -> RuaResultUntraced>(
@@ -494,7 +491,7 @@ impl Vm {
         }
     }
 
-    fn close_upvalues(&mut self, last: usize) {
+    fn close_upvalues(&mut self, from: usize, to: usize) {
         self.open_upvalues.retain(|up| {
             let up_pos = {
                 let up: &Either<_, _> = &up.borrow();
@@ -503,9 +500,9 @@ impl Vm {
                     Right(_) => unreachable!("upvalue in open_upvalues is closed"),
                 }
             };
-            let close = up_pos >= last;
+            let close = up_pos >= from && to >= up_pos;
             if close {
-                up.replace(Right(std::mem::replace(&mut self.stack[up_pos], RuaVal::nil())));
+                up.replace(Right(self.stack[up_pos].clone()));
             }
             !close
         });
@@ -524,8 +521,8 @@ impl Vm {
         &self.stack
     }
 
-    fn get_frame_start(&self, nargs: usize) -> usize {
-        self.stack.len() - nargs - 1
+    fn get_frame_start(&self, frame: &CallFrame, base: u8) -> usize {
+        frame.stack_start() + base as usize
     }
 
     fn new_table(&mut self, capacity: u16) -> RuaVal {

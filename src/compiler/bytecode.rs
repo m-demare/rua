@@ -59,9 +59,9 @@ pub enum Instruction {
 
     Closure { dst: u8, src: FnHandle },
     Upvalue(Upvalue),
-    CloseUpvalue,
-    GetUpvalue(UpvalueHandle),
-    SetUpvalue(UpvalueHandle),
+    CloseUpvalues { from: u8, to: u8 },
+    GetUpvalue { dst: u8, src: UpvalueHandle },
+    SetUpvalue { dst: UpvalueHandle, src: u8 },
 
     Multiassign(u8),
 }
@@ -307,7 +307,8 @@ impl Instruction {
             | Self::LFalseSkip { dst, .. }
             | Self::GetGlobal { dst, .. }
             | Self::NewTable { dst, .. }
-            | Self::Closure { dst, .. } => *dst = new_dst,
+            | Self::Closure { dst, .. }
+            | Self::GetUpvalue { dst, .. } => *dst = new_dst,
             Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => i.dst = new_dst,
             Self::Add(i)
             | Self::Sub(i)
@@ -331,7 +332,6 @@ impl Instruction {
                     *dst = new_dst;
                 }
             }
-            Self::GetUpvalue(_) => todo!(),
             i => unreachable!("Cannot change dst of {i:?}"),
         }
     }
@@ -359,7 +359,8 @@ impl Instruction {
             | Self::LFalseSkip { dst, .. }
             | Self::GetGlobal { dst, .. }
             | Self::NewTable { dst, .. }
-            | Self::Closure { dst, .. } => validate(dst),
+            | Self::Closure { dst, .. }
+            | Self::GetUpvalue { dst, .. } => validate(dst),
             Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => validate_un(i),
             Self::Add(i)
             | Self::Sub(i)
@@ -378,16 +379,15 @@ impl Instruction {
             Self::Return { src }
             | Self::Test { src }
             | Self::Untest { src }
-            | Self::SetGlobal { src, .. } => validate(src),
+            | Self::SetGlobal { src, .. }
+            | Self::SetUpvalue { src, .. } => validate(src),
             Self::Call { base, .. } => validate(base),
             Self::InsertKeyVal { table, key, val } => {
                 validate(table) && validate(key) && validate(val)
             }
             Self::ReturnNil | Self::Jmp(_) => true,
-            Self::GetUpvalue(_) => todo!(),
-            Self::Upvalue(_) => todo!(),
-            Self::CloseUpvalue => todo!(),
-            Self::SetUpvalue(_) => todo!(),
+            Self::Upvalue(_) => true,
+            Self::CloseUpvalues { from, to } => validate(from) && validate(to),
             Self::Multiassign(_) => todo!(),
         }
     }
@@ -427,12 +427,15 @@ impl Debug for Chunk {
                 }
                 _ => String::new(),
             };
-            writeln!(f, "{i:4} {line_str} {instr:?} {clarification}")?;
+            writeln!(f, "{i:4} {line_str}  {instr:?} {clarification}")?;
             count_in_line += 1;
             if count_in_line >= line.ok_or(std::fmt::Error)?.1 {
                 line = lines.next();
                 count_in_line = 0;
             }
+        }
+        for func in &self.functions {
+            write!(f, "\n\n{:?}", func)?;
         }
         Ok(())
     }
