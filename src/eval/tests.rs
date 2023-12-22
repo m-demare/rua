@@ -409,17 +409,17 @@ test_interpret!(
     |_| Ok(true.into())
 );
 
-// test_interpret!(
-//     table_with_upvalue_key,
-//     "
-//     local b = 'test'
-//     function foo()
-//         local a = {1, b = true, 2, [2+3] = false}
-//         return a.b
-//     end
-//     return foo()",
-//     |_| Ok(true.into())
-// );
+test_interpret!(
+    table_with_upvalue_key,
+    "
+    local b = 'test'
+    function foo()
+        local a = {1, b = true, 2, [2+3] = false}
+        return a.b
+    end
+    return foo()",
+    |_| Ok(true.into())
+);
 
 // test_interpret!(
 //     call_with_less_args,

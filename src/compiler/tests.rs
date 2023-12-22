@@ -9,7 +9,7 @@ use super::{
 use pretty_assertions::assert_eq;
 
 fn test_compile<F: FnOnce(&mut Vm) -> Result<Chunk, ParseError>>(input: &str, output: F) {
-    println!("Program:\n{}\n", input);
+    println!("Program:\n{input}\n");
 
     let mut vm = Vm::new();
     let res = compile(input.bytes(), &mut vm);

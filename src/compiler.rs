@@ -178,7 +178,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         &mut self.context.chunk
     }
 
-    fn current_chunk(&self) -> &Chunk {
+    const fn current_chunk(&self) -> &Chunk {
         &self.context.chunk
     }
 
@@ -193,7 +193,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn declare_local(&mut self, s: RuaString) -> Result<LocalHandle, ParseError> {
         let local = self.context.locals.declare(s)?;
         self.context.max_used_regs = self.context.max_used_regs.max(
-            (self.context.rh as u16 + self.context.locals.len() as u16)
+            (u16::from(self.context.rh) + u16::from(self.context.locals.len()))
                 .try_into()
                 .map_err(|_| ParseError::TooManyLocals)?,
         );
@@ -202,7 +202,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     const MAX_TMPS: u8 = 250;
     fn tmp(&mut self) -> Result<u8, ParseError> {
-        let dst = (self.context.rh as u16 + self.context.locals.len() as u16)
+        let dst = (u16::from(self.context.rh) + u16::from(self.context.locals.len()))
             .try_into()
             .map_err(|_| ParseError::TooManyLocals)?;
         if dst >= Self::MAX_TMPS {
@@ -250,7 +250,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk_mut().add_closure(dst, val, upvalues, line)
     }
 
-    fn unary(&mut self, op: TT, line: usize) -> Result<ExprDesc, ParseError> {
+    fn unary(&mut self, op: &TT, line: usize) -> Result<ExprDesc, ParseError> {
         let mut inner_desc = self.expression(Precedence::Prefix)?;
         let src = inner_desc.to_any_reg(self)?;
         self.free_reg(src);
@@ -268,9 +268,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn prefix_exp(&mut self) -> Result<ExprDesc, ParseError> {
         match self.next_token() {
             Some(Token { ttype: t @ (TT::NOT | TT::LEN | TT::MINUS), line, .. }) => {
-                self.unary(t, line)
+                self.unary(&t, line)
             }
-            Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) => self.named_variable(id, line),
+            Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(self.named_variable(id)),
             Some(Token { ttype: TT::NUMBER(n), .. }) => Ok(ExprDesc::new(ExprKind::Number(n))),
             Some(Token { ttype: TT::STRING(s), .. }) => Ok(ExprDesc::new(ExprKind::String(s))),
             Some(Token { ttype: TT::TRUE, .. }) => Ok(ExprDesc::new(ExprKind::True)),
@@ -291,16 +291,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
     }
 
-    fn named_variable(&mut self, id: RuaString, line: usize) -> Result<ExprDesc, ParseError> {
+    fn named_variable(&mut self, id: RuaString) -> ExprDesc {
         if let Some(local) = self.context.resolve_local(&id) {
-            Ok(ExprDesc::new(ExprKind::Local { reg: local.into(), instr_idx: None }))
-        } else if let Some(upvalue) = self.context.resolve_upvalue(&id, &mut self.context_stack)? {
-            // let dst = self.tmp()?;
-            // self.instruction(I::GetUpvalue(upvalue), line);
-            // Ok(ExprDesc::new(ExprKind::Local(dst)))
-            todo!()
+            ExprDesc::new(ExprKind::Local { reg: local.into(), instr_idx: None })
+        } else if CompilerCtxt::is_upvalue(&id, &mut self.context_stack) {
+            ExprDesc::new(ExprKind::Upvalue(id))
         } else {
-            Ok(ExprDesc::new(ExprKind::Global(id)))
+            ExprDesc::new(ExprKind::Global(id))
         }
     }
 
@@ -443,22 +440,17 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                         break Ok(lhs_desc);
                     }
                 }
-                Some(Token { ttype: TT::DOT, line, .. }) => {
-                    let line = *line;
-                    if precedence < Precedence::FieldAccess {
-                        self.next_token();
-                        let id = self.identifier()?;
-                        let lhs = lhs_desc.to_any_reg(self)?;
-                        let rhs = self.tmp()?;
-                        self.emit_string(rhs, id, line)?;
-                        self.free2reg(lhs, rhs);
-                        let dst = self.tmp()?;
-                        let instr_idx =
-                            Some(self.instruction(I::Index(BinArgs { dst, lhs, rhs }), line));
-                        lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
-                    } else {
-                        break Ok(lhs_desc);
-                    }
+                Some(Token { ttype: t @ TT::DOT, line, .. }) => {
+                    let (line, _new_precedence) = (*line, validate_precedence!(t));
+                    let id = self.identifier()?;
+                    let lhs = lhs_desc.to_any_reg(self)?;
+                    let rhs = self.tmp()?;
+                    self.emit_string(rhs, id, line)?;
+                    self.free2reg(lhs, rhs);
+                    let dst = self.tmp()?;
+                    let instr_idx =
+                        Some(self.instruction(I::Index(BinArgs { dst, lhs, rhs }), line));
+                    lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
                 }
                 _ => break Ok(lhs_desc),
             }
@@ -683,7 +675,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             let mut item = self.expression(Precedence::Lowest)?;
             if let ExprKind::Tmp { reg, .. } = item.kind {
                 if reg != u8::MAX {
-                    self.free_reg(reg)
+                    self.free_reg(reg);
                 }
             }
             let dst = self.tmp()?;
@@ -824,12 +816,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn negate_cond(&mut self, instr_idx: usize) {
-        self.current_chunk_mut().negate_cond(instr_idx)
+        self.current_chunk_mut().negate_cond(instr_idx);
     }
 
     fn get_jmp_dst(&self, jmp_idx: usize) -> Option<usize> {
-        let offset = match self.current_chunk().code()[jmp_idx] {
-            Instruction::Jmp(offset) => offset,
+        let offset = match self.current_chunk().code().get(jmp_idx) {
+            Some(Instruction::Jmp(offset)) => *offset,
             i => unreachable!("non Jmp instruction in jmp list {i:?}"),
         };
         if offset == 0 {
@@ -888,7 +880,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                         panic!("dtarget should've been computed, jmp at {l} needed val. Code: {:?}", self.current_chunk().code())), 0)?;
                 }
             }
-            list = next
+            list = next;
         }
         Ok(())
     }
@@ -1012,22 +1004,17 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     let mut desc = self.expression(Precedence::Lowest)?;
                     if peek_token_is!(self, TT::ASSIGN) {
                         desc.kind = match desc.kind {
-                            // I::GetUpvalue(up) => {
-                            //     TODO
-                            //     let name =
-                            //         self.context.resolve_upvalue_name(up, &self.context_stack);
-                            //     self.emit_string(name, line)?;
-                            // }
                             ExprKind::Local { reg, .. } => {
-                                let s = self
+                                let name = self
                                     .context
                                     .locals
                                     .name_of_reg(reg)
                                     .expect("Got non existing local");
-                                self.new_string_constant(s.clone())?;
+                                ExprKind::String(name)
+                            }
+                            ExprKind::Global(s) | ExprKind::Upvalue(s) | ExprKind::String(s) => {
                                 ExprKind::String(s)
                             }
-                            ExprKind::Global(s) | ExprKind::String(s) => ExprKind::String(s),
                             _ => return Err(ParseError::InvalidAssignLHS(line)),
                         };
                     }
@@ -1106,7 +1093,7 @@ fn precedence_of_binary(op: &TT) -> Precedence {
         TT::PLUS | TT::MINUS => Precedence::Sum,
         TT::TIMES | TT::DIV | TT::MOD => Precedence::Product,
         TT::EXP => Precedence::Exp,
-        TT::LBRACK => Precedence::FieldAccess,
+        TT::LBRACK | TT::DOT => Precedence::FieldAccess,
         _ => unreachable!("Invalid binary"),
     }
 }
@@ -1148,6 +1135,14 @@ impl CompilerCtxt {
 
     fn resolve_local(&self, id: &RuaString) -> Option<LocalHandle> {
         self.locals.resolve(id)
+    }
+
+    fn is_upvalue(id: &RuaString, context_stack: &mut [Self]) -> bool {
+        if let Some((parent, tail)) = context_stack.split_last_mut() {
+            parent.resolve_local(id).is_some() || Self::is_upvalue(id, tail)
+        } else {
+            false
+        }
     }
 
     fn resolve_upvalue(
@@ -1205,6 +1200,7 @@ impl CompilerCtxt {
 enum ExprKind {
     Local { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
     Global(RuaString),
+    Upvalue(RuaString),
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
     Number(f64),
     String(RuaString),
@@ -1233,7 +1229,7 @@ impl ExprDesc {
     ) -> Result<u8, ParseError> {
         // TODO dischage_vars for handling globals/upvals
         match &self.kind {
-            ExprKind::Tmp { reg, instr_idx: None } | ExprKind::Local { reg, .. } => {
+            ExprKind::Tmp { reg, .. } | ExprKind::Local { reg, .. } if *reg != 255 => {
                 let reg = *reg;
                 if !self.has_jmps() {
                     return Ok(reg);
@@ -1250,7 +1246,7 @@ impl ExprDesc {
     fn free_reg<T: Iterator<Item = u8> + Clone>(&self, compiler: &mut Compiler<'_, T>) {
         if let ExprKind::Tmp { reg, .. } = &self.kind {
             if *reg != u8::MAX {
-                compiler.free_reg(*reg)
+                compiler.free_reg(*reg);
             }
         }
     }
@@ -1308,7 +1304,7 @@ impl ExprDesc {
         Ok(jmp)
     }
 
-    fn has_jmps(&self) -> bool {
+    const fn has_jmps(&self) -> bool {
         !matches!((self.t_jmp, self.f_jmp), (None, None))
     }
 
@@ -1339,6 +1335,9 @@ impl ExprDesc {
             ExprKind::Global(s) => {
                 let src = compiler.new_string_constant(s.clone())?;
                 compiler.instruction(I::GetGlobal { dst, src }, 0);
+            }
+            ExprKind::Upvalue(up) => {
+                todo!()
             }
             ExprKind::Number(n) => {
                 compiler.emit_number(dst, *n, 0)?;

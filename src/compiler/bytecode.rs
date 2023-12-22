@@ -321,14 +321,14 @@ impl Instruction {
                 if new_dst == *src {
                     *self = Self::Test { src: *src }
                 } else {
-                    *dst = new_dst
+                    *dst = new_dst;
                 }
             }
             Self::UntestSet { dst, src } => {
                 if new_dst == *src {
                     *self = Self::Untest { src: *src }
                 } else {
-                    *dst = new_dst
+                    *dst = new_dst;
                 }
             }
             Self::GetUpvalue(_) => todo!(),
@@ -337,7 +337,7 @@ impl Instruction {
     }
 
     #[cfg(debug_assertions)]
-    pub fn has_valid_regs(&self) -> bool {
+    pub fn has_valid_regs(self) -> bool {
         const fn validate(reg: u8) -> bool {
             reg < 255
         }
@@ -359,8 +359,8 @@ impl Instruction {
             | Self::LFalseSkip { dst, .. }
             | Self::GetGlobal { dst, .. }
             | Self::NewTable { dst, .. }
-            | Self::Closure { dst, .. } => validate(*dst),
-            Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => validate_un(*i),
+            | Self::Closure { dst, .. } => validate(dst),
+            Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => validate_un(i),
             Self::Add(i)
             | Self::Sub(i)
             | Self::Mul(i)
@@ -368,23 +368,22 @@ impl Instruction {
             | Self::Mod(i)
             | Self::Pow(i)
             | Self::StrConcat(i)
-            | Self::Index(i) => validate_bin(*i),
+            | Self::Index(i) => validate_bin(i),
             Self::TestSet { dst, src } | Self::UntestSet { dst, src } => {
-                validate(*dst) && validate(*src)
+                validate(dst) && validate(src)
             }
-            Self::ReturnNil => true,
             Self::Eq(i) | Self::Neq(i) | Self::Lt(i) | Self::Gt(i) | Self::Le(i) | Self::Ge(i) => {
-                validate_jmp(*i)
+                validate_jmp(i)
             }
             Self::Return { src }
             | Self::Test { src }
             | Self::Untest { src }
-            | Self::SetGlobal { src, .. } => validate(*src),
-            Self::Call { base, .. } => validate(*base),
-            Self::Jmp(_) => true,
+            | Self::SetGlobal { src, .. } => validate(src),
+            Self::Call { base, .. } => validate(base),
             Self::InsertKeyVal { table, key, val } => {
-                validate(*table) && validate(*key) && validate(*val)
+                validate(table) && validate(key) && validate(val)
             }
+            Self::ReturnNil | Self::Jmp(_) => true,
             Self::GetUpvalue(_) => todo!(),
             Self::Upvalue(_) => todo!(),
             Self::CloseUpvalue => todo!(),

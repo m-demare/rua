@@ -129,38 +129,38 @@ impl Vm {
                 I::Nil { dst } => self.set_stack_at(&frame, dst, RuaVal::nil()),
                 I::LFalseSkip { dst } => {
                     self.set_stack_at(&frame, dst, false.into());
-                    frame.skip_instr()
+                    frame.skip_instr();
                 }
                 I::Neg(args) => trace_err(
                     self.unary_op(&frame, args, |v| Ok((-v.as_number()?).into())),
                     &frame,
                 )?,
                 I::Not(args) => {
-                    trace_err(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame)?
+                    trace_err(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame)?;
                 }
                 I::Len(args) => trace_err(self.len_op(&frame, args), &frame)?,
                 I::Add(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a + b), &frame)?
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a + b), &frame)?;
                 }
                 I::Sub(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a - b), &frame)?
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a - b), &frame)?;
                 }
                 I::Mul(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a * b), &frame)?
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a * b), &frame)?;
                 }
                 I::Div(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a / b), &frame)?
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a / b), &frame)?;
                 }
                 I::Mod(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a % b), &frame)?
+                    trace_err(self.number_binary_op(&frame, args, |a, b| a % b), &frame)?;
                 }
                 I::Pow(args) => trace_err(self.number_binary_op(&frame, args, f64::powf), &frame)?,
                 I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
                 I::Eq(args) => {
-                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a == b)), &frame)?
+                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a == b)), &frame)?;
                 }
                 I::Neq(args) => {
-                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a != b)), &frame)?
+                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a != b)), &frame)?;
                 }
                 I::Lt(args) => trace_err(
                     self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? < b.as_number()?)),
@@ -181,26 +181,26 @@ impl Vm {
                 I::Test { src } => {
                     let val = self.stack_at(&frame, src);
                     if val.truthy() {
-                        frame.skip_instr()
+                        frame.skip_instr();
                     }
                 }
                 I::Untest { src } => {
                     let val = self.stack_at(&frame, src);
                     if !val.truthy() {
-                        frame.skip_instr()
+                        frame.skip_instr();
                     }
                 }
                 I::TestSet { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     if val.truthy() {
-                        frame.skip_instr()
+                        frame.skip_instr();
                     }
                     self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::UntestSet { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     if !val.truthy() {
-                        frame.skip_instr()
+                        frame.skip_instr();
                     }
                     self.set_stack_at(&frame, dst, val.clone());
                 }
@@ -259,7 +259,7 @@ impl Vm {
     }
 
     fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        let func = self.stack_at(&frame, base).clone();
+        let func = self.stack_at(frame, base).clone();
         match func.into_callable() {
             Ok(Left(closure)) => {
                 if closure.function().arity() < nargs {
@@ -295,7 +295,7 @@ impl Vm {
                         return Err(e);
                     }
                 };
-                self.set_stack_at(&frame, base, retval);
+                self.set_stack_at(frame, base, retval);
                 Ok(())
             }
             Err(e) => {
