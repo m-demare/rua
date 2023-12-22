@@ -53,9 +53,8 @@ pub enum Instruction {
 
     Jmp(i16), // TODO i24?
 
-    NewTable(u16),
-    InsertKeyVal,
-    InsertValKey,
+    NewTable { dst: u8, capacity: u16 },
+    InsertKeyVal { table: u8, key: u8, val: u8 },
     Index(BinArgs),
 
     Closure { dst: u8, src: FnHandle },
@@ -225,7 +224,7 @@ impl Chunk {
             } else if self.lines.len() > 1 {
                 self.lines.pop();
             } else {
-                self.lines[0] = (0, 0)
+                self.lines[0] = (0, 0);
             }
             Some(instr)
         } else {
@@ -300,104 +299,97 @@ impl Chunk {
 impl Instruction {
     fn chg_dst(&mut self, new_dst: u8) {
         match self {
-            Instruction::Number { dst, .. } => *dst = new_dst,
-            Instruction::String { dst, .. } => *dst = new_dst,
-            Instruction::True { dst, .. } => *dst = new_dst,
-            Instruction::False { dst, .. } => *dst = new_dst,
-            Instruction::Nil { dst, .. } => *dst = new_dst,
-            Instruction::LFalseSkip { dst, .. } => *dst = new_dst,
-            Instruction::Neg(i) => i.dst = new_dst,
-            Instruction::Not(i) => i.dst = new_dst,
-            Instruction::Len(i) => i.dst = new_dst,
-            Instruction::Add(i) => i.dst = new_dst,
-            Instruction::Sub(i) => i.dst = new_dst,
-            Instruction::Mul(i) => i.dst = new_dst,
-            Instruction::Div(i) => i.dst = new_dst,
-            Instruction::Mod(i) => i.dst = new_dst,
-            Instruction::Pow(i) => i.dst = new_dst,
-            Instruction::StrConcat(i) => i.dst = new_dst,
-            Instruction::TestSet { dst, src } => {
+            Self::Number { dst, .. }
+            | Self::String { dst, .. }
+            | Self::True { dst, .. }
+            | Self::False { dst, .. }
+            | Self::Nil { dst, .. }
+            | Self::LFalseSkip { dst, .. }
+            | Self::GetGlobal { dst, .. }
+            | Self::NewTable { dst, .. }
+            | Self::Closure { dst, .. } => *dst = new_dst,
+            Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => i.dst = new_dst,
+            Self::Add(i)
+            | Self::Sub(i)
+            | Self::Mul(i)
+            | Self::Div(i)
+            | Self::Mod(i)
+            | Self::Pow(i)
+            | Self::StrConcat(i)
+            | Self::Index(i) => i.dst = new_dst,
+            Self::TestSet { dst, src } => {
                 if new_dst == *src {
-                    *self = Instruction::Test { src: *src }
+                    *self = Self::Test { src: *src }
                 } else {
                     *dst = new_dst
                 }
             }
-            Instruction::UntestSet { dst, src } => {
+            Self::UntestSet { dst, src } => {
                 if new_dst == *src {
-                    *self = Instruction::Untest { src: *src }
+                    *self = Self::Untest { src: *src }
                 } else {
                     *dst = new_dst
                 }
             }
-            Instruction::GetGlobal { dst, .. } => *dst = new_dst,
-            Instruction::Mv(i) => i.dst = new_dst,
-            Instruction::NewTable(_) => todo!(),
-            Instruction::Index(i) => i.dst = new_dst,
-            Instruction::Closure { dst, .. } => *dst = new_dst,
-            Instruction::GetUpvalue(_) => todo!(),
+            Self::GetUpvalue(_) => todo!(),
             i => unreachable!("Cannot change dst of {i:?}"),
         }
     }
 
     #[cfg(debug_assertions)]
     pub fn has_valid_regs(&self) -> bool {
-        fn validate(reg: u8) -> bool {
+        const fn validate(reg: u8) -> bool {
             reg < 255
         }
-        fn validate_bin(args: BinArgs) -> bool {
+        const fn validate_bin(args: BinArgs) -> bool {
             validate(args.dst) && validate(args.lhs) && validate(args.rhs)
         }
-        fn validate_un(args: UnArgs) -> bool {
+        const fn validate_un(args: UnArgs) -> bool {
             validate(args.dst) && validate(args.src)
         }
-        fn validate_jmp(args: JmpArgs) -> bool {
+        const fn validate_jmp(args: JmpArgs) -> bool {
             validate(args.lhs) && validate(args.rhs)
         }
         match self {
-            Instruction::Number { dst, .. } => validate(*dst),
-            Instruction::String { dst, .. } => validate(*dst),
-            Instruction::True { dst, .. } => validate(*dst),
-            Instruction::False { dst, .. } => validate(*dst),
-            Instruction::Nil { dst, .. } => validate(*dst),
-            Instruction::LFalseSkip { dst, .. } => validate(*dst),
-            Instruction::Neg(i) => validate_un(*i),
-            Instruction::Not(i) => validate_un(*i),
-            Instruction::Len(i) => validate_un(*i),
-            Instruction::Add(i) => validate_bin(*i),
-            Instruction::Sub(i) => validate_bin(*i),
-            Instruction::Mul(i) => validate_bin(*i),
-            Instruction::Div(i) => validate_bin(*i),
-            Instruction::Mod(i) => validate_bin(*i),
-            Instruction::Pow(i) => validate_bin(*i),
-            Instruction::StrConcat(i) => validate_bin(*i),
-            Instruction::TestSet { dst, src } => validate(*dst) && validate(*src),
-            Instruction::UntestSet { dst, src } => validate(*dst) && validate(*src),
-            Instruction::GetGlobal { dst, .. } => validate(*dst),
-            Instruction::SetGlobal { src, .. } => validate(*src),
-            Instruction::Mv(i) => validate_un(*i),
-            Instruction::NewTable(_) => todo!(),
-            Instruction::Index(i) => validate_bin(*i),
-            Instruction::Closure { dst, .. } => validate(*dst),
-            Instruction::GetUpvalue(_) => todo!(),
-            Instruction::Return { src } => validate(*src),
-            Instruction::ReturnNil => true,
-            Instruction::Eq(i) => validate_jmp(*i),
-            Instruction::Neq(i) => validate_jmp(*i),
-            Instruction::Lt(i) => validate_jmp(*i),
-            Instruction::Gt(i) => validate_jmp(*i),
-            Instruction::Le(i) => validate_jmp(*i),
-            Instruction::Ge(i) => validate_jmp(*i),
-            Instruction::Test { src } => validate(*src),
-            Instruction::Untest { src } => validate(*src),
-            Instruction::Call { base, .. } => validate(*base),
-            Instruction::Jmp(_) => true,
-            Instruction::InsertKeyVal => todo!(),
-            Instruction::InsertValKey => todo!(),
-            Instruction::Upvalue(_) => todo!(),
-            Instruction::CloseUpvalue => todo!(),
-            Instruction::SetUpvalue(_) => todo!(),
-            Instruction::Multiassign(_) => todo!(),
+            Self::Number { dst, .. }
+            | Self::String { dst, .. }
+            | Self::True { dst, .. }
+            | Self::False { dst, .. }
+            | Self::Nil { dst, .. }
+            | Self::LFalseSkip { dst, .. }
+            | Self::GetGlobal { dst, .. }
+            | Self::NewTable { dst, .. }
+            | Self::Closure { dst, .. } => validate(*dst),
+            Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => validate_un(*i),
+            Self::Add(i)
+            | Self::Sub(i)
+            | Self::Mul(i)
+            | Self::Div(i)
+            | Self::Mod(i)
+            | Self::Pow(i)
+            | Self::StrConcat(i)
+            | Self::Index(i) => validate_bin(*i),
+            Self::TestSet { dst, src } | Self::UntestSet { dst, src } => {
+                validate(*dst) && validate(*src)
+            }
+            Self::ReturnNil => true,
+            Self::Eq(i) | Self::Neq(i) | Self::Lt(i) | Self::Gt(i) | Self::Le(i) | Self::Ge(i) => {
+                validate_jmp(*i)
+            }
+            Self::Return { src }
+            | Self::Test { src }
+            | Self::Untest { src }
+            | Self::SetGlobal { src, .. } => validate(*src),
+            Self::Call { base, .. } => validate(*base),
+            Self::Jmp(_) => true,
+            Self::InsertKeyVal { table, key, val } => {
+                validate(*table) && validate(*key) && validate(*val)
+            }
+            Self::GetUpvalue(_) => todo!(),
+            Self::Upvalue(_) => todo!(),
+            Self::CloseUpvalue => todo!(),
+            Self::SetUpvalue(_) => todo!(),
+            Self::Multiassign(_) => todo!(),
         }
     }
 }

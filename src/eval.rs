@@ -219,28 +219,22 @@ impl Vm {
                     self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::Jmp(offset) => frame.rel_jmp(offset - 1),
-                I::NewTable(size) => {
-                    let table = self.new_table(size);
+                I::NewTable { dst, capacity } => {
+                    let table = self.new_table(capacity);
+                    self.set_stack_at(&frame, dst, table);
                 }
-                I::InsertKeyVal => {
-                    let table_val = self.peek(0);
-                    let val = self.peek(1);
-                    let key = self.peek(2);
-                    let table = trace_err(table_val.as_table(), &frame)?;
-                    table.insert(key, val);
-                }
-                I::InsertValKey => {
-                    let table_val = self.peek(0);
-                    let key = self.peek(1);
-                    let val = self.peek(2);
-                    let table = trace_err(table_val.as_table(), &frame)?;
-                    table.insert(key, val);
+                I::InsertKeyVal { table, key, val } => {
+                    let table = self.stack_at(&frame, table);
+                    let key = self.stack_at(&frame, key);
+                    let val = self.stack_at(&frame, val);
+                    let table = trace_err(table.as_table(), &frame)?;
+                    table.insert(key.clone(), val.clone());
                 }
                 I::Index(BinArgs { dst, lhs, rhs }) => {
                     let table = self.stack_at(&frame, lhs);
                     let key = self.stack_at(&frame, rhs);
                     let table = trace_err(table.as_table(), &frame)?;
-                    self.set_stack_at(&frame, dst, table.get(&key).into());
+                    self.set_stack_at(&frame, dst, table.get(key).into());
                 }
                 I::Closure { dst, src } => {
                     self.closure(&mut frame, dst, src);
@@ -355,7 +349,7 @@ impl Vm {
             }
         }
         let closure = Rc::new(closure).into_rua(self);
-        self.set_stack_at(&frame, dst, closure);
+        self.set_stack_at(frame, dst, closure);
     }
 
     fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
@@ -404,7 +398,7 @@ impl Vm {
         f: F,
     ) -> Result<(), EvalError> {
         let a = self.stack_at(frame, args.src);
-        self.set_stack_at(&frame, args.dst, f(a)?);
+        self.set_stack_at(frame, args.dst, f(a)?);
         Ok(())
     }
 
@@ -416,7 +410,7 @@ impl Vm {
     ) -> Result<(), EvalError> {
         let a = self.stack_at(frame, args.lhs);
         let b = self.stack_at(frame, args.rhs);
-        self.set_stack_at(&frame, args.dst, f(a, b)?);
+        self.set_stack_at(frame, args.dst, f(a, b)?);
         Ok(())
     }
 
@@ -433,7 +427,7 @@ impl Vm {
         let a = self.stack_at(frame, args.lhs);
         let b = self.stack_at(frame, args.rhs);
         let res = [a.as_str()?, b.as_str()?].concat().into_rua(self);
-        self.set_stack_at(&frame, args.dst, res);
+        self.set_stack_at(frame, args.dst, res);
         Ok(())
     }
 
@@ -445,7 +439,7 @@ impl Vm {
     ) -> Result<(), EvalError> {
         let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
         if pred(a, b)? {
-            frame.skip_instr()
+            frame.skip_instr();
         }
         Ok(())
         // TODO optimize JMPs to avoid another instr dispatch cycle
@@ -454,10 +448,6 @@ impl Vm {
     // fn pop(&mut self) -> RuaVal {
     //     self.stack.pop().expect("Stack shouldn't be empty")
     // }
-
-    fn peek(&self, back: usize) -> RuaVal {
-        self.stack[self.stack.len() - 1 - back].clone()
-    }
 
     fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
         &self.stack[frame.stack_start() + idx as usize]
@@ -541,8 +531,8 @@ impl Vm {
         self.stack.len() - nargs - 1
     }
 
-    fn new_table(&mut self, size: u16) -> RuaVal {
-        Rc::new(Table::with_capacity(size.into())).into_rua(self)
+    fn new_table(&mut self, capacity: u16) -> RuaVal {
+        Rc::new(Table::with_capacity(capacity.into())).into_rua(self)
     }
 
     fn register_table(&mut self, table: &Rc<Table>) {

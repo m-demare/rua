@@ -98,6 +98,15 @@ impl Locals {
     pub fn capture(&mut self, local: LocalHandle) {
         self.locals[local.0 as usize].is_captured = true;
     }
+
+    pub fn name_of_reg(&self, reg: u8) -> Option<RuaString> {
+        self.locals
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(i, _)| *i == reg.into())
+            .map(|(_, local)| local.name.clone())
+    }
 }
 
 impl LocalHandle {

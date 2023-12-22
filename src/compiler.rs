@@ -277,7 +277,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::FALSE, .. }) => Ok(ExprDesc::new(ExprKind::False)),
             Some(Token { ttype: TT::NIL, .. }) => Ok(ExprDesc::new(ExprKind::Nil)),
             Some(Token { ttype: TT::LPAREN, .. }) => self.group_expression(),
-            // Some(Token { ttype: TT::LBRACE, line, .. }) => return self.table_literal(line),
+            Some(Token { ttype: TT::LBRACE, line, .. }) => self.table_literal(line),
             // Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_expr(line),
             Some(t) => {
                 let line = t.line;
@@ -300,7 +300,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             // Ok(ExprDesc::new(ExprKind::Local(dst)))
             todo!()
         } else {
-            let id = self.new_string_constant(id)?;
             Ok(ExprDesc::new(ExprKind::Global(id)))
         }
     }
@@ -350,7 +349,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.free2reg(lhs, rhs);
 
         let instr_idx = self.cond_jmp(i(JmpArgs { lhs, rhs }), line);
-        return Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }));
+        Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
     }
 
     fn infix_exp(
@@ -525,8 +524,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 };
                 let mut val = self.expression(Precedence::Lowest)?;
                 if let Some(dst) = dst {
-                    val.to_reg(self, dst)?;
                     val.free_reg(self);
+                    val.to_reg(self, dst)?;
                 }
                 debug_assert_eq!(self.context.rh, 0);
                 match_token!(self, TT::COMMA)
@@ -590,6 +589,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     }
                     ExprKind::Global(dst) => {
                         let src = val.to_any_reg(self)?;
+                        let dst = self.new_string_constant(dst)?;
                         self.instruction(I::SetGlobal { dst, src }, line);
                         self.free_reg(src);
                     }
@@ -601,9 +601,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 // return self.multiassign(line);
             }
             _ => {
-                match self.current_chunk().code().last().expect("Just parsed an expression") {
+                match self.current_chunk().code().last() {
                     // TODO not all expressions output instructions now
-                    I::Call { .. } => {
+                    Some(I::Call { .. }) => {
                         dst.free_reg(self);
                     }
                     _ => return Err(ParseError::UnexpectedExpression(line)),
@@ -658,7 +658,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 1
             }
             Some(Token { ttype: TT::LBRACE, line, .. }) => {
-                // self.table_literal(line)?;
+                self.table_literal(line)?;
                 1
             }
             _ => unreachable!("Invalid token at call_expr"),
@@ -879,7 +879,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         while let Some(l) = list {
             let next = self.get_jmp_dst(l);
             match self.current_chunk().code().get(l - 1) {
-                Some(I::TestSet { .. }) | Some(I::UntestSet { .. }) => {
+                Some(I::TestSet { .. } | I::UntestSet { .. }) => {
                     self.current_chunk_mut().chg_dst_of(l - 1, reg);
                     self.patch_jmp(l, vtarget, 0)?;
                 }
@@ -893,14 +893,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn patch_test_set(&mut self, instr_idx: usize, reg: u8) -> bool {
-        todo!()
-    }
-
     fn list_needs_val(&self, mut list: Option<usize>) -> bool {
         while let Some(jmp) = list {
             match self.current_chunk().code().get(jmp - 1) {
-                Some(Instruction::TestSet { .. }) | Some(Instruction::UntestSet { .. }) => {}
+                Some(I::TestSet { .. } | I::UntestSet { .. }) => {}
                 _ => return true,
             }
             list = self.get_jmp_dst(jmp);
@@ -939,7 +935,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         } else {
             let id = self.new_string_constant(id)?;
             let src = self.tmp()?;
-            self.emit_closure(src.into(), function, upvalues, line)?;
+            self.emit_closure(src, function, upvalues, line)?;
             self.free_reg(src);
             self.instruction(I::SetGlobal { dst: id, src }, line);
         }
@@ -986,93 +982,95 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(arity)
     }
 
-    // fn table_literal(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
-    //     let mut ops = Vec::new();
-    //     let mut arr_count = 0;
-    //     loop {
-    //         match self.peek_token() {
-    //             Some(Token { ttype: TT::LBRACK, .. }) => {
-    //                 self.next_token();
-    //                 self.expression(Precedence::Lowest)?;
-    //                 consume!(self; (TT::RBRACK));
-    //                 match self.peek_token() {
-    //                     Some(Token { ttype: TT::ASSIGN, .. }) => {}
-    //                     Some(t) => {
-    //                         return Err(ParseError::UnexpectedToken(
-    //                             t.clone().into(),
-    //                             [TT::ASSIGN].into(),
-    //                         ))
-    //                     }
-    //                     None => return Err(ParseError::UnexpectedEOF),
-    //                 }
-    //             }
-    //             Some(Token { ttype: TT::RBRACE, .. }) => {
-    //                 break;
-    //             }
-    //             Some(Token { line, .. }) => {
-    //                 let line = *line;
-    //                 self.expression(Precedence::Lowest)?;
-    //                 if peek_token_is!(self, TT::ASSIGN) {
-    //                     match self
-    //                         .current_chunk()
-    //                         .code()
-    //                         .last()
-    //                         .copied()
-    //                         .expect("Just parsed an expression")
-    //                     {
-    //                         // I::GetGlobal(s) => {
-    //                         //     self.pop_instruction();
-    //                         //     let s = self.current_chunk().read_string(s);
-    //                         //     self.emit_string(s, line)?;
-    //                         // }
-    //                         I::GetUpvalue(up) => {
-    //                             self.pop_instruction();
-    //                             let name =
-    //                                 self.context.resolve_upvalue_name(up, &self.context_stack);
-    //                             self.emit_string(name, line)?;
-    //                         }
-    //                         // TODO
-    //                         // I::GetLocal(idx) => {
-    //                         //     self.pop_instruction();
-    //                         //     let name = self.context.locals.get(idx);
-    //                         //     self.emit_string(name, line)?;
-    //                         // }
-    //                         I::String { .. } => {}
-    //                         _ => return Err(ParseError::InvalidAssignLHS(line)),
-    //                     }
-    //                 }
-    //             }
-    //             None => return Err(ParseError::UnexpectedEOF),
-    //         }
+    fn table_literal(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
+        let mut arr_count = 0;
+        let mut total_count = 0;
+        let table = self.tmp()?;
+        let table_instr = self.instruction(I::NewTable { dst: table, capacity: 0 }, line);
+        loop {
+            let desc = match self.peek_token() {
+                Some(Token { ttype: TT::LBRACK, .. }) => {
+                    self.next_token();
+                    let lhs_desc = self.expression(Precedence::Lowest)?;
+                    consume!(self; (TT::RBRACK));
+                    match self.peek_token() {
+                        Some(Token { ttype: TT::ASSIGN, .. }) => lhs_desc,
+                        Some(t) => {
+                            return Err(ParseError::UnexpectedToken(
+                                t.clone().into(),
+                                [TT::ASSIGN].into(),
+                            ))
+                        }
+                        None => return Err(ParseError::UnexpectedEOF),
+                    }
+                }
+                Some(Token { ttype: TT::RBRACE, .. }) => {
+                    break;
+                }
+                Some(Token { line, .. }) => {
+                    let line = *line;
+                    let mut desc = self.expression(Precedence::Lowest)?;
+                    if peek_token_is!(self, TT::ASSIGN) {
+                        desc.kind = match desc.kind {
+                            // I::GetUpvalue(up) => {
+                            //     TODO
+                            //     let name =
+                            //         self.context.resolve_upvalue_name(up, &self.context_stack);
+                            //     self.emit_string(name, line)?;
+                            // }
+                            ExprKind::Local { reg, .. } => {
+                                let s = self
+                                    .context
+                                    .locals
+                                    .name_of_reg(reg)
+                                    .expect("Got non existing local");
+                                self.new_string_constant(s.clone())?;
+                                ExprKind::String(s)
+                            }
+                            ExprKind::Global(s) | ExprKind::String(s) => ExprKind::String(s),
+                            _ => return Err(ParseError::InvalidAssignLHS(line)),
+                        };
+                    }
+                    desc
+                }
+                None => return Err(ParseError::UnexpectedEOF),
+            };
 
-    //         match self.peek_token() {
-    //             Some(Token { ttype: TT::ASSIGN, .. }) => {
-    //                 self.next_token();
-    //                 self.expression(Precedence::Lowest)?;
-    //                 ops.push(I::InsertKeyVal);
-    //             }
-    //             Some(Token { line, .. }) => {
-    //                 let line = *line;
-    //                 ops.push(I::InsertValKey);
-    //                 arr_count += 1;
-    //                 self.emit_number(f64::from(arr_count), line)?;
-    //             }
-    //             None => {}
-    //         }
+            total_count += 1;
+            match self.peek_token() {
+                Some(Token { ttype: TT::ASSIGN, .. }) => {
+                    self.next_token();
+                    let mut rhs_desc = self.expression(Precedence::Lowest)?;
+                    let mut lhs_desc = desc;
+                    let lhs = lhs_desc.to_any_reg(self)?;
+                    let rhs = rhs_desc.to_any_reg(self)?;
+                    self.instruction(I::InsertKeyVal { table, key: lhs, val: rhs }, line);
+                    self.free2reg(lhs, rhs);
+                }
+                Some(Token { line, .. }) => {
+                    let line = *line;
+                    let mut rhs_desc = desc;
+                    let rhs = rhs_desc.to_any_reg(self)?;
+                    let lhs = self.tmp()?;
+                    arr_count += 1;
+                    self.emit_number(lhs, f64::from(arr_count), line)?;
+                    self.instruction(I::InsertKeyVal { table, key: lhs, val: rhs }, line);
+                    self.free2reg(lhs, rhs);
+                }
+                None => {}
+            }
 
-    //         if !match_token!(self, TT::COMMA, TT::SEMICOLON) {
-    //             break;
-    //         }
-    //     }
-    //     consume!(self; (TT::RBRACE));
+            if !match_token!(self, TT::COMMA, TT::SEMICOLON) {
+                break;
+            }
+        }
+        consume!(self; (TT::RBRACE));
 
-    //     self.instruction(I::NewTable(ops.len().try_into().unwrap_or(u16::MAX)), line);
-    //     for op in ops.into_iter().rev() {
-    //         self.instruction(op, line);
-    //     }
+        self.current_chunk_mut()
+            .replace_instruction(I::NewTable { dst: table, capacity: total_count }, table_instr);
 
-    //     Ok(todo!())
-    // }
+        Ok(ExprDesc::new(ExprKind::Tmp { reg: table, instr_idx: None }))
+    }
 }
 
 pub fn compile<C: Iterator<Item = u8> + Clone>(
@@ -1206,7 +1204,7 @@ impl CompilerCtxt {
 #[derive(Debug)]
 enum ExprKind {
     Local { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
-    Global(StringHandle),
+    Global(RuaString),
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
     Number(f64),
     String(RuaString),
@@ -1250,9 +1248,10 @@ impl ExprDesc {
     }
 
     fn free_reg<T: Iterator<Item = u8> + Clone>(&self, compiler: &mut Compiler<'_, T>) {
-        match &self.kind {
-            ExprKind::Tmp { reg, .. } => compiler.free_reg(*reg),
-            _ => {}
+        if let ExprKind::Tmp { reg, .. } = &self.kind {
+            if *reg != u8::MAX {
+                compiler.free_reg(*reg)
+            }
         }
     }
 
@@ -1337,8 +1336,9 @@ impl ExprDesc {
                     }
                 }
             }
-            ExprKind::Global(g) => {
-                compiler.instruction(I::GetGlobal { dst, src: *g }, 0);
+            ExprKind::Global(s) => {
+                let src = compiler.new_string_constant(s.clone())?;
+                compiler.instruction(I::GetGlobal { dst, src }, 0);
             }
             ExprKind::Number(n) => {
                 compiler.emit_number(dst, *n, 0)?;

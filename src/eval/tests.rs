@@ -3,7 +3,7 @@
 use crate::compiler::compile;
 
 use super::{
-    vals::{EvalError, EvalErrorTraced, IntoRuaVal, RuaVal, RuaType},
+    vals::{EvalError, EvalErrorTraced, IntoRuaVal, RuaType, RuaVal},
     Vm,
 };
 
@@ -349,65 +349,65 @@ return foo()",
     |_| Ok(7.0.into())
 );
 
-// test_interpret!(
-//     table_index_num1,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a[1]",
-//     |_| Ok(1.0.into())
-// );
-// test_interpret!(
-//     table_index_num2,
-//     "
-//     local a = {1, b = true, 3, [2+3] = false}
-//     return a[2]",
-//     |_| Ok(3.0.into())
-// );
-// test_interpret!(
-//     table_index_char,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a['b']",
-//     |_| Ok(true.into())
-// );
-// test_interpret!(
-//     table_index_num3,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a[5]",
-//     |_| Ok(false.into())
-// );
-// test_interpret!(
-//     table_index_bool,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a[false]",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    table_index_num1,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a[1]",
+    |_| Ok(1.0.into())
+);
+test_interpret!(
+    table_index_num2,
+    "
+    local a = {1, b = true, 3, [2+3] = false}
+    return a[2]",
+    |_| Ok(3.0.into())
+);
+test_interpret!(
+    table_index_char,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a['b']",
+    |_| Ok(true.into())
+);
+test_interpret!(
+    table_index_num3,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a[5]",
+    |_| Ok(false.into())
+);
+test_interpret!(
+    table_index_bool,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a[false]",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     field_access1,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a.b",
-//     |_| Ok(true.into())
-// );
-// test_interpret!(
-//     field_access2,
-//     "
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a.c",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    field_access1,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a.b",
+    |_| Ok(true.into())
+);
+test_interpret!(
+    field_access2,
+    "
+    local a = {1, b = true, 2, [2+3] = false}
+    return a.c",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     table_with_local_key,
-//     "
-//     local b = 'test'
-//     local a = {1, b = true, 2, [2+3] = false}
-//     return a.b",
-//     |_| Ok(true.into())
-// );
+test_interpret!(
+    table_with_local_key,
+    "
+    local b = 'test'
+    local a = {1, b = true, 2, [2+3] = false}
+    return a.b",
+    |_| Ok(true.into())
+);
 
 // test_interpret!(
 //     table_with_upvalue_key,

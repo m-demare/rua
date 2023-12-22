@@ -86,16 +86,16 @@ fn test_globals() {
     test_compile(input, |vm| {
         Ok(Chunk::new(
             vec![
-                I::GetGlobal { dst: 0, src: StringHandle(1) },
+                I::GetGlobal { dst: 0, src: StringHandle(0) },
                 I::Number { dst: 1, src: NumberHandle(0) },
                 I::Add(BinArgs { dst: 0, lhs: 0, rhs: 1 }),
-                I::SetGlobal { dst: StringHandle(0), src: 0 },
-                I::GetGlobal { dst: 0, src: StringHandle(0) },
+                I::SetGlobal { dst: StringHandle(1), src: 0 },
+                I::GetGlobal { dst: 0, src: StringHandle(1) },
                 I::Return { src: 0 },
                 I::ReturnNil,
             ],
             vec![8.0],
-            vec![vm.new_string((*b"foo").into()), vm.new_string((*b"bar").into())],
+            vec![vm.new_string((*b"bar").into()), vm.new_string((*b"foo").into())],
             Vec::new(),
             vec![(0, 2), (2, 2), (0, 1), (3, 1), (0, 1)],
         ))
