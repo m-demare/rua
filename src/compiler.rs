@@ -140,7 +140,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Token { ttype: TT::DO, .. } => self.do_block(true)?,
                 Token { ttype: TT::FOR, line, .. } => {
                     let line = *line;
-                    // self.for_st(line)?;
+                    self.for_st(line)?;
                 }
                 Token { ttype: TT::SEMICOLON, .. } => {
                     self.next_token();
@@ -770,52 +770,56 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    // fn for_st(&mut self, line: usize) -> Result<(), ParseError> {
-    //     debug_peek_token!(self, TT::FOR);
-    //     self.next_token();
-    //     let empty_str = self.tokens.vm().new_string([].into());
+    fn for_st(&mut self, line: usize) -> Result<(), ParseError> {
+        debug_peek_token!(self, TT::FOR);
+        self.next_token();
+        let empty_str = self.tokens.vm().new_string([].into());
 
-    //     let id = self.identifier()?;
-    //     consume!(self; (TT::ASSIGN));
-    //     self.expression(Precedence::Lowest)?;
-    //     let from = self.declare_local(empty_str.clone())?;
-    //     consume!(self; (TT::COMMA));
-    //     self.expression(Precedence::Lowest)?;
-    //     let to = self.declare_local(empty_str.clone())?;
-    //     if match_token!(self, (TT::COMMA)) {
-    //         self.expression(Precedence::Lowest)?;
-    //     } else {
-    //         self.emit_number(1.0, line)?;
-    //     }
-    //     let step = self.declare_local(empty_str)?;
+        let id = self.identifier()?;
+        consume!(self; (TT::ASSIGN));
+        let mut from_desc = self.expression(Precedence::Lowest)?;
+        let from = self.declare_local(empty_str.clone())?;
+        consume!(self; (TT::COMMA));
+        let mut to_desc = self.expression(Precedence::Lowest)?;
+        let to = self.declare_local(empty_str.clone())?;
+        let mut step_desc = if match_token!(self, (TT::COMMA)) {
+            self.expression(Precedence::Lowest)?
+        } else {
+            ExprDesc::new(ExprKind::Number(1.0))
+        };
+        let step = self.declare_local(empty_str)?;
+        from_desc.free_tmp_regs(self);
+        from_desc.to_reg(self, from.into())?;
+        to_desc.free_tmp_regs(self);
+        to_desc.to_reg(self, to.into())?;
+        step_desc.free_tmp_regs(self);
+        step_desc.to_reg(self, step.into())?;
 
-    //     let loop_start = self.pc();
-    //     self.instruction(I::Le(BinArgs { dst: self.rh, lhs: from.into(), rhs: to.into() }), line);
-    //     let exit_jmp = self.jmp_if_false_pop(u16::MAX, line);
+        let loop_start = self.pc();
+        let exit_jmp = self.cond_jmp(I::Le(JmpArgs { lhs: from.into(), rhs: to.into() }), line);
 
-    //     self.begin_scope();
+        self.begin_scope();
 
-    //     let it_var = self.declare_local(id)?;
-    //     self.instruction(I::Mv(UnArgs { dst: it_var.into(), src: from.into() }), 0);
-    //     self.do_block(false)?;
+        let it_var = self.declare_local(id)?;
+        self.context.locals.make_usable(it_var);
 
-    //     self.end_scope();
+        self.instruction(I::Mv(UnArgs { dst: it_var.into(), src: from.into() }), line);
+        self.do_block(false)?;
 
-    //     self.instruction(
-    //         I::Add(BinArgs { dst: from.into(), lhs: from.into(), rhs: step.into() }),
-    //         line,
-    //     );
+        self.end_scope();
 
-    //     self.loop_to(loop_start, line)?;
-    //     self.patch_jmp(exit_jmp, line)?;
+        self.instruction(
+            I::Add(BinArgs { dst: from.into(), lhs: from.into(), rhs: step.into() }),
+            line,
+        );
 
-    //     self.instruction(I::Pop, line);
-    //     self.instruction(I::Pop, line);
-    //     self.instruction(I::Pop, line);
+        self.jmp_to(loop_start, line)?;
+        let end = self.pc();
+        self.patch_jmp(exit_jmp, end, line)?;
 
-    //     self.context.locals.drop(3);
-    //     Ok(())
-    // }
+        self.context.locals.drop(3);
+        Ok(())
+    }
 
     fn do_block(&mut self, scoped: bool) -> Result<(), ParseError> {
         consume!(self; (TT::DO));

@@ -738,187 +738,187 @@ test_interpret!(
 //     |_| Ok(13.0.into())
 // );
 
-// test_interpret!(
-//     dynamic_prog_fib,
-//     "
-//     local fibo_mem = {}
-//     local function fibo(n)
-//         if n<3 then return 1 end
-//         if fibo_mem[n] then return fibo_mem[n] end
+test_interpret!(
+    dynamic_prog_fib,
+    "
+    local fibo_mem = {}
+    local function fibo(n)
+        if n<3 then return 1 end
+        if fibo_mem[n] then return fibo_mem[n] end
 
-//         fibo_mem[n] = fibo(n-1) + fibo(n-2)
-//         return fibo_mem[n]
-//     end
-//     return fibo(8)",
-//     |_| Ok(21.0.into())
-// );
+        fibo_mem[n] = fibo(n-1) + fibo(n-2)
+        return fibo_mem[n]
+    end
+    return fibo(8)",
+    |_| Ok(21.0.into())
+);
 
-// test_interpret!(
-//     call_str_literal,
-//     "
-//     return tonumber '58'
-// ",
-//     |_| Ok(58.0.into())
-// );
+test_interpret!(
+    call_str_literal,
+    "
+    return tonumber '58'
+",
+    |_| Ok(58.0.into())
+);
 
-// test_interpret!(
-//     call_table_literal,
-//     "
-//     local function foo(t) return #t end
-//     return foo { 5, bar = 8, 'hi' }
-// ",
-//     |_| Ok(2.0.into())
-// );
+test_interpret!(
+    call_table_literal,
+    "
+    local function foo(t) return #t end
+    return foo { 5, bar = 8, 'hi' }
+",
+    |_| Ok(2.0.into())
+);
 
-// test_interpret!(
-//     do_block,
-//     "
-//     do
-//         local a = 5
-//         assert(a==5)
-//     end
-//     return a
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    do_block,
+    "
+    do
+        local a = 5
+        assert(a==5)
+    end
+    return a
+",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     forward_for_loop,
-//     "
-//     local sum = 0
-//     for i = 1, 5 do
-//         sum = sum + i
-//     end
-//     return sum
-// ",
-//     |_| Ok(15.0.into())
-// );
+test_interpret!(
+    forward_for_loop,
+    "
+    local sum = 0
+    for i = 1, 5 do
+        sum = sum + i
+    end
+    return sum
+",
+    |_| Ok(15.0.into())
+);
 
-// test_interpret!(
-//     forward_for_loop_step,
-//     "
-//     local sum = 0
-//     for i = 1, 5, 2 do
-//         sum = sum + i
-//     end
-//     return sum
-// ",
-//     |_| Ok(9.0.into())
-// );
+test_interpret!(
+    forward_for_loop_step,
+    "
+    local sum = 0
+    for i = 1, 5, 2 do
+        sum = sum + i
+    end
+    return sum
+",
+    |_| Ok(9.0.into())
+);
 
-// test_interpret!(
-//     for_loop_upvalues,
-//     "
-//     local a = {}
-//     for i = 1, 10 do
-//         table.insert(a, function() return i end)
-//     end
+test_interpret!(
+    for_loop_upvalues,
+    "
+    local a = {}
+    for i = 1, 10 do
+        table.insert(a, function() return i end)
+    end
 
-//     local sum = 0
-//     for i = 1, 10, 4 do
-//         sum = sum + a[i]()
-//     end
-//     return sum
-// ",
-//     |_| Ok(15.0.into())
-// );
+    local sum = 0
+    for i = 1, 10, 4 do
+        sum = sum + a[i]()
+    end
+    return sum
+",
+    |_| Ok(15.0.into())
+);
 
-// test_interpret!(
-//     val_in_stack_isnt_gced,
-//     "
-//     local a = {1, 2}
-//     collectgarbage()
-//     return a[1]
-// ",
-//     |_| Ok(1.0.into())
-// );
+test_interpret!(
+    val_in_stack_isnt_gced,
+    "
+    local a = {1, 2}
+    collectgarbage()
+    return a[1]
+",
+    |_| Ok(1.0.into())
+);
 
-// test_interpret!(
-//     global_val_isnt_gced,
-//     "
-//     a = {1, 2}
-//     collectgarbage()
-//     return a[1]
-// ",
-//     |_| Ok(1.0.into())
-// );
+test_interpret!(
+    global_val_isnt_gced,
+    "
+    a = {1, 2}
+    collectgarbage()
+    return a[1]
+",
+    |_| Ok(1.0.into())
+);
 
-// test_interpret!(
-//     upval_isnt_gced,
-//     "
-//     function foo()
-//         a = {1, 2}
-//         function bar()
-//             return a
-//         end
-//         return bar
-//     end
-//     local bar = foo()
-//     collectgarbage()
-//     return bar()[1]
-// ",
-//     |_| Ok(1.0.into())
-// );
+test_interpret!(
+    upval_isnt_gced,
+    "
+    function foo()
+        a = {1, 2}
+        function bar()
+            return a
+        end
+        return bar
+    end
+    local bar = foo()
+    collectgarbage()
+    return bar()[1]
+",
+    |_| Ok(1.0.into())
+);
 
-// test_interpret!(
-//     val_in_call_stack_isnt_gced,
-//     "
-//     function baz()
-//         collectgarbage()
-//     end
-//     function foo()
-//         local a = {1, 2}
-//         function bar()
-//             baz()
-//         end
-//         bar()
-//         return a
-//     end
-//     local a = foo()
-//     return a[1]
-// ",
-//     |_| Ok(1.0.into())
-// );
+test_interpret!(
+    val_in_call_stack_isnt_gced,
+    "
+    function baz()
+        collectgarbage()
+    end
+    function foo()
+        local a = {1, 2}
+        function bar()
+            baz()
+        end
+        bar()
+        return a
+    end
+    local a = foo()
+    return a[1]
+",
+    |_| Ok(1.0.into())
+);
 
-// test_interpret!(
-//     single_obj_circular_ref_is_gced,
-//     "
-//     a = {}
-//     a.b = a
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    single_obj_circular_ref_is_gced,
+    "
+    a = {}
+    a.b = a
+",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     many_obj_circular_ref_is_gced,
-//     "
-//     first = {}
-//     last = first
-//     for i = 1, 30 do
-//         local new = {}
-//         new.prev = last
-//         last = new
-//     end
-//     first.prev = last
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    many_obj_circular_ref_is_gced,
+    "
+    first = {}
+    last = first
+    for i = 1, 30 do
+        local new = {}
+        new.prev = last
+        last = new
+    end
+    first.prev = last
+",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     closure_obj_circular_ref_is_gced,
-//     "
-//     function get_closure()
-//         local a = {}
-//         local function f()
-//             local function g()
-//                 return a
-//             end
-//             return g
-//         end
-//         a.func = f()
-//         return f
-//     end
-//     local closure = get_closure()
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    closure_obj_circular_ref_is_gced,
+    "
+    function get_closure()
+        local a = {}
+        local function f()
+            local function g()
+                return a
+            end
+            return g
+        end
+        a.func = f()
+        return f
+    end
+    local closure = get_closure()
+",
+    |_| Ok(RuaVal::nil())
+);
