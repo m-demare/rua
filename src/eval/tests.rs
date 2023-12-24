@@ -477,18 +477,18 @@ test_interpret!(
     return f(5) + f(2)",
     |_| Ok(16.0.into())
 );
-// test_interpret!(
-//     more_closures2,
-//     "
-// local function sum(n)
-//     return function(m)
-//         return n + m
-//     end
-// end
-// local sum41 = sum(41)
-// return sum41(1)",
-//     |_| Ok(42.0.into())
-// );
+test_interpret!(
+    more_closures2,
+    "
+local function sum(n)
+    return function(m)
+        return n + m
+    end
+end
+local sum41 = sum(41)
+return sum41(1)",
+    |_| Ok(42.0.into())
+);
 
 test_interpret!(
     many_closures_reference_same_local,

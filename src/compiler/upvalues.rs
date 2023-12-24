@@ -8,7 +8,7 @@ pub struct Upvalue {
     location: Either<LocalHandle, UpvalueHandle>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Upvalues {
     upvalues: Vec<Upvalue>,
 }

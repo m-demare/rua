@@ -15,9 +15,7 @@ use crate::{
 };
 
 use self::{
-    bytecode::{
-        Chunk, FnHandle, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs,
-    },
+    bytecode::{Chunk, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs},
     locals::{LocalHandle, Locals},
     upvalues::{UpvalueHandle, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
@@ -280,7 +278,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::NIL, .. }) => Ok(ExprDesc::new(ExprKind::Nil)),
             Some(Token { ttype: TT::LPAREN, .. }) => self.group_expression(),
             Some(Token { ttype: TT::LBRACE, line, .. }) => self.table_literal(line),
-            // Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_expr(line),
+            Some(Token { ttype: TT::FUNCTION, .. }) => self.function_expr(),
             Some(t) => {
                 let line = t.line;
                 Err(ParseError::UnexpectedTokenWithErrorMsg(
@@ -945,15 +943,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    // fn function_expr(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
-    //     if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
-    //         return Err(ParseError::NamedFunctionExpr(id.clone(), *line));
-    //     }
-    //     let name = self.tokens.vm().new_string([].into());
-    //     let (function, upvalues) = self.function(name)?;
-    //     self.emit_closure(function, upvalues, line)?;
-    //     Ok(todo!())
-    // }
+    fn function_expr(&mut self) -> Result<ExprDesc, ParseError> {
+        if let Some(Token { ttype: TT::IDENTIFIER(id), line, .. }) = self.peek_token() {
+            return Err(ParseError::NamedFunctionExpr(id.clone(), *line));
+        }
+        let name = self.tokens.vm().new_string([].into());
+        let (func, upvals) = self.function(name)?;
+        Ok(ExprDesc::new(ExprKind::Function { func, upvals }))
+    }
 
     fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
         consume!(self; (TT::LPAREN));
@@ -1216,7 +1213,7 @@ enum ExprKind {
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
     Number(f64),
     String(RuaString),
-    Function(FnHandle),
+    Function { func: Function, upvals: Upvalues },
     True,
     False,
     Nil,
@@ -1271,9 +1268,10 @@ impl ExprDesc {
     ) -> Result<Option<usize>, ParseError> {
         let jmp = match &self.kind {
             ExprKind::Jmp { instr_idx } => Some(*instr_idx),
-            ExprKind::Number(_) | ExprKind::String(_) | ExprKind::Function(_) | ExprKind::True => {
-                None
-            }
+            ExprKind::Number(_)
+            | ExprKind::String(_)
+            | ExprKind::Function { .. }
+            | ExprKind::True => None,
             _ => {
                 let src = self.to_any_reg(compiler)?;
                 compiler.free_reg(src);
@@ -1361,7 +1359,16 @@ impl ExprDesc {
             ExprKind::String(s) => {
                 compiler.emit_string(dst, s.clone(), 0)?;
             }
-            ExprKind::Function(f) => todo!(),
+            ExprKind::Function { .. } => {
+                let old_kind =
+                    std::mem::replace(&mut self.kind, ExprKind::Tmp { reg: dst, instr_idx: None });
+                // TODO find nicer way to take ownership
+                if let ExprKind::Function { func, upvals } = old_kind {
+                    compiler.emit_closure(dst, func, upvals, 0)?;
+                } else {
+                    unreachable!("ExprKind was function")
+                }
+            }
             ExprKind::True => {
                 compiler.instruction(I::True { dst }, 0);
             }

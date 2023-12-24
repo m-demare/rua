@@ -385,8 +385,7 @@ impl Instruction {
             Self::InsertKeyVal { table, key, val } => {
                 validate(table) && validate(key) && validate(val)
             }
-            Self::ReturnNil | Self::Jmp(_) => true,
-            Self::Upvalue(_) => true,
+            Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
             Self::Multiassign(_) => todo!(),
         }
@@ -435,7 +434,7 @@ impl Debug for Chunk {
             }
         }
         for func in &self.functions {
-            write!(f, "\n\n{:?}", func)?;
+            write!(f, "\n\n{func:?}")?;
         }
         Ok(())
     }

@@ -100,6 +100,10 @@ impl CallFrame {
     pub fn prev_stack_size(&self) -> usize {
         self.prev_stack_size
     }
+
+    pub fn resolve_reg(&self, reg: u8) -> usize {
+        self.stack_start() + reg as usize
+    }
 }
 
 impl Debug for CallFrame {

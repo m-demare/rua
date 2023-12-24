@@ -262,7 +262,7 @@ impl Vm {
         match func.into_callable() {
             Ok(Left(closure)) => {
                 let og_len = self.stack.len();
-                let stack_start_pos = self.get_frame_start(&frame, base);
+                let stack_start_pos = frame.resolve_reg(base);
                 self.stack.resize(
                     stack_start_pos + closure.function().max_used_regs() as usize,
                     RuaVal::nil(),
@@ -282,7 +282,7 @@ impl Vm {
                 Ok(())
             }
             Ok(Right(f)) => {
-                let arg_start = base as usize + frame.stack_start() + 1;
+                let arg_start = frame.resolve_reg(base) + 1;
                 let args = self.stack[arg_start..arg_start + nargs as usize].to_vec();
                 let retval = match f.call(&args, self) {
                     Ok(v) => v,
@@ -444,7 +444,7 @@ impl Vm {
     // }
 
     fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
-        &self.stack[frame.stack_start() + idx as usize]
+        &self.stack[frame.resolve_reg(idx)]
     }
 
     fn stack_at_abs(&self, idx: usize) -> &RuaVal {
@@ -452,7 +452,7 @@ impl Vm {
     }
 
     fn set_stack_at(&mut self, frame: &CallFrame, idx: u8, val: RuaVal) {
-        self.stack[frame.stack_start() + idx as usize] = val;
+        self.stack[frame.resolve_reg(idx)] = val;
     }
 
     fn set_stack_at_abs(&mut self, idx: usize, val: RuaVal) {
@@ -519,10 +519,6 @@ impl Vm {
     #[cfg(test)]
     const fn stack(&self) -> &Vec<RuaVal> {
         &self.stack
-    }
-
-    fn get_frame_start(&self, frame: &CallFrame, base: u8) -> usize {
-        frame.stack_start() + base as usize
     }
 
     fn new_table(&mut self, capacity: u16) -> RuaVal {
