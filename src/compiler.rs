@@ -106,7 +106,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn block(&mut self) -> Result<(), ParseError> {
         while let Some(token) = self.peek_token() {
-            debug_assert_eq!(self.context.rh, 0);
+            debug_assert_eq!(
+                self.context.rh, 0,
+                "Should have no locals reserved between statements. Next token was {token:?}"
+            );
             match token {
                 Token { ttype: TT::RETURN, line, .. } => {
                     let line = *line;
@@ -160,6 +163,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
             }
         }
+        debug_assert_eq!(self.context.rh, 0, "Should have no locals reserved at end of block");
         Ok(())
     }
 
@@ -220,7 +224,11 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn free_reg(&mut self, r: u8) {
         if self.is_tmp(r) {
             self.context.rh -= 1;
-            debug_assert_eq!(r, self.context.locals.len() + self.context.rh);
+            debug_assert_eq!(
+                r,
+                self.context.locals.len() + self.context.rh,
+                "Can only free last reserved reg (tried to free {r})"
+            );
         }
     }
 
@@ -421,8 +429,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     lhs_desc = self.binary(lhs_desc, I::StrConcat, line, new_precedence)?;
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
-                    let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Index, line, new_precedence)?;
+                    let (_, _) = (*line, validate_precedence!(t));
+                    let table = lhs_desc.to_any_reg(self)?;
+                    let mut rhs_desc = self.expression(Precedence::Lowest)?;
+                    let key = rhs_desc.to_any_reg(self)?;
+
+                    lhs_desc = ExprDesc::new(ExprKind::Index { table, key });
                     consume!(self; (TT::RBRACK));
                 }
                 Some(Token { ttype: t @ TT::AND, line, .. }) => {
@@ -441,16 +453,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: t @ TT::DOT, line, .. }) => {
-                    let (line, _new_precedence) = (*line, validate_precedence!(t));
+                    let (line, _) = (*line, validate_precedence!(t));
                     let id = self.identifier()?;
-                    let lhs = lhs_desc.to_any_reg(self)?;
-                    let rhs = self.tmp()?;
-                    self.emit_string(rhs, id, line)?;
-                    self.free2reg(lhs, rhs);
-                    let dst = self.tmp()?;
-                    let instr_idx =
-                        Some(self.instruction(I::Index(BinArgs { dst, lhs, rhs }), line));
-                    lhs_desc = ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx });
+                    let table = lhs_desc.to_any_reg(self)?;
+                    let key = self.tmp()?;
+                    self.emit_string(key, id, line)?;
+                    lhs_desc = ExprDesc::new(ExprKind::Index { table, key });
                 }
                 _ => break Ok(lhs_desc),
             }
@@ -516,6 +524,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 };
                 let mut val = self.expression(Precedence::Lowest)?;
                 if let Some(dst) = dst {
+                    val.free_tmp_regs(self);
                     val.free_reg(self);
                     val.to_reg(self, dst)?;
                 }
@@ -576,6 +585,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 let mut val = self.expression(Precedence::Lowest)?;
                 match dst.kind {
                     ExprKind::Local { reg, .. } => {
+                        val.free_tmp_regs(self);
                         val.to_reg(self, reg)?;
                         val.free_reg(self);
                     }
@@ -593,6 +603,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                             .expect("Got invalid upvalue");
                         self.instruction(I::SetUpvalue { dst, src }, line);
                         self.free_reg(src);
+                    }
+                    ExprKind::Index { table, key } => {
+                        let val = val.to_any_reg(self)?;
+                        self.instruction(I::InsertKeyVal { table, key, val }, line);
+                        self.free_reg(val);
+                        self.free2reg(table, key);
                     }
                     _ => return Err(ParseError::InvalidAssignLHS(line)),
                 };
@@ -648,6 +664,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn call_expr(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
         debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
+        lhs_desc.free_tmp_regs(self);
         let rh = self.context.rh;
         let base = self.tmp()?;
         lhs_desc.to_reg(self, base)?;
@@ -666,7 +683,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         };
 
         self.free_n_reg(cant_args);
-        debug_assert_eq!(self.context.rh, rh + 1);
+        debug_assert_eq!(
+            self.context.rh,
+            rh + 1,
+            "Should have left space only for retval (expected {})",
+            rh + 1
+        );
         self.instruction(I::Call { base, nargs: cant_args }, line);
         Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx: None }))
     }
@@ -687,6 +709,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     self.free_reg(reg);
                 }
             }
+            item.free_tmp_regs(self);
             let dst = self.tmp()?;
             item.to_reg(self, dst)?;
             match_token!(self, TT::COMMA)
@@ -1214,6 +1237,7 @@ enum ExprKind {
     Number(f64),
     String(RuaString),
     Function { func: Function, upvals: Upvalues },
+    Index { table: u8, key: u8 },
     True,
     False,
     Nil,
@@ -1382,6 +1406,9 @@ impl ExprDesc {
                 compiler.negate_cond(*instr_idx - 1);
                 compiler.concat_jmp_lists(&mut self.t_jmp, Some(*instr_idx))?;
             }
+            ExprKind::Index { table, key } => {
+                compiler.instruction(I::Index(BinArgs { dst, lhs: *table, rhs: *key }), 0);
+            }
         };
         if self.has_jmps() {
             let (mut pos_f, mut pos_t) = (None, None);
@@ -1406,10 +1433,18 @@ impl ExprDesc {
         Ok(())
     }
 
+    fn free_tmp_regs<T: Iterator<Item = u8> + Clone>(&self, compiler: &mut Compiler<'_, T>) {
+        match &self.kind {
+            ExprKind::Index { table, key } => compiler.free2reg(*table, *key),
+            _ => {}
+        };
+    }
+
     fn to_next_reg<T: Iterator<Item = u8> + Clone>(
         &mut self,
         compiler: &mut Compiler<'_, T>,
     ) -> Result<u8, ParseError> {
+        self.free_tmp_regs(compiler);
         let tmp = compiler.tmp()?;
         self.to_reg(compiler, tmp)?;
         Ok(tmp)

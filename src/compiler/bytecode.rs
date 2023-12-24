@@ -66,6 +66,9 @@ pub enum Instruction {
     Multiassign(u8),
 }
 
+#[cfg(target_arch = "x86_64")]
+static_assertions::assert_eq_size!(Instruction, [u8; 4]);
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BinArgs {
     pub dst: u8,
@@ -84,9 +87,6 @@ pub struct UnArgs {
     pub dst: u8,
     pub src: u8,
 }
-
-#[cfg(target_arch = "x86_64")]
-static_assertions::assert_eq_size!(Instruction, [u8; 4]);
 
 #[derive(PartialEq)]
 pub struct Chunk {
