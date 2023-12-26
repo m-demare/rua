@@ -1,4 +1,4 @@
-use std::{fmt::Debug, num::TryFromIntError};
+use std::fmt::Debug;
 use struct_invariant::invariant;
 use thiserror::Error;
 
@@ -214,26 +214,10 @@ impl Chunk {
         self.code[idx] = instr;
     }
 
-    pub fn pop_instruction(&mut self) -> Option<Instruction> {
-        if let Some(instr) = self.code.pop() {
-            let last_line = self.lines.last_mut().expect("lines is always non-empty");
-            if last_line.1 > 1 {
-                last_line.1 -= 1;
-            } else if self.lines.len() > 1 {
-                self.lines.pop();
-            } else {
-                self.lines[0] = (0, 0);
-            }
-            Some(instr)
-        } else {
-            None
-        }
-    }
-
     pub fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
         use Instruction as I;
 
-        let offset = Self::offset(to, jmp).or(Err(ParseError::JmpTooFar(line)))?;
+        let offset = Self::offset(to, jmp, line)?;
 
         match self.code.get(jmp) {
             Some(I::Jmp(_)) => self.code[jmp] = I::Jmp(offset),
@@ -263,9 +247,10 @@ impl Chunk {
         self.code[instr_idx].chg_dst(dst)
     }
 
-    pub fn offset(from: usize, to: usize) -> Result<i16, TryFromIntError> {
-        let offset = from as isize - to as isize;
-        offset.try_into()
+    pub fn offset(from: usize, to: usize, line: usize) -> Result<i16, ParseError> {
+        let offset = isize::try_from(from).or(Err(ParseError::TooManyInstructions))?
+            - isize::try_from(to).or(Err(ParseError::TooManyInstructions))?;
+        offset.try_into().or(Err(ParseError::JmpTooFar(line)))
     }
 
     pub fn line_at(&self, mut ip: usize) -> usize {
@@ -465,4 +450,6 @@ pub enum ParseError {
     JmpTooFar(usize),
     #[error("Too many items in lhs of assignment (line {0})")]
     TooManyAssignLhs(usize),
+    #[error("Too many instructions")]
+    TooManyInstructions,
 }

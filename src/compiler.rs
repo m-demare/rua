@@ -301,7 +301,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn named_variable(&mut self, id: RuaString) -> ExprDesc {
         if let Some(local) = self.context.resolve_local(&id) {
-            ExprDesc::new(ExprKind::Local { reg: local.into(), instr_idx: None })
+            ExprDesc::new(ExprKind::Local { reg: local.into() })
         } else if CompilerCtxt::is_upvalue(&id, &mut self.context_stack) {
             ExprDesc::new(ExprKind::Upvalue(id))
         } else {
@@ -311,10 +311,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn instruction(&mut self, instr: Instruction, line: usize) -> usize {
         self.current_chunk_mut().add_instruction(instr, line)
-    }
-
-    fn pop_instruction(&mut self) -> Option<Instruction> {
-        self.current_chunk_mut().pop_instruction()
     }
 
     fn binary<F: FnOnce(BinArgs) -> Instruction>(
@@ -682,8 +678,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.free_n_reg(cant_args);
         debug_assert_eq!(
             self.context.rh, rh,
-            "Should have left space only for retval (expected {})",
-            rh
+            "Should have left space only for retval (expected {rh})",
         );
         self.instruction(I::Call { base, nargs: cant_args }, line);
         Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx: None }))
@@ -832,7 +827,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn jmp_to(&mut self, to: usize, line: usize) -> Result<usize, ParseError> {
         let pc = self.pc();
-        let offset = Chunk::offset(to, pc).or(Err(ParseError::JmpTooFar(line)))?;
+        let offset = Chunk::offset(to, pc, line)?;
         Ok(self.instruction(I::Jmp(offset), line))
     }
 
@@ -850,14 +845,15 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn get_jmp_dst(&self, jmp_idx: usize) -> Option<usize> {
-        let offset = match self.current_chunk().code().get(jmp_idx) {
-            Some(Instruction::Jmp(offset)) => *offset,
+        let offset: isize = match self.current_chunk().code().get(jmp_idx) {
+            Some(Instruction::Jmp(offset)) => (*offset).into(),
             i => unreachable!("non Jmp instruction in jmp list {i:?}"),
         };
         if offset == 0 {
             None
         } else {
-            Some((jmp_idx as isize + offset as isize) as usize)
+            #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+            Some((jmp_idx as isize + offset) as usize)
         }
     }
 
@@ -1205,30 +1201,11 @@ impl CompilerCtxt {
     fn capture(&mut self, local: LocalHandle) {
         self.locals.capture(local);
     }
-
-    fn resolve_upvalue_name(&self, up: UpvalueHandle, context_stack: &[Self]) -> RuaString {
-        match self.upvalues.get(up).location() {
-            Left(local) => {
-                if let Some((parent, _)) = context_stack.split_last() {
-                    parent.locals.get(local)
-                } else {
-                    unreachable!("Should've found upvalue before getting to the top")
-                }
-            }
-            Right(upvalue) => {
-                if let Some((parent, tail)) = context_stack.split_last() {
-                    parent.resolve_upvalue_name(upvalue, tail)
-                } else {
-                    unreachable!("Should've found upvalue before getting to the top")
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
 enum ExprKind {
-    Local { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
+    Local { reg: u8 }, // instr_idx = None means expr is non relocable
     Global(RuaString),
     Upvalue(RuaString),
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
@@ -1249,6 +1226,7 @@ struct ExprDesc {
     f_jmp: Option<usize>,
 }
 
+#[allow(clippy::wrong_self_convention)]
 impl ExprDesc {
     const fn new(kind: ExprKind) -> Self {
         Self { kind, t_jmp: None, f_jmp: None }
@@ -1346,13 +1324,9 @@ impl ExprDesc {
         dst: u8,
     ) -> Result<(), ParseError> {
         match &self.kind {
-            ExprKind::Local { reg, instr_idx } => {
+            ExprKind::Local { reg } => {
                 if *reg != dst {
-                    if let Some(instr_idx) = instr_idx {
-                        compiler.current_chunk_mut().chg_dst_of(*instr_idx, dst);
-                    } else {
-                        compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0);
-                    }
+                    compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0);
                 }
             }
             ExprKind::Tmp { reg, instr_idx } => {

@@ -84,10 +84,6 @@ impl Locals {
         self.locals.truncate(self.locals.len() - n);
     }
 
-    pub fn get(&self, handle: LocalHandle) -> RuaString {
-        self.locals[handle.0 as usize].name.clone()
-    }
-
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
     #[allow(clippy::cast_possible_truncation)]

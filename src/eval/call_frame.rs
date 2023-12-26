@@ -49,6 +49,7 @@ impl CallFrame {
         self.ip += 1;
     }
 
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     pub fn rel_jmp(&mut self, offset: i16) {
         self.ip = (self.ip as isize + offset as isize) as usize;
     }
