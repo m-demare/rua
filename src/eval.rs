@@ -261,7 +261,7 @@ impl Vm {
                 let og_len = self.stack.len();
                 let stack_start_pos = frame.resolve_reg(base);
                 self.stack.resize(
-                    stack_start_pos + closure.function().max_used_regs() as usize,
+                    og_len.max(stack_start_pos + closure.function().max_used_regs() as usize),
                     RuaVal::nil(),
                 );
                 for i in 0..closure.function().arity().saturating_sub(nargs) {
