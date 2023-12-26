@@ -250,9 +250,6 @@ impl Vm {
                 I::Upvalue(_) => {
                     unreachable!("I::Upvalue must be handled by I::Closure")
                 }
-                I::Multiassign(n) => {
-                    self.multiassign(n, &mut frame)?;
-                }
             }
         }
     }
@@ -351,35 +348,6 @@ impl Vm {
         self.set_stack_at(frame, dst, closure);
     }
 
-    fn multiassign(&mut self, n: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
-        let mut keys_in_stack = 0;
-        let n = n as usize;
-        // for i in 0..n {
-        //     match frame.curr_instr() {
-        //         I::SetLocal(local) => self.set_local(&*frame, local),
-        //         I::SetUpvalue(up) => self.set_upvalue(frame, up),
-        //         I::SetGlobal(s) => {
-        //             let val = self.peek(0);
-        //             let key = frame.read_string(s);
-        //             self.global.insert(key.into(), val);
-        //             self.pop();
-        //         }
-        //         I::InsertKeyVal => {
-        //             let val = self.peek(0);
-        //             let key = self.peek(n - i + keys_in_stack);
-        //             let table = self.peek(n - i + keys_in_stack + 1);
-        //             let table = trace_err(table.as_table(), &*frame)?;
-        //             table.insert(key, val);
-        //             self.pop();
-        //             keys_in_stack += 2;
-        //         }
-        //         i => unreachable!("{i:?} cannot be part of I::Multiassign"),
-        //     }
-        // }
-        // self.drop(keys_in_stack);
-        Ok(())
-    }
-
     #[allow(clippy::cast_precision_loss)]
     fn len_op(&mut self, frame: &CallFrame, args: UnArgs) -> Result<(), EvalError> {
         self.unary_op(frame, args, |v| Ok(((v.len())? as f64).into()))
@@ -438,10 +406,6 @@ impl Vm {
         Ok(())
         // TODO optimize JMPs to avoid another instr dispatch cycle
     }
-
-    // fn pop(&mut self) -> RuaVal {
-    //     self.stack.pop().expect("Stack shouldn't be empty")
-    // }
 
     fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
         &self.stack[frame.resolve_reg(idx)]

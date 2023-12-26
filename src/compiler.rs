@@ -108,7 +108,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         while let Some(token) = self.peek_token() {
             debug_assert_eq!(
                 self.context.rh, 0,
-                "Should have no locals reserved between statements. Next token was {token:?}"
+                "Should have no registers reserved between statements. Next token was {token:?}"
             );
             match token {
                 Token { ttype: TT::RETURN, line, .. } => {
@@ -163,7 +163,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
             }
         }
-        debug_assert_eq!(self.context.rh, 0, "Should have no locals reserved at end of block");
+        debug_assert_eq!(self.context.rh, 0, "Should have no registers reserved at end of block");
         Ok(())
     }
 
@@ -523,10 +523,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     None
                 };
                 let mut val = self.expression(Precedence::Lowest)?;
+                val.free_tmp_regs(self);
                 if let Some(dst) = dst {
-                    val.free_tmp_regs(self);
                     val.free_reg(self);
                     val.to_reg(self, dst)?;
+                } else {
+                    val.to_any_reg(self)?;
+                    val.free_reg(self);
                 }
                 debug_assert_eq!(self.context.rh, 0);
                 match_token!(self, TT::COMMA)
@@ -545,16 +548,16 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    // fn match_lhs_rhs(&mut self, lhsnr: usize, mut rhsnr: usize, line: usize) {
-    //     while lhsnr < rhsnr {
-    //         self.instruction(I::Pop, line);
-    //         rhsnr -= 1;
-    //     }
-    //     while lhsnr > rhsnr {
-    //         self.instruction(I::Nil, line);
-    //         rhsnr += 1;
-    //     }
-    // }
+    fn match_lhs_rhs(&mut self, dsts: &Vec<ExprDesc>, srcs: &mut Vec<ExprDesc>) {
+        while srcs.len() > dsts.len() {
+            let src = srcs.pop().expect("Not empty (more srcs than dsts)");
+            src.free_tmp_regs(self);
+            src.free_reg(self);
+        }
+        while dsts.len() > srcs.len() {
+            srcs.push(ExprDesc::new(ExprKind::Nil));
+        }
+    }
 
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
@@ -577,45 +580,14 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         match self.peek_token() {
             Some(Token { ttype: TT::ASSIGN, line, .. }) => {
                 let line = *line;
-                let instr = self.current_chunk().code().last();
-                if matches!(instr, Some(&I::Index(..))) {
-                    // return self.multiassign(line);
-                }
                 self.next_token();
-                let mut val = self.expression(Precedence::Lowest)?;
-                match dst.kind {
-                    ExprKind::Local { reg, .. } => {
-                        val.free_tmp_regs(self);
-                        val.to_reg(self, reg)?;
-                        val.free_reg(self);
-                    }
-                    ExprKind::Global(id) => {
-                        let src = val.to_any_reg(self)?;
-                        let dst = self.new_string_constant(id)?;
-                        self.instruction(I::SetGlobal { dst, src }, line);
-                        self.free_reg(src);
-                    }
-                    ExprKind::Upvalue(id) => {
-                        let src = val.to_any_reg(self)?;
-                        let dst = self
-                            .context
-                            .resolve_upvalue(&id, &mut self.context_stack)?
-                            .expect("Got invalid upvalue");
-                        self.instruction(I::SetUpvalue { dst, src }, line);
-                        self.free_reg(src);
-                    }
-                    ExprKind::Index { table, key } => {
-                        let val = val.to_any_reg(self)?;
-                        self.instruction(I::InsertKeyVal { table, key, val }, line);
-                        self.free_reg(val);
-                        self.free2reg(table, key);
-                    }
-                    _ => return Err(ParseError::InvalidAssignLHS(line)),
-                };
+                let val = self.expression(Precedence::Lowest)?;
+                self.assign(&dst, val, line)?;
+                dst.free_tmp_regs(self);
             }
             Some(Token { ttype: TT::COMMA, line, .. }) => {
                 let line = *line;
-                // return self.multiassign(line);
+                return self.multiassign(dst, line);
             }
             _ => {
                 match self.current_chunk().code().last() {
@@ -631,43 +603,68 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    // fn multiassign(&mut self, line: usize) -> Result<(), ParseError> {
-    //     // The first lhs was already parsed by assign_or_call_st
-    //     let mut lhsnr = 1;
-    //     let mut rhsnr = 0;
-    //     let mut ops = Vec::new();
-    //     ops.push(self.convert_to_assign(line)?);
-    //     while match_token!(self, TT::COMMA) {
-    //         self.expression(Precedence::Lowest)?;
-    //         ops.push(self.convert_to_assign(line)?);
-    //         lhsnr += 1;
-    //     }
-    //     consume!(self; (TT::ASSIGN));
-    //     while {
-    //         self.expression(Precedence::Lowest)?;
-    //         rhsnr += 1;
-    //         match_token!(self, TT::COMMA)
-    //     } {}
+    fn assign(&mut self, dst: &ExprDesc, mut src: ExprDesc, line: usize) -> Result<(), ParseError> {
+        match dst.kind {
+            ExprKind::Local { reg, .. } => {
+                src.free_tmp_regs(self);
+                src.free_reg(self);
+                src.to_reg(self, reg)?;
+            }
+            ExprKind::Global(ref id) => {
+                let src = src.to_any_reg(self)?;
+                let dst = self.new_string_constant(id.clone())?;
+                self.instruction(I::SetGlobal { dst, src }, line);
+                self.free_reg(src);
+            }
+            ExprKind::Upvalue(ref id) => {
+                let src = src.to_any_reg(self)?;
+                let dst = self
+                    .context
+                    .resolve_upvalue(id, &mut self.context_stack)?
+                    .expect("Got invalid upvalue");
+                self.instruction(I::SetUpvalue { dst, src }, line);
+                self.free_reg(src);
+            }
+            ExprKind::Index { table, key } => {
+                let val = src.to_any_reg(self)?;
+                self.instruction(I::InsertKeyVal { table, key, val }, line);
+                self.free_reg(val);
+            }
+            _ => return Err(ParseError::InvalidAssignLHS(line)),
+        };
+        Ok(())
+    }
 
-    //     self.match_lhs_rhs(lhsnr, rhsnr, line);
+    fn multiassign(&mut self, first_dst: ExprDesc, line: usize) -> Result<(), ParseError> {
+        let mut dsts = vec![first_dst];
+        let mut srcs = Vec::new();
+        while match_token!(self, TT::COMMA) {
+            dsts.push(self.expression(Precedence::Lowest)?);
+        }
+        consume!(self; (TT::ASSIGN));
+        while {
+            let mut src = self.expression(Precedence::Lowest)?;
+            src.free_reg(self);
+            src.to_next_reg(self)?;
+            srcs.push(src);
+            match_token!(self, TT::COMMA)
+        } {}
 
-    //     self.instruction(
-    //         I::Multiassign(lhsnr.try_into().or(Err(ParseError::TooManyAssignLhs(line)))?),
-    //         line,
-    //     );
-    //     for op in ops.iter().rev() {
-    //         self.instruction(*op, line);
-    //     }
+        self.match_lhs_rhs(&dsts, &mut srcs);
 
-    //     Ok(())
-    // }
+        for (dst, src) in dsts.iter().zip(srcs.into_iter()).rev() {
+            self.assign(dst, src, line)?;
+        }
+
+        dsts.iter().rev().for_each(|d| d.free_tmp_regs(self));
+
+        Ok(())
+    }
 
     fn call_expr(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
         debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
-        lhs_desc.free_tmp_regs(self);
+        let base = lhs_desc.to_next_reg(self)?;
         let rh = self.context.rh;
-        let base = self.tmp()?;
-        lhs_desc.to_reg(self, base)?;
         let cant_args = match self.next_token() {
             Some(Token { ttype: TT::LPAREN, .. }) => self.arg_list()?,
             Some(Token { ttype: TT::STRING(s), line, .. }) => {
@@ -684,10 +681,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         self.free_n_reg(cant_args);
         debug_assert_eq!(
-            self.context.rh,
-            rh + 1,
+            self.context.rh, rh,
             "Should have left space only for retval (expected {})",
-            rh + 1
+            rh
         );
         self.instruction(I::Call { base, nargs: cant_args }, line);
         Ok(ExprDesc::new(ExprKind::Tmp { reg: base, instr_idx: None }))
@@ -709,9 +705,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     self.free_reg(reg);
                 }
             }
-            item.free_tmp_regs(self);
-            let dst = self.tmp()?;
-            item.to_reg(self, dst)?;
+            item.to_next_reg(self)?;
             match_token!(self, TT::COMMA)
         } {}
         consume!(self; (TT::RPAREN));
@@ -1438,10 +1432,9 @@ impl ExprDesc {
     }
 
     fn free_tmp_regs<T: Iterator<Item = u8> + Clone>(&self, compiler: &mut Compiler<'_, T>) {
-        match &self.kind {
-            ExprKind::Index { table, key } => compiler.free2reg(*table, *key),
-            _ => {}
-        };
+        if let ExprKind::Index { table, key } = &self.kind {
+            compiler.free2reg(*table, *key);
+        }
     }
 
     fn to_next_reg<T: Iterator<Item = u8> + Clone>(

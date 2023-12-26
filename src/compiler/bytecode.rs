@@ -62,8 +62,6 @@ pub enum Instruction {
     CloseUpvalues { from: u8, to: u8 },
     GetUpvalue { dst: u8, src: UpvalueHandle },
     SetUpvalue { dst: UpvalueHandle, src: u8 },
-
-    Multiassign(u8),
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -337,7 +335,7 @@ impl Instruction {
     }
 
     #[cfg(debug_assertions)]
-    pub fn has_valid_regs(self) -> bool {
+    pub const fn has_valid_regs(self) -> bool {
         const fn validate(reg: u8) -> bool {
             reg < 255
         }
@@ -387,7 +385,6 @@ impl Instruction {
             }
             Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
-            Self::Multiassign(_) => todo!(),
         }
     }
 }

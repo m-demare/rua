@@ -590,153 +590,159 @@ test_interpret!(
     |_| Ok(9.0.into())
 );
 
-// test_interpret!(
-//     multiassign_globals,
-//     "
-//     a, b, c = 2, 5, 10
-//     assert(a==2)
-//     assert(b==5)
-//     assert(c==10)
-//     return a + c - b
-// ",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    multiassign_globals,
+    "
+    a, b, c = 2, 5, 10
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
 
-// test_interpret!(
-//     multiassign_locals,
-//     "
-//     local a
-//     local b
-//     local c
-//     a, b, c = 2, 5, 10
-//     assert(a==2)
-//     assert(b==5)
-//     assert(c==10)
-//     return a + c - b
-// ",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    multiassign_locals,
+    "
+    local a
+    local b
+    local c
+    a, b, c = 2, 5, 10
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
 
-// test_interpret!(
-//     multiassign_upvalues,
-//     "
-//     local a
-//     local b
-//     local c
-//     function foo()
-//         a, b, c = 2, 5, 10
-//     end
-//     foo()
-//     assert(a==2)
-//     assert(b==5)
-//     assert(c==10)
-//     return a + c - b
-// ",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    multiassign_upvalues,
+    "
+    local a
+    local b
+    local c
+    function foo()
+        a, b, c = 2, 5, 10
+    end
+    foo()
+    assert(a==2)
+    assert(b==5)
+    assert(c==10)
+    return a + c - b
+",
+    |_| Ok(7.0.into())
+);
 
-// test_interpret!(
-//     multiassign_fields,
-//     "
-//     local a = {}
-//     a.a, a.b, a['c'] = 2, 5, 10
-//     assert(a.a==2)
-//     assert(a.b==5)
-//     assert(a.c==10)
-//     return a.a + a.c - a.b
-// ",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    multiassign_fields,
+    "
+    local a = {}
+    a.a, a.b, a['c'] = 2, 5, 10
+    assert(a.a==2)
+    assert(a.b==5)
+    assert(a.c==10)
+    return a.a + a.c - a.b
+",
+    |_| Ok(7.0.into())
+);
 
-// test_interpret!(
-//     multiassign_mixed,
-//     "
-//     local a = {}
-//     local d
-//     a.a, b, a['c'], d = 2, 5, 10, 1
-//     assert(a.a==2)
-//     assert(b==5)
-//     assert(a.c==10)
-//     assert(d==1)
-//     return a.a + a.c - b + d
-// ",
-//     |_| Ok(8.0.into())
-// );
+test_interpret!(
+    multiassign_mixed,
+    "
+    local a = {}
+    local d
+    a.a, b, a['c'], d = 2, 5, 10, 1
+    assert(a.a==2)
+    assert(b==5)
+    assert(a.c==10)
+    assert(d==1)
+    return a.a + a.c - b + d
+",
+    |_| Ok(8.0.into())
+);
 
-// test_interpret!(
-//     multiassign_more_lhs,
-//     "
-//     local a = {}
-//     local d
-//     a.a, b, a['c'], d, e = 2, 5, 10
-//     assert(a.a==2)
-//     assert(b==5)
-//     assert(a.c==10)
-//     assert(d==nil)
-//     return d
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    multiassign_more_lhs,
+    "
+    local a = {}
+    local e = {h=5}
+    local d = 3
+    a.a, b, a['c'], d, e.h = 2, 5, 10
+    assert(a.a==2)
+    assert(b==5)
+    assert(a.c==10)
+    assert(d==nil)
+    return e.h
+",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     multiassign_more_rhs,
-//     "
-//     local a = {}
-//     a.a, b = 2, 5, 10
-//     return a.a + b
-// ",
-//     |_| Ok(7.0.into())
-// );
+test_interpret!(
+    multiassign_more_rhs,
+    "
+    local flag = false
+    function asd() flag = true; return 3 end
+    local a = {}
+    a.a, b = 2, 5, 10, asd()
+    return a.a + b
+",
+    |_| Ok(7.0.into())
+);
 
-// test_interpret!(
-//     multilocal,
-//     "
-//     local a, b, c = 1, 2, 4
-//     assert(a==1)
-//     assert(b==2)
-//     assert(c==4)
-//     return a + b - c
-// ",
-//     |_| Ok((-1.0).into())
-// );
+test_interpret!(
+    multilocal,
+    "
+    local a, b, c = 1, 2, 4
+    assert(a==1)
+    assert(b==2)
+    assert(c==4)
+    return a + b - c
+",
+    |_| Ok((-1.0).into())
+);
 
-// test_interpret!(
-//     multilocal_more_lhs,
-//     "
-//     local a, b, c = 1, 2
-//     assert(a==1)
-//     assert(b==2)
-//     assert(c==nil)
-//     return c
-// ",
-//     |_| Ok(RuaVal::nil())
-// );
+test_interpret!(
+    multilocal_more_lhs,
+    "
+    local a, b, c = 1, 2
+    assert(a==1)
+    assert(b==2)
+    assert(c==nil)
+    return c
+",
+    |_| Ok(RuaVal::nil())
+);
 
-// test_interpret!(
-//     multilocal_more_rhs,
-//     "
-//     local a, b, c = 1, 2, 4, 3
-//     assert(a==1)
-//     assert(b==2)
-//     assert(c==4)
-//     return a + b - c
-// ",
-//     |_| Ok((-1.0).into())
-// );
+test_interpret!(
+    multilocal_more_rhs,
+    "
+    local flag = false
+    function asd() flag = true; return 3 end
+    local a, b, c = 1, 2, 4, asd()
+    assert(a==1)
+    assert(b==2)
+    assert(c==4)
+    assert(flag)
+    return a + b - c
+",
+    |_| Ok((-1.0).into())
+);
 
-// test_interpret!(
-//     iterative_fib,
-//     "
-//     local n, i = 7, 3
-//     local fib, last_fib = 1, 1
-//     while i <= n do
-//         last_fib, fib = fib, fib + last_fib
-//         i = i + 1
-//     end
+test_interpret!(
+    iterative_fib,
+    "
+    local n, i = 7, 3
+    local fib, last_fib = 1, 1
+    while i <= n do
+        last_fib, fib = fib, fib + last_fib
+        i = i + 1
+    end
 
-//     return fib",
-//     |_| Ok(13.0.into())
-// );
+    return fib",
+    |_| Ok(13.0.into())
+);
 
 test_interpret!(
     dynamic_prog_fib,
