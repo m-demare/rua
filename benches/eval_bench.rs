@@ -17,8 +17,7 @@ fn bench(c: &mut Criterion, input: &str, name: &str) {
 fn bench_file(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
-            let input = std::fs::read(input)
-                .expect("Error: input file does not exist");
+            let input = std::fs::read(input).expect("Error: input file does not exist");
             let mut vm = Vm::new();
             let prog = compile(input.iter().copied(), &mut vm).unwrap();
             black_box(vm.interpret(prog.into()))
@@ -26,7 +25,7 @@ fn bench_file(c: &mut Criterion, input: &str, name: &str) {
     });
 }
 
-fn eval_fibonacci_rec(c: &mut Criterion) {
+fn eval_fibonacci(c: &mut Criterion) {
     let input = r"
 local m = 70000
 local function fibo(n)
@@ -41,7 +40,7 @@ return fibo(m)";
     bench(c, input, "eval_fibonacci")
 }
 
-fn eval_fibonacci(c: &mut Criterion) {
+fn eval_fibonacci_rec(c: &mut Criterion) {
     let input = r"
 local m = 2000
 local fibo_mem = {}

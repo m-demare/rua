@@ -1,4 +1,8 @@
-use std::{cell::RefCell, num::NonZeroU32, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    num::NonZeroU32,
+    rc::Rc,
+};
 
 use either::Either::{self, Left, Right};
 
@@ -13,8 +17,8 @@ use super::{function::Function, IntoRuaVal, RuaVal, RuaValInner, UpvalueObj};
 pub struct Closure {
     function: Function,
     upvalues: RefCell<Vec<UpvalueObj>>,
-    marked: RefCell<bool>,
-    vm_id: RefCell<Option<NonZeroU32>>,
+    marked: Cell<bool>,
+    vm_id: Cell<Option<NonZeroU32>>,
 }
 
 impl PartialEq for Closure {
@@ -36,7 +40,7 @@ impl Closure {
             function,
             upvalues: Vec::with_capacity(upvalue_count).into(),
             marked: false.into(),
-            vm_id: RefCell::new(None),
+            vm_id: None.into(),
         }
     }
 

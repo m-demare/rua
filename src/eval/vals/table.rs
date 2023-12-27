@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     hash::{BuildHasherDefault, Hash, Hasher},
     num::NonZeroU32,
     rc::Rc,
@@ -14,8 +14,8 @@ use super::{IntoRuaVal, RuaVal, RuaValInner};
 #[derive(Debug)]
 pub struct Table {
     map: RefCell<FxHashMap<RuaVal, RuaVal>>,
-    marked: RefCell<bool>,
-    vm_id: RefCell<Option<NonZeroU32>>,
+    marked: Cell<bool>,
+    vm_id: Cell<Option<NonZeroU32>>,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
@@ -31,8 +31,8 @@ impl Table {
                 capacity,
                 BuildHasherDefault::default(),
             )),
-            marked: RefCell::new(false),
-            vm_id: RefCell::new(None),
+            marked: false.into(),
+            vm_id: None.into(),
         }
     }
 
@@ -128,7 +128,7 @@ impl Table {
     }
 
     pub(in super::super) fn unmark(&self) -> bool {
-        trace_gc!("Unmarking table 0x{:x}. Is marked? {}", self.addr(), *self.marked.borrow());
+        trace_gc!("Unmarking table 0x{:x}. Is marked? {}", self.addr(), self.marked.get());
         self.marked.replace(false)
     }
 
