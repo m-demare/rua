@@ -14,16 +14,25 @@ fn bench(c: &mut Criterion, input: &str, name: &str) {
     });
 }
 
+fn bench_file(c: &mut Criterion, input: &str, name: &str) {
+    c.bench_function(name, |b| {
+        b.iter(|| {
+            let input = std::fs::read(input)
+                .expect("Error: input file does not exist");
+            let mut vm = Vm::new();
+            let prog = compile(input.iter().copied(), &mut vm).unwrap();
+            black_box(vm.interpret(prog.into()))
+        })
+    });
+}
+
 fn eval_fibonacci_rec(c: &mut Criterion) {
     let input = r"
 local m = 70000
 local function fibo(n)
-    local i = 3
-
     local fib, last_fib = 1, 1
-    while i <= n do
+    for i = 3,n do
         last_fib, fib = fib, fib + last_fib
-        i = i + 1
     end
     return fib
 end
@@ -52,9 +61,8 @@ return fibo(m)";
 fn eval_fizzbuzz(c: &mut Criterion) {
     let input = r"
 local n = 30000
-local i = 1
 
-while i <= n do
+for i =1,n do
     local out = ''
     if i % 3 == 0 then
         out = out .. 'Fizz'
@@ -65,7 +73,6 @@ while i <= n do
     if out == '' then
         out = tostring(i)
     end
-    i = i + 1
 end
 ";
 
@@ -104,6 +111,14 @@ end
     bench(c, input, "stress_gc")
 }
 
+fn bintrees(c: &mut Criterion) {
+    bench_file(c, "test_scripts/bintrees.lua", "bintrees");
+}
+
+fn nbody(c: &mut Criterion) {
+    bench_file(c, "test_scripts/nbody.lua", "nbody");
+}
+
 criterion_group! {
     name=eval_bench;
     config = Criterion::default().measurement_time(Duration::from_secs(10));
@@ -113,5 +128,7 @@ criterion_group! {
         eval_fizzbuzz,
         stress_rc,
         stress_gc,
+        bintrees,
+        nbody,
 }
 criterion_main!(eval_bench);
