@@ -138,13 +138,13 @@ impl RuaVal {
 
     /// # Safety
     /// An unregistered table will not be garbage collected
-    pub unsafe fn from_table_unregistered(table: Rc<Table>) -> Self {
+    pub fn from_table_unregistered(table: Rc<Table>) -> Self {
         Self(RuaValInner::Table(table))
     }
 
     /// # Safety
     /// An unregistered closure will not be garbage collected
-    pub unsafe fn from_closure_unregistered(closure: Rc<Closure>) -> Self {
+    pub fn from_closure_unregistered(closure: Rc<Closure>) -> Self {
         Self(RuaValInner::Closure(closure))
     }
 }

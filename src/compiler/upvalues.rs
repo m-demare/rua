@@ -30,9 +30,7 @@ impl Upvalues {
         if let Some((i, _)) =
             self.upvalues.iter().enumerate().find(|(_, up)| up.location == upvalue)
         {
-            // SAFETY: self.upvalues is only pushed to in `find_or_add`, where
-            // it is checked that it doesn't exceed u8::MAX
-            return Ok(UpvalueHandle(unsafe { i.try_into().unwrap_unchecked() }));
+            return Ok(UpvalueHandle(i.try_into().expect("Upvalues shouldn't exceed u8::MAX")));
         }
         let len = self.len();
         if len == u8::MAX {
@@ -49,9 +47,7 @@ impl Upvalues {
 
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> u8 {
-        // SAFETY: self.upvalues is only pushed to in `find_or_add`, where
-        // it is checked that it doesn't exceed u8::MAX
-        unsafe { self.upvalues.len().try_into().unwrap_unchecked() }
+        self.upvalues.len().try_into().expect("Upvalues shouldn't exceed u8::MAX")
     }
 }
 

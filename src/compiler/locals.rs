@@ -56,10 +56,8 @@ impl Locals {
         if self.locals.len() == MAX_LOCALS as usize {
             return Err(ParseError::TooManyLocals);
         }
-        // SAFETY: self.locals is only pushed to in `declare`, where
-        // it is checked that it doesn't exceed u8::MAX
         let len = self.locals.len();
-        let local = LocalHandle(unsafe { len.try_into().unwrap_unchecked() });
+        let local = LocalHandle(len.try_into().expect("Locals shouldn't exceed u8::MAX"));
         self.locals.push(Local::new(name, self.scope_depth));
         Ok(local)
     }
@@ -69,14 +67,12 @@ impl Locals {
     }
 
     pub fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
-        // SAFETY: self.locals is only pushed to in `declare`, where
-        // it is checked that it doesn't exceed u8::MAX
         self.locals
             .iter()
             .enumerate()
             .rev()
             .find(|(_, local)| local.usable && &local.name == id)
-            .map(|(i, _)| LocalHandle(unsafe { i.try_into().unwrap_unchecked() }))
+            .map(|(i, _)| LocalHandle(i.try_into().expect("Locals shouldn't exceed u8::MAX")))
     }
 
     pub fn drop(&mut self, n: usize) {
