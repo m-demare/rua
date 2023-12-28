@@ -966,7 +966,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
         let name = self.tokens.vm().new_string([].into());
         let (func, upvals) = self.function(name)?;
-        Ok(ExprDesc::new(ExprKind::Function { func, upvals }))
+        Ok(ExprDesc::new(ExprKind::Function((func, upvals).into())))
     }
 
     fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
@@ -1095,7 +1095,7 @@ pub fn compile<C: Iterator<Item = u8> + Clone>(
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Copy)]
-pub enum Precedence {
+enum Precedence {
     Lowest,
     Or,
     And,
@@ -1211,7 +1211,7 @@ enum ExprKind {
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
     Number(f64),
     String(RuaString),
-    Function { func: Function, upvals: Upvalues },
+    Function(Box<(Function, Upvalues)>),
     Index { table: u8, key: u8 },
     True,
     False,
@@ -1268,10 +1268,9 @@ impl ExprDesc {
     ) -> Result<Option<usize>, ParseError> {
         let jmp = match &self.kind {
             ExprKind::Jmp { instr_idx } => Some(*instr_idx),
-            ExprKind::Number(_)
-            | ExprKind::String(_)
-            | ExprKind::Function { .. }
-            | ExprKind::True => None,
+            ExprKind::Number(_) | ExprKind::String(_) | ExprKind::Function(_) | ExprKind::True => {
+                None
+            }
             _ => {
                 let src = self.to_any_reg(compiler)?;
                 compiler.free_reg(src);
@@ -1355,11 +1354,12 @@ impl ExprDesc {
             ExprKind::String(s) => {
                 compiler.emit_string(dst, s.clone(), 0)?;
             }
-            ExprKind::Function { .. } => {
+            ExprKind::Function(_) => {
                 let old_kind =
                     std::mem::replace(&mut self.kind, ExprKind::Tmp { reg: dst, instr_idx: None });
                 // TODO find nicer way to take ownership
-                if let ExprKind::Function { func, upvals } = old_kind {
+                if let ExprKind::Function(f) = old_kind {
+                    let (func, upvals) = *f;
                     compiler.emit_closure(dst, func, upvals, 0)?;
                 } else {
                     unreachable!("ExprKind was function")
