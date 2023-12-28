@@ -2,16 +2,19 @@
 
 use std::{
     fmt::Display,
-    hash::{self, Hash},
+    hash::{self, Hash, Hasher},
     ops::Deref,
     rc::Rc,
 };
+
+use rustc_hash::FxHasher;
 
 use crate::eval::StringId;
 
 struct StringInner {
     data: Rc<[u8]>,
     id: StringId,
+    hash: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -19,7 +22,7 @@ pub struct RuaString(Rc<StringInner>);
 
 impl Hash for StringInner {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        state.write_u64(self.hash);
     }
 }
 
@@ -33,7 +36,10 @@ impl Eq for StringInner {}
 
 impl RuaString {
     pub(crate) fn new(data: Rc<[u8]>, id: StringId) -> Self {
-        Self(Rc::new(StringInner { data, id }))
+        let mut hasher = FxHasher::default();
+        id.hash(&mut hasher);
+        let hash = hasher.finish();
+        Self(Rc::new(StringInner { data, id, hash }))
     }
 
     pub(super) fn inner(&self) -> Rc<[u8]> {
