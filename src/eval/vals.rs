@@ -1,5 +1,5 @@
 pub mod closure;
-pub mod function;
+pub(crate) mod function;
 pub mod number;
 pub mod string;
 pub mod table;
@@ -55,6 +55,10 @@ pub enum RuaType {
 }
 
 impl RuaVal {
+
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `Number`
     pub const fn as_number(&self) -> Result<f64, EvalError> {
         match &self.0 {
             RuaValInner::Number(n) => Ok(n.val()),
@@ -62,6 +66,9 @@ impl RuaVal {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `Table`
     pub const fn as_table(&self) -> Result<&Rc<Table>, EvalError> {
         match &self.0 {
             RuaValInner::Table(t) => Ok(t),
@@ -69,6 +76,9 @@ impl RuaVal {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `String`
     pub fn as_str(&self) -> Result<Rc<[u8]>, EvalError> {
         match &self.0 {
             RuaValInner::String(s) => Ok(s.inner()),
@@ -76,18 +86,24 @@ impl RuaVal {
         }
     }
 
+    #[must_use]
     pub const fn truthy(&self) -> bool {
         !matches!(self.0, RuaValInner::Bool(false) | RuaValInner::Nil)
     }
 
+    #[must_use]
     pub const fn is_nil(&self) -> bool {
         matches!(self.0, RuaValInner::Nil)
     }
 
+    #[must_use]
     pub const fn get_type(&self) -> RuaType {
         self.0.get_type()
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `String` or `Table`
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> Result<usize, EvalError> {
         match &self.0 {
@@ -116,18 +132,28 @@ impl RuaVal {
         };
     }
 
+    #[must_use]
     pub const fn nil() -> Self {
         Self(RuaValInner::Nil)
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `Closure`
     pub fn into_closure(self) -> Result<Rc<Closure>, EvalError> {
         self.try_into()
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `NativeFunction`
     pub fn into_native_fn(self) -> Result<Rc<NativeFunction>, EvalError> {
         self.try_into()
     }
 
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `Closure` or `NativeFunction`
     pub fn into_callable(self) -> Result<Either<Rc<Closure>, Rc<NativeFunction>>, EvalError> {
         match self.0 {
             RuaValInner::Closure(c) => Ok(Left(c)),
@@ -219,11 +245,11 @@ pub type StackTrace = Vec<(Rc<str>, usize)>;
 pub struct EvalErrorTraced(Box<(EvalError, StackTrace)>);
 
 impl EvalErrorTraced {
-    pub fn new(e: EvalError, stack_trace: StackTrace) -> Self {
+    pub(crate) fn new(e: EvalError, stack_trace: StackTrace) -> Self {
         Self(Box::new((e, stack_trace)))
     }
 
-    pub fn push_stack_trace(&mut self, name: Rc<str>, line: usize) {
+    pub(crate) fn push_stack_trace(&mut self, name: Rc<str>, line: usize) {
         self.0 .1.push((name, line));
     }
 }
@@ -395,6 +421,9 @@ impl From<Infallible> for EvalError {
 
 pub trait TryIntoOpt<T> {
     type Error;
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not nil, and cannot be converted to type T
     fn try_into_opt(self) -> Result<Option<T>, Self::Error>;
 }
 

@@ -60,8 +60,8 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
     let fn_name = input_fn.sig.ident.to_string();
     let wrap_output_with = match input_fn.sig.output {
         syn::ReturnType::Default => OutputWrappers::Resultify,
-        syn::ReturnType::Type(_, ref t) => match t {
-            box Type::Path(p) => {
+        syn::ReturnType::Type(_, ref t) => match t.as_ref() {
+            Type::Path(p) => {
                 if p.path.segments.first().unwrap().ident.to_string().contains("Result") {
                     OutputWrappers::IntoResult
                 } else {

@@ -28,15 +28,15 @@ pub struct LocalHandle(pub u8);
 
 #[invariant(self.locals.len() <= u8::MAX.into(), "Pushed too many locals")]
 impl Locals {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self { locals: Vec::with_capacity(MAX_LOCALS as usize), scope_depth: 0 }
     }
 
-    pub fn begin_scope(&mut self) {
+    pub(super) fn begin_scope(&mut self) {
         self.scope_depth += 1;
     }
 
-    pub fn end_scope<F: FnMut(&Local)>(&mut self, mut applying: F) {
+    pub(super) fn end_scope<F: FnMut(&Local)>(&mut self, mut applying: F) {
         self.scope_depth -= 1;
 
         let mut locals_in_scope = 0;
@@ -52,7 +52,7 @@ impl Locals {
         self.locals.truncate(self.locals.len() - locals_in_scope);
     }
 
-    pub fn declare(&mut self, name: RuaString) -> Result<LocalHandle, ParseError> {
+    pub(super) fn declare(&mut self, name: RuaString) -> Result<LocalHandle, ParseError> {
         if self.locals.len() == MAX_LOCALS as usize {
             return Err(ParseError::TooManyLocals);
         }
@@ -62,11 +62,11 @@ impl Locals {
         Ok(local)
     }
 
-    pub fn make_usable(&mut self, handle: LocalHandle) {
+    pub(super) fn make_usable(&mut self, handle: LocalHandle) {
         self.locals[handle.0 as usize].usable = true;
     }
 
-    pub fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
+    pub(super) fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
         self.locals
             .iter()
             .enumerate()
@@ -75,7 +75,7 @@ impl Locals {
             .map(|(i, _)| LocalHandle(i.try_into().expect("Locals shouldn't exceed u8::MAX")))
     }
 
-    pub fn drop(&mut self, n: usize) {
+    pub(super) fn drop(&mut self, n: usize) {
         debug_assert!(self.locals.len() >= n);
         self.locals.truncate(self.locals.len() - n);
     }
@@ -83,15 +83,15 @@ impl Locals {
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
     #[allow(clippy::cast_possible_truncation)]
-    pub fn len(&self) -> u8 {
+    pub(super) fn len(&self) -> u8 {
         self.locals.len() as u8
     }
 
-    pub fn capture(&mut self, local: LocalHandle) {
+    pub(super) fn capture(&mut self, local: LocalHandle) {
         self.locals[local.0 as usize].is_captured = true;
     }
 
-    pub fn name_of_reg(&self, reg: u8) -> Option<RuaString> {
+    pub(super) fn name_of_reg(&self, reg: u8) -> Option<RuaString> {
         self.locals
             .iter()
             .enumerate()
@@ -102,7 +102,7 @@ impl Locals {
 }
 
 impl LocalHandle {
-    pub const fn pos(self) -> usize {
+    pub(crate) const fn pos(self) -> usize {
         self.0 as usize
     }
 }
@@ -112,7 +112,7 @@ impl Local {
         Self { name, depth, is_captured: false, usable: false }
     }
 
-    pub const fn is_captured(&self) -> bool {
+    pub(super) const fn is_captured(&self) -> bool {
         self.is_captured
     }
 }

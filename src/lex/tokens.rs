@@ -83,7 +83,7 @@ pub struct Token {
     pub line: usize,
 }
 
-pub const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
+pub(super) const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {
     use TokenType as T;
     Some(match identifier {
         b"and" => T::AND,

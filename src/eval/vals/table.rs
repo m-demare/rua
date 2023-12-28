@@ -21,10 +21,12 @@ pub struct Table {
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
 
 impl Table {
-    pub(crate) fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self::with_capacity(0)
     }
 
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: RefCell::new(FxHashMap::with_capacity_and_hasher(

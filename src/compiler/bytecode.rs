@@ -69,21 +69,21 @@ static_assertions::assert_eq_size!(Instruction, [u8; 4]);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BinArgs {
-    pub dst: u8,
-    pub lhs: u8,
-    pub rhs: u8,
+    pub(crate) dst: u8,
+    pub(crate) lhs: u8,
+    pub(crate) rhs: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct JmpArgs {
-    pub lhs: u8,
-    pub rhs: u8,
+    pub(crate) lhs: u8,
+    pub(crate) rhs: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct UnArgs {
-    pub dst: u8,
-    pub src: u8,
+    pub(crate) dst: u8,
+    pub(crate) src: u8,
 }
 
 #[derive(PartialEq)]
@@ -149,23 +149,27 @@ impl Chunk {
         Self { code, numbers, strings, functions, lines }
     }
 
-    pub fn read_number(&self, c: NumberHandle) -> f64 {
+    #[must_use]
+    pub(crate) fn read_number(&self, c: NumberHandle) -> f64 {
         *self.numbers.get(c.0 as usize).expect("Invalid constant")
     }
 
-    pub fn read_string(&self, c: StringHandle) -> RuaString {
+    #[must_use]
+    pub(crate) fn read_string(&self, c: StringHandle) -> RuaString {
         self.strings.get(c.0 as usize).expect("Invalid constant").clone()
     }
 
-    pub fn read_function(&self, c: FnHandle) -> Function {
+    #[must_use]
+    pub(crate) fn read_function(&self, c: FnHandle) -> Function {
         self.functions.get(c.0 as usize).expect("Invalid constant").clone()
     }
 
-    pub const fn code(&self) -> &Vec<Instruction> {
+    #[must_use]
+    pub(crate) const fn code(&self) -> &Vec<Instruction> {
         &self.code
     }
 
-    pub fn add_closure(
+    pub(super) fn add_closure(
         &mut self,
         dst: u8,
         func: Function,
@@ -180,12 +184,12 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<usize, ParseError> {
+    pub(super) fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<usize, ParseError> {
         let c = add_constant!(val, self.numbers, NumberHandle);
         Ok(self.add_instruction(Instruction::Number { dst, src: c }, line))
     }
 
-    pub fn add_string(
+    pub(super) fn add_string(
         &mut self,
         dst: u8,
         val: RuaString,
@@ -195,11 +199,11 @@ impl Chunk {
         Ok(self.add_instruction(Instruction::String { dst, src: c }, line))
     }
 
-    pub fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
+    pub(super) fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
         Ok(add_constant!(val, self.strings, StringHandle))
     }
 
-    pub fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
+    pub(super) fn add_instruction(&mut self, instr: Instruction, line: usize) -> usize {
         self.code.push(instr);
         let last_line = self.lines.last_mut().expect("lines is always non-empty");
         if last_line.0 == line {
@@ -227,7 +231,7 @@ impl Chunk {
         Ok(())
     }
 
-    pub fn negate_cond(&mut self, instr_idx: usize) {
+    pub(super) fn negate_cond(&mut self, instr_idx: usize) {
         use Instruction as I;
         let new_instr = match self.code.get(instr_idx) {
             Some(I::Eq(JmpArgs { lhs, rhs })) => I::Neq(JmpArgs { lhs: *lhs, rhs: *rhs }),
@@ -243,17 +247,18 @@ impl Chunk {
         self.code[instr_idx] = new_instr;
     }
 
-    pub fn chg_dst_of(&mut self, instr_idx: usize, dst: u8) {
+    pub(super) fn chg_dst_of(&mut self, instr_idx: usize, dst: u8) {
         self.code[instr_idx].chg_dst(dst)
     }
 
-    pub fn offset(from: usize, to: usize, line: usize) -> Result<i16, ParseError> {
+    pub(super) fn offset(from: usize, to: usize, line: usize) -> Result<i16, ParseError> {
         let offset = isize::try_from(from).or(Err(ParseError::TooManyInstructions))?
             - isize::try_from(to).or(Err(ParseError::TooManyInstructions))?;
         offset.try_into().or(Err(ParseError::JmpTooFar(line)))
     }
 
-    pub fn line_at(&self, mut ip: usize) -> usize {
+    #[must_use]
+    pub(crate) fn line_at(&self, mut ip: usize) -> usize {
         self.lines
             .iter()
             .find(|(_, n)| {
@@ -263,16 +268,18 @@ impl Chunk {
             .map_or(0, |(line, _)| *line)
     }
 
-    pub fn nconstants(&self) -> usize {
+    #[must_use]
+    pub(crate) fn nconstants(&self) -> usize {
         self.numbers.len() + self.strings.len()
     }
 
-    pub fn nfunctions(&self) -> usize {
+    #[must_use]
+    pub(crate) fn nfunctions(&self) -> usize {
         self.functions.len()
     }
 
     #[cfg(debug_assertions)]
-    pub fn validate_srcs_and_dsts(&self) {
+    pub(super) fn validate_srcs_and_dsts(&self) {
         if let Some(invalid) = self.code.iter().position(|i| !i.has_valid_regs()) {
             panic!("Found instruction with invalid regs (idx {invalid}). Code: {:?}", self.code)
         }
@@ -320,7 +327,7 @@ impl Instruction {
     }
 
     #[cfg(debug_assertions)]
-    pub const fn has_valid_regs(self) -> bool {
+    const fn has_valid_regs(self) -> bool {
         const fn validate(reg: u8) -> bool {
             reg < 255
         }

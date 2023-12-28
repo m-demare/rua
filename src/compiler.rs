@@ -65,6 +65,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
     }
 
+    /// # Errors
+    ///
+    /// Will return any parsing error encountered
     pub fn compile(mut self) -> Result<Function, ParseError> {
         self.scoped_block()?;
         self.instruction(I::ReturnNil, 0);
@@ -1085,6 +1088,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 }
 
+/// # Errors
+///
+/// Will return any parsing error encountered
 pub fn compile<C: Iterator<Item = u8> + Clone>(
     chars: C,
     vm: &mut Vm,

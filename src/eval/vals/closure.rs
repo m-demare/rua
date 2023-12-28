@@ -34,7 +34,7 @@ impl std::hash::Hash for Closure {
 }
 
 impl Closure {
-    pub fn new(function: Function) -> Self {
+    pub(crate) fn new(function: Function) -> Self {
         let upvalue_count = function.upvalue_count() as usize;
         Self {
             function,
@@ -44,31 +44,31 @@ impl Closure {
         }
     }
 
-    pub const fn function(&self) -> &Function {
+    pub(crate) const fn function(&self) -> &Function {
         &self.function
     }
 
-    pub fn push_upvalue(&mut self, upval: UpvalueObj) {
+    pub(in crate::eval) fn push_upvalue(&mut self, upval: UpvalueObj) {
         self.upvalues.borrow_mut().push(upval);
     }
 
-    pub fn get_upvalue(&self, up: UpvalueHandle) -> UpvalueObj {
-        self.upvalues.borrow()[up.get()].clone()
+    pub(in crate::eval) fn get_upvalue(&self, up: UpvalueHandle) -> UpvalueObj {
+        self.upvalues.borrow()[up.pos()].clone()
     }
 
-    pub fn get_upvalue_val(&self, vm: &Vm, up: UpvalueHandle) -> RuaVal {
+    pub(in crate::eval) fn get_upvalue_val(&self, vm: &Vm, up: UpvalueHandle) -> RuaVal {
         let upvalues = self.upvalues.borrow();
-        let location: &Either<_, _> = &upvalues[up.get()].borrow();
+        let location: &Either<_, _> = &upvalues[up.pos()].borrow();
         match location {
             Left(idx) => vm.stack_at_abs(*idx).clone(),
             Right(v) => v.clone(),
         }
     }
 
-    pub fn set_upvalue(&self, vm: &mut Vm, up: UpvalueHandle, val: RuaVal) {
+    pub(in crate::eval) fn set_upvalue(&self, vm: &mut Vm, up: UpvalueHandle, val: RuaVal) {
         let upvalues = self.upvalues.borrow();
         {
-            let location: &Either<_, _> = &upvalues[up.get()].borrow();
+            let location: &Either<_, _> = &upvalues[up.pos()].borrow();
             match location {
                 Left(idx) => {
                     vm.set_stack_at_abs(*idx, val);
@@ -79,15 +79,16 @@ impl Closure {
                 }
             }
         }
-        upvalues[up.get()].replace(Right(val));
+        upvalues[up.pos()].replace(Right(val));
     }
 
+    #[must_use]
     pub fn addr(&self) -> usize {
         std::ptr::addr_of!(*self) as usize
     }
 
     #[must_use]
-    pub(in super::super) fn mark(&self) -> bool {
+    pub(in crate::eval) fn mark(&self) -> bool {
         let already_marked = self.marked.replace(true);
         if already_marked {
             return false;

@@ -1,7 +1,7 @@
 mod chars;
 mod tests;
 pub mod tokens;
-pub mod utils;
+pub(crate) mod utils;
 
 use std::iter::Peekable;
 

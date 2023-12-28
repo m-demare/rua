@@ -11,9 +11,9 @@ use compiler::{bytecode::ParseError, compile};
 use eval::Vm;
 
 mod cli;
-mod compiler;
-mod eval;
-mod lex;
+pub mod compiler;
+pub mod eval;
+pub mod lex;
 mod repl;
 
 fn main() {

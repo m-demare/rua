@@ -18,10 +18,12 @@ impl Hash for RuaNumber {
 impl Eq for RuaNumber {}
 
 impl RuaNumber {
-    pub const fn new(val: f64) -> Self {
+    #[must_use]
+    const fn new(val: f64) -> Self {
         Self(val)
     }
 
+    #[must_use]
     pub const fn val(self) -> f64 {
         self.0
     }

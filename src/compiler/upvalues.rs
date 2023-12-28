@@ -9,7 +9,7 @@ pub struct Upvalue {
 }
 
 #[derive(Default, Debug)]
-pub struct Upvalues {
+pub(crate) struct Upvalues {
     upvalues: Vec<Upvalue>,
 }
 
@@ -23,7 +23,7 @@ pub struct UpvalueHandle(pub u8);
 
 #[invariant(self.upvalues.len() <= u8::MAX.into(), "Pushed too many upvalues")]
 impl Upvalues {
-    pub fn find_or_add(
+    pub(super) fn find_or_add(
         &mut self,
         upvalue: Either<LocalHandle, UpvalueHandle>,
     ) -> Result<UpvalueHandle, ParseError> {
@@ -41,24 +41,20 @@ impl Upvalues {
         Ok(UpvalueHandle(len))
     }
 
-    pub fn get(&self, up: UpvalueHandle) -> Upvalue {
-        self.upvalues[up.0 as usize]
-    }
-
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> u8 {
+    pub(crate) fn len(&self) -> u8 {
         self.upvalues.len().try_into().expect("Upvalues shouldn't exceed u8::MAX")
     }
 }
 
 impl Upvalue {
-    pub const fn location(self) -> Either<LocalHandle, UpvalueHandle> {
+    pub(crate) const fn location(self) -> Either<LocalHandle, UpvalueHandle> {
         self.location
     }
 }
 
 impl UpvalueHandle {
-    pub const fn get(self) -> usize {
+    pub(crate) const fn pos(self) -> usize {
         self.0 as usize
     }
 }

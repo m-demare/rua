@@ -53,6 +53,7 @@ pub struct Vm {
 }
 
 impl Vm {
+    #[allow(clippy::missing_panics_doc)]
     pub fn new() -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -75,6 +76,9 @@ impl Vm {
         vm
     }
 
+    /// # Errors
+    ///
+    /// Returns any errors encountered during evaluation
     pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
         let og_len = self.stack.len();
         #[cfg(test)]
@@ -681,4 +685,4 @@ impl Default for Vm {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct StringId(usize);
+pub(crate) struct StringId(usize);
