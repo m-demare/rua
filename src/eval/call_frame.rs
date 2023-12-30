@@ -39,12 +39,14 @@ impl CallFrame {
         println!("{} {:?}", self.ip, instr);
     }
 
+    #[inline]
     pub fn curr_instr(&mut self) -> Instruction {
         let instr = self.closure.function().chunk().code()[self.ip];
         self.ip += 1;
         instr
     }
 
+    #[inline]
     pub fn skip_instr(&mut self) {
         self.ip += 1;
     }
@@ -52,10 +54,6 @@ impl CallFrame {
     #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     pub fn rel_jmp(&mut self, offset: i16) {
         self.ip = (self.ip as isize + offset as isize) as usize;
-    }
-
-    pub fn rel_loop(&mut self, offset: u16) {
-        self.ip -= offset as usize;
     }
 
     pub fn read_number(&self, c: NumberHandle) -> f64 {
@@ -70,6 +68,7 @@ impl CallFrame {
         self.closure.function().chunk().read_function(c)
     }
 
+    #[inline]
     pub const fn stack_start(&self) -> usize {
         self.start
     }
@@ -102,6 +101,7 @@ impl CallFrame {
         self.prev_stack_size
     }
 
+    #[inline]
     pub fn resolve_reg(&self, reg: u8) -> usize {
         self.stack_start() + reg as usize
     }

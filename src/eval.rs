@@ -357,6 +357,7 @@ impl Vm {
         self.unary_op(frame, args, |v| Ok(((v.len())? as f64).into()))
     }
 
+    #[inline]
     fn unary_op<F: Fn(&RuaVal) -> RuaResultUntraced>(
         &mut self,
         frame: &CallFrame,
@@ -368,18 +369,19 @@ impl Vm {
         Ok(())
     }
 
+    #[inline]
     fn binary_op<F: Fn(&RuaVal, &RuaVal) -> RuaResultUntraced>(
         &mut self,
         frame: &CallFrame,
         args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
-        let a = self.stack_at(frame, args.lhs);
-        let b = self.stack_at(frame, args.rhs);
+        let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
         self.set_stack_at(frame, args.dst, f(a, b)?);
         Ok(())
     }
 
+    #[inline]
     fn number_binary_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
         &mut self,
         frame: &CallFrame,
@@ -390,13 +392,13 @@ impl Vm {
     }
 
     fn str_concat(&mut self, frame: &CallFrame, args: BinArgs) -> Result<(), EvalError> {
-        let a = self.stack_at(frame, args.lhs);
-        let b = self.stack_at(frame, args.rhs);
+        let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
         let res = [a.as_str()?, b.as_str()?].concat().into_rua(self);
         self.set_stack_at(frame, args.dst, res);
         Ok(())
     }
 
+    #[inline]
     fn skip_if<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
         &self,
         frame: &mut CallFrame,
@@ -411,6 +413,7 @@ impl Vm {
         // TODO optimize JMPs to avoid another instr dispatch cycle
     }
 
+    #[inline]
     fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
         &self.stack[frame.resolve_reg(idx)]
     }
@@ -419,6 +422,7 @@ impl Vm {
         &self.stack[idx]
     }
 
+    #[inline]
     fn set_stack_at(&mut self, frame: &CallFrame, idx: u8, val: RuaVal) {
         self.stack[frame.resolve_reg(idx)] = val;
     }
@@ -663,11 +667,14 @@ impl Drop for Vm {
     }
 }
 
+#[inline]
 fn trace_err<T>(res: Result<T, EvalError>, frame: &CallFrame) -> Result<T, EvalErrorTraced> {
-    res.map_err(|e| {
-        let stack_trace = vec![(frame.func_name(), frame.curr_line())];
-        EvalErrorTraced::new(e, stack_trace)
-    })
+    res.map_err(|e| trace(e, frame))
+}
+
+fn trace(e: EvalError, frame: &CallFrame) -> EvalErrorTraced {
+    let stack_trace = vec![(frame.func_name(), frame.curr_line())];
+    EvalErrorTraced::new(e, stack_trace)
 }
 
 fn push_cleaning_weaks<T>(vec: &mut Vec<Weak<T>>, val: Weak<T>) {
