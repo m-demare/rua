@@ -219,7 +219,7 @@ impl Vm {
                     let val = self.stack_at(&frame, src);
                     self.set_stack_at(&frame, dst, val.clone());
                 }
-                I::Jmp(offset) => frame.rel_jmp(offset - 1),
+                I::Jmp(offset) => frame.rel_jmp(offset),
                 I::NewTable { dst, capacity } => {
                     let table = self.new_table(capacity);
                     self.set_stack_at(&frame, dst, table);

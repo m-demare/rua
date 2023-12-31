@@ -184,7 +184,12 @@ impl Chunk {
         Ok(())
     }
 
-    pub(super) fn add_number(&mut self, dst: u8, val: f64, line: usize) -> Result<usize, ParseError> {
+    pub(super) fn add_number(
+        &mut self,
+        dst: u8,
+        val: f64,
+        line: usize,
+    ) -> Result<usize, ParseError> {
         let c = add_constant!(val, self.numbers, NumberHandle);
         Ok(self.add_instruction(Instruction::Number { dst, src: c }, line))
     }
@@ -199,7 +204,10 @@ impl Chunk {
         Ok(self.add_instruction(Instruction::String { dst, src: c }, line))
     }
 
-    pub(super) fn new_string_constant(&mut self, val: RuaString) -> Result<StringHandle, ParseError> {
+    pub(super) fn new_string_constant(
+        &mut self,
+        val: RuaString,
+    ) -> Result<StringHandle, ParseError> {
         Ok(add_constant!(val, self.strings, StringHandle))
     }
 
@@ -253,7 +261,8 @@ impl Chunk {
 
     pub(super) fn offset(from: usize, to: usize, line: usize) -> Result<i16, ParseError> {
         let offset = isize::try_from(from).or(Err(ParseError::TooManyInstructions))?
-            - isize::try_from(to).or(Err(ParseError::TooManyInstructions))?;
+            - isize::try_from(to).or(Err(ParseError::TooManyInstructions))?
+            - 1;
         offset.try_into().or(Err(ParseError::JmpTooFar(line)))
     }
 

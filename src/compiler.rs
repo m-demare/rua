@@ -856,7 +856,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             None
         } else {
             #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-            Some((jmp_idx as isize + offset) as usize)
+            Some((jmp_idx as isize + offset + 1) as usize)
         }
     }
 

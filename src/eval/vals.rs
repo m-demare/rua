@@ -55,7 +55,6 @@ pub enum RuaType {
 }
 
 impl RuaVal {
-
     /// # Errors
     ///
     /// Returns `TypeError` if value is not a `Number`
