@@ -52,6 +52,8 @@ pub enum Instruction {
     Mv(UnArgs),
 
     Jmp(i16), // TODO i24?
+    ForPrep { from: u8, offset: u16 },
+    ForLoop { from: u8, offset: u16 },
 
     NewTable { dst: u8, capacity: u16 },
     InsertKeyVal { table: u8, key: u8, val: u8 },
@@ -222,20 +224,15 @@ impl Chunk {
         self.code.len() - 1
     }
 
-    pub(super) fn replace_instruction(&mut self, instr: Instruction, idx: usize) {
+    pub(super) fn replace_instruction(&mut self, idx: usize, instr: Instruction) {
         self.code[idx] = instr;
     }
 
-    pub fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
-        use Instruction as I;
+    pub(super) fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
+        debug_assert!(matches!(self.code.get(jmp), Some(Instruction::Jmp(_))));
 
         let offset = Self::offset(to, jmp, line)?;
-
-        match self.code.get(jmp) {
-            Some(I::Jmp(_)) => self.code[jmp] = I::Jmp(offset),
-            i => unreachable!("Tried to patch a non Jmp instruction {i:?}"),
-        }
-
+        self.code[jmp] = Instruction::Jmp(offset);
         Ok(())
     }
 
@@ -386,6 +383,7 @@ impl Instruction {
             }
             Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
+            Self::ForPrep { from, .. } | Self::ForLoop { from, .. } => validate(from),
         }
     }
 }

@@ -56,6 +56,14 @@ impl CallFrame {
         self.ip = (self.ip as isize + offset as isize) as usize;
     }
 
+    pub fn forward_jmp(&mut self, offset: u16) {
+        self.ip += offset as usize;
+    }
+
+    pub fn backward_jmp(&mut self, offset: u16) {
+        self.ip -= offset as usize;
+    }
+
     pub fn read_number(&self, c: NumberHandle) -> f64 {
         self.closure.function().chunk().read_number(c)
     }

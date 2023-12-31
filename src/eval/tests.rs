@@ -830,6 +830,19 @@ test_interpret!(
 );
 
 test_interpret!(
+    for_loop_that_never_runs,
+    "
+    local a = {}
+    for i = 6, 5 do
+        table.insert(a, function() return i end)
+    end
+
+    return #a
+",
+    |_| Ok(0.0.into())
+);
+
+test_interpret!(
     val_in_stack_isnt_gced,
     "
     local a = {1, 2}

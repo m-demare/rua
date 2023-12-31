@@ -787,27 +787,33 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         step_desc.free_tmp_regs(self);
         step_desc.to_reg(self, step.into())?;
 
-        let loop_start = self.pc();
-        let exit_jmp = self.cond_jmp(I::Le(JmpArgs { lhs: from.into(), rhs: to.into() }), line);
+        let forprep = self.instruction(I::ForPrep { from: from.into(), offset: u16::MAX }, line);
 
         self.begin_scope();
 
         let it_var = self.declare_local(id)?;
         self.context.locals.make_usable(it_var);
 
-        self.instruction(I::Mv(UnArgs { dst: it_var.into(), src: from.into() }), line);
         self.do_block(false)?;
 
         self.end_scope();
 
+        let for_loop = self.pc();
         self.instruction(
-            I::Add(BinArgs { dst: from.into(), lhs: from.into(), rhs: step.into() }),
+            I::ForLoop {
+                from: from.into(),
+                offset: (for_loop - forprep).try_into().or(Err(ParseError::JmpTooFar(line)))?,
+            },
             line,
         );
 
-        self.jmp_to(loop_start, line)?;
-        let end = self.pc();
-        self.patch_jmp(exit_jmp, end, line)?;
+        self.current_chunk_mut().replace_instruction(
+            forprep,
+            I::ForPrep {
+                from: from.into(),
+                offset: (for_loop - forprep).try_into().or(Err(ParseError::JmpTooFar(line)))?,
+            },
+        );
 
         self.context.locals.drop(3);
         Ok(())
@@ -1082,7 +1088,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         consume!(self; (TT::RBRACE));
 
         self.current_chunk_mut()
-            .replace_instruction(I::NewTable { dst: table, capacity: total_count }, table_instr);
+            .replace_instruction(table_instr, I::NewTable { dst: table, capacity: total_count });
 
         Ok(ExprDesc::new(ExprKind::Tmp { reg: table, instr_idx: None }))
     }

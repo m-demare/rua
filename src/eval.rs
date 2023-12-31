@@ -220,6 +220,12 @@ impl Vm {
                     self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::Jmp(offset) => frame.rel_jmp(offset),
+                I::ForPrep { from, offset } => {
+                    trace_err(self.for_prep(&mut frame, from, offset), &frame)?;
+                }
+                I::ForLoop { from, offset } => {
+                    trace_err(self.for_loop(&mut frame, from, offset), &frame)?;
+                }
                 I::NewTable { dst, capacity } => {
                     let table = self.new_table(capacity);
                     self.set_stack_at(&frame, dst, table);
@@ -256,6 +262,29 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn for_loop(&mut self, frame: &mut CallFrame, from: u8, offset: u16) -> Result<(), EvalError> {
+        let step_val = self.stack_at(frame, from + 2);
+        let to_val = self.stack_at(frame, from + 1);
+        let from_val = self.stack_at(frame, from);
+        let from_val = from_val.as_number()? + step_val.as_number()?;
+        if from_val <= to_val.as_number()? {
+            frame.backward_jmp(offset);
+            self.set_stack_at(frame, from + 3, from_val.into());
+            self.set_stack_at(frame, from, from_val.into());
+        }
+        Ok(())
+    }
+
+    fn for_prep(&mut self, frame: &mut CallFrame, from: u8, offset: u16) -> Result<(), EvalError> {
+        let to_val = self.stack_at(frame, from + 1);
+        let from_val = self.stack_at(frame, from);
+        if from_val.as_number()? > to_val.as_number()? {
+            frame.forward_jmp(offset);
+        }
+        self.set_stack_at(frame, from + 3, from_val.clone());
+        Ok(())
     }
 
     fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
