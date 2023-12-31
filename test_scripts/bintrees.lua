@@ -18,7 +18,7 @@
 
 -- to avoid cluttering stdout during benchmarks
 string = {format = function() end}
-io.write = function () end
+io = {write = function () end}
 
 local function BottomUpTree(depth)
     if depth > 0 then
