@@ -1,2 +1,4 @@
 /target
 /.bacon-locations
+/perf.data*
+/flamegraph.svg
