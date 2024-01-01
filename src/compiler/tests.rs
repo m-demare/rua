@@ -3,7 +3,9 @@
 use crate::eval::Vm;
 
 use super::{
-    bytecode::{BinArgs, Chunk, Instruction as I, NumberHandle, ParseError, StringHandle, UnArgs},
+    bytecode::{
+        BinArgs, Chunk, Instruction as I, NumberHandle, ParseError, StringHandle, UnArgs, VNArgs,
+    },
     compile,
 };
 use pretty_assertions::assert_eq;
@@ -36,11 +38,11 @@ fn test_locals() {
                 I::Nil { dst: 2 },
                 I::Neg(UnArgs { dst: 3, src: 0 }),
                 I::Neg(UnArgs { dst: 4, src: 2 }),
-                I::Mul(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
-                I::Add(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
-                I::Add(BinArgs { dst: 4, lhs: 2, rhs: 0 }),
-                I::Mul(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
-                I::Sub(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
+                I::MulVV(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
+                I::AddVV(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
+                I::AddVV(BinArgs { dst: 4, lhs: 2, rhs: 0 }),
+                I::MulVV(BinArgs { dst: 4, lhs: 1, rhs: 4 }),
+                I::SubVV(BinArgs { dst: 3, lhs: 3, rhs: 4 }),
                 I::Return { src: 3 },
                 I::ReturnNil,
             ],
@@ -63,8 +65,7 @@ fn test_assign_local() {
         Ok(Chunk::new(
             vec![
                 I::Number { dst: 0, src: NumberHandle(0) },
-                I::Number { dst: 1, src: NumberHandle(1) },
-                I::Add(BinArgs { dst: 0, lhs: 0, rhs: 1 }),
+                I::AddVN(VNArgs { dst: 0, lhs: 0, rhs: 1 }),
                 I::Neg(UnArgs { dst: 1, src: 0 }),
                 I::Return { src: 1 },
                 I::ReturnNil,
@@ -72,7 +73,7 @@ fn test_assign_local() {
             vec![5.0, 3.0],
             Vec::new(),
             Vec::new(),
-            vec![(0, 2), (3, 1), (4, 2), (0, 1)],
+            vec![(0, 1), (3, 1), (4, 2), (0, 1)],
         ))
     });
 }
@@ -87,8 +88,7 @@ fn test_globals() {
         Ok(Chunk::new(
             vec![
                 I::GetGlobal { dst: 0, src: StringHandle(0) },
-                I::Number { dst: 1, src: NumberHandle(0) },
-                I::Add(BinArgs { dst: 0, lhs: 0, rhs: 1 }),
+                I::AddVN(VNArgs { dst: 0, lhs: 0, rhs: 0 }),
                 I::SetGlobal { dst: StringHandle(1), src: 0 },
                 I::GetGlobal { dst: 0, src: StringHandle(1) },
                 I::Return { src: 0 },
@@ -97,7 +97,22 @@ fn test_globals() {
             vec![8.0],
             vec![vm.new_string((*b"bar").into()), vm.new_string((*b"foo").into())],
             Vec::new(),
-            vec![(0, 2), (2, 2), (0, 1), (3, 1), (0, 1)],
+            vec![(0, 1), (2, 2), (0, 1), (3, 1), (0, 1)],
+        ))
+    });
+}
+
+#[test]
+fn test_fold() {
+    let input = "return 5 + 8 * (4 + 2) ^ 3 % 28";
+
+    test_compile(input, |_| {
+        Ok(Chunk::new(
+            vec![I::Number { dst: 0, src: NumberHandle(0) }, I::Return { src: 0 }, I::ReturnNil],
+            vec![25.0],
+            vec![],
+            Vec::new(),
+            vec![(0, 1), (1, 1), (0, 1)],
         ))
     });
 }

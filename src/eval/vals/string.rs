@@ -42,7 +42,7 @@ impl RuaString {
         Self(Rc::new(StringInner { data, id, hash }))
     }
 
-    pub(super) fn inner(&self) -> Rc<[u8]> {
+    pub(crate) fn inner(&self) -> Rc<[u8]> {
         self.0.data.clone()
     }
 }

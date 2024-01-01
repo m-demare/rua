@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use either::Either::{self, Left, Right};
 
 use crate::{
-    compiler::bytecode::BinArgs,
     eval::{
         vals::{closure::Closure, function::Function, string::RuaString},
         Vm,
@@ -15,13 +14,17 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Chunk, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs},
+    bytecode::{
+        BinArgs, Chunk, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs,
+    },
+    fold::{BinFolder, CommutativeFolder, NonCommutativeFolder, StringFolder},
     locals::{LocalHandle, Locals},
     upvalues::{UpvalueHandle, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
 };
 
 pub mod bytecode;
+mod fold;
 pub mod locals;
 mod tests;
 pub mod upvalues;
@@ -316,22 +319,19 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.current_chunk_mut().add_instruction(instr, line)
     }
 
-    fn binary<F: FnOnce(BinArgs) -> Instruction>(
+    fn binary<Instr: BinFolder>(
         &mut self,
         mut lhs_desc: ExprDesc,
-        i: F,
+        i: Instr,
         line: usize,
         precedence: Precedence,
     ) -> Result<ExprDesc, ParseError> {
-        let lhs = lhs_desc.to_any_reg(self)?;
-        let mut rhs_desc = self.expression(precedence)?;
-        let rhs = rhs_desc.to_any_reg(self)?;
-        self.free2reg(lhs, rhs);
+        if !i.is_foldable(&lhs_desc) {
+            lhs_desc.to_any_reg(self)?;
+        }
+        let rhs_desc = self.expression(precedence)?;
 
-        let dst = u8::MAX;
-        let instr_idx = Some(self.instruction(i(BinArgs { dst, lhs, rhs }), line));
-
-        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        i.get_res(self, lhs_desc, rhs_desc, line)
     }
 
     fn cond_jmp(&mut self, i: Instruction, line: usize) -> usize {
@@ -356,6 +356,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
     }
 
+    #[allow(clippy::too_many_lines)]
     fn infix_exp(
         &mut self,
         mut lhs_desc: ExprDesc,
@@ -376,29 +377,67 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             match self.peek_token() {
                 Some(Token { ttype: t @ TT::PLUS, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Add, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        CommutativeFolder::new(|a, b| a + b, I::AddVV, I::AddVN),
+                        line,
+                        new_precedence,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::MINUS, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Sub, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        NonCommutativeFolder::new(|a, b| a - b, I::SubVV, I::SubVN, I::SubNV),
+                        line,
+                        new_precedence,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::TIMES, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Mul, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        CommutativeFolder::new(|a, b| a * b, I::MulVV, I::MulVN),
+                        line,
+                        new_precedence,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::DIV, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Div, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        NonCommutativeFolder::new(|a, b| a / b, I::DivVV, I::DivVN, I::DivNV),
+                        line,
+                        new_precedence,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::MOD, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Mod, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        NonCommutativeFolder::new(|a, b| a % b, I::ModVV, I::ModVN, I::ModNV),
+                        line,
+                        new_precedence,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::EXP, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::Pow, line, new_precedence)?;
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        NonCommutativeFolder::new(f64::powf, I::PowVV, I::PowVN, I::PowNV),
+                        line,
+                        new_precedence,
+                    )?;
                 }
-
+                Some(Token { ttype: t @ TT::DOTDOT, line, .. }) => {
+                    let (line, new_precedence) = (*line, validate_precedence!(t));
+                    lhs_desc = self.binary(
+                        lhs_desc,
+                        StringFolder::new(|a, b| [a, b].concat().into(), I::StrConcat),
+                        line,
+                        new_precedence,
+                    )?;
+                }
                 Some(Token { ttype: t @ TT::EQ, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
                     lhs_desc = self.comparison(lhs_desc, I::Eq, line, new_precedence)?;
@@ -422,10 +461,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Some(Token { ttype: t @ TT::GE, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
                     lhs_desc = self.comparison(lhs_desc, I::Ge, line, new_precedence)?;
-                }
-                Some(Token { ttype: t @ TT::DOTDOT, line, .. }) => {
-                    let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.binary(lhs_desc, I::StrConcat, line, new_precedence)?;
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
                     let (_, _) = (*line, validate_precedence!(t));
@@ -1431,5 +1466,20 @@ impl ExprDesc {
         let tmp = compiler.tmp()?;
         self.to_reg(compiler, tmp)?;
         Ok(tmp)
+    }
+
+    const fn as_number(&self) -> Option<f64> {
+        if let ExprKind::Number(n) = self.kind {
+            Some(n)
+        } else {
+            None
+        }
+    }
+    const fn as_str(&self) -> Option<&RuaString> {
+        if let ExprKind::String(ref s) = self.kind {
+            Some(s)
+        } else {
+            None
+        }
     }
 }

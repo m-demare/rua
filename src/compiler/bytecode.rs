@@ -25,13 +25,25 @@ pub enum Instruction {
     Not(UnArgs),
     Len(UnArgs),
 
-    Add(BinArgs),
-    Sub(BinArgs),
-    Mul(BinArgs),
-    Div(BinArgs),
-    Mod(BinArgs),
-    Pow(BinArgs),
+    AddVV(BinArgs),
+    SubVV(BinArgs),
+    MulVV(BinArgs),
+    DivVV(BinArgs),
+    ModVV(BinArgs),
+    PowVV(BinArgs),
     StrConcat(BinArgs),
+
+    AddVN(VNArgs),
+    SubVN(VNArgs),
+    MulVN(VNArgs),
+    DivVN(VNArgs),
+    ModVN(VNArgs),
+    PowVN(VNArgs),
+
+    SubNV(NVArgs),
+    DivNV(NVArgs),
+    ModNV(NVArgs),
+    PowNV(NVArgs),
 
     Eq(JmpArgs),
     Neq(JmpArgs),
@@ -71,6 +83,20 @@ static_assertions::assert_eq_size!(Instruction, [u8; 4]);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BinArgs {
+    pub(crate) dst: u8,
+    pub(crate) lhs: u8,
+    pub(crate) rhs: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NVArgs {
+    pub(crate) dst: u8,
+    pub(crate) lhs: u8,
+    pub(crate) rhs: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct VNArgs {
     pub(crate) dst: u8,
     pub(crate) lhs: u8,
     pub(crate) rhs: u8,
@@ -196,6 +222,10 @@ impl Chunk {
         Ok(self.add_instruction(Instruction::Number { dst, src: c }, line))
     }
 
+    pub(super) fn new_number_constant(&mut self, val: f64) -> Result<NumberHandle, ParseError> {
+        Ok(add_constant!(val, self.numbers, NumberHandle))
+    }
+
     pub(super) fn add_string(
         &mut self,
         dst: u8,
@@ -228,7 +258,12 @@ impl Chunk {
         self.code[idx] = instr;
     }
 
-    pub(super) fn patch_jmp(&mut self, jmp: usize, to: usize, line: usize) -> Result<(), ParseError> {
+    pub(super) fn patch_jmp(
+        &mut self,
+        jmp: usize,
+        to: usize,
+        line: usize,
+    ) -> Result<(), ParseError> {
         debug_assert!(matches!(self.code.get(jmp), Some(Instruction::Jmp(_))));
 
         let offset = Self::offset(to, jmp, line)?;
@@ -306,14 +341,21 @@ impl Instruction {
             | Self::Closure { dst, .. }
             | Self::GetUpvalue { dst, .. } => *dst = new_dst,
             Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => i.dst = new_dst,
-            Self::Add(i)
-            | Self::Sub(i)
-            | Self::Mul(i)
-            | Self::Div(i)
-            | Self::Mod(i)
-            | Self::Pow(i)
+            Self::AddVV(i)
+            | Self::SubVV(i)
+            | Self::MulVV(i)
+            | Self::DivVV(i)
+            | Self::ModVV(i)
+            | Self::PowVV(i)
             | Self::StrConcat(i)
             | Self::Index(i) => i.dst = new_dst,
+            Self::AddVN(i)
+            | Self::SubVN(i)
+            | Self::MulVN(i)
+            | Self::DivVN(i)
+            | Self::ModVN(i)
+            | Self::PowVN(i) => i.dst = new_dst,
+            Self::SubNV(i) | Self::DivNV(i) | Self::ModNV(i) | Self::PowNV(i) => i.dst = new_dst,
             Self::TestSet { dst, src } => {
                 if new_dst == *src {
                     *self = Self::Test { src: *src }
@@ -346,6 +388,12 @@ impl Instruction {
         const fn validate_jmp(args: JmpArgs) -> bool {
             validate(args.lhs) && validate(args.rhs)
         }
+        const fn validate_vn(args: VNArgs) -> bool {
+            validate(args.dst) && validate(args.lhs)
+        }
+        const fn validate_nv(args: NVArgs) -> bool {
+            validate(args.dst) && validate(args.rhs)
+        }
         match self {
             Self::Number { dst, .. }
             | Self::String { dst, .. }
@@ -358,12 +406,12 @@ impl Instruction {
             | Self::Closure { dst, .. }
             | Self::GetUpvalue { dst, .. } => validate(dst),
             Self::Neg(i) | Self::Not(i) | Self::Len(i) | Self::Mv(i) => validate_un(i),
-            Self::Add(i)
-            | Self::Sub(i)
-            | Self::Mul(i)
-            | Self::Div(i)
-            | Self::Mod(i)
-            | Self::Pow(i)
+            Self::AddVV(i)
+            | Self::SubVV(i)
+            | Self::MulVV(i)
+            | Self::DivVV(i)
+            | Self::ModVV(i)
+            | Self::PowVV(i)
             | Self::StrConcat(i)
             | Self::Index(i) => validate_bin(i),
             Self::TestSet { dst, src } | Self::UntestSet { dst, src } => {
@@ -384,6 +432,13 @@ impl Instruction {
             Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
             Self::ForPrep { from, .. } | Self::ForLoop { from, .. } => validate(from),
+            Self::AddVN(i)
+            | Self::SubVN(i)
+            | Self::MulVN(i)
+            | Self::DivVN(i)
+            | Self::ModVN(i)
+            | Self::PowVN(i) => validate_vn(i),
+            Self::SubNV(i) | Self::DivNV(i) | Self::ModNV(i) | Self::PowNV(i) => validate_nv(i),
         }
     }
 }
@@ -419,6 +474,18 @@ impl Debug for Chunk {
                 | Instruction::GetGlobal { src: s, .. }
                 | Instruction::SetGlobal { dst: s, .. } => {
                     format!("; \"{}\"", self.strings[s.0 as usize])
+                }
+                Instruction::AddVN(VNArgs { rhs: n, .. })
+                | Instruction::SubVN(VNArgs { rhs: n, .. })
+                | Instruction::MulVN(VNArgs { rhs: n, .. })
+                | Instruction::DivVN(VNArgs { rhs: n, .. })
+                | Instruction::ModVN(VNArgs { rhs: n, .. })
+                | Instruction::PowVN(VNArgs { rhs: n, .. })
+                | Instruction::SubNV(NVArgs { lhs: n, .. })
+                | Instruction::DivNV(NVArgs { lhs: n, .. })
+                | Instruction::ModNV(NVArgs { lhs: n, .. })
+                | Instruction::PowNV(NVArgs { lhs: n, .. }) => {
+                    format!("; {}", self.numbers[*n as usize])
                 }
                 _ => String::new(),
             };
@@ -466,4 +533,18 @@ pub enum ParseError {
     TooManyAssignLhs(usize),
     #[error("Too many instructions")]
     TooManyInstructions,
+}
+
+impl TryInto<u8> for NumberHandle {
+    type Error = ();
+
+    fn try_into(self) -> Result<u8, Self::Error> {
+        self.0.try_into().map_err(|_| ())
+    }
+}
+
+impl NumberHandle {
+    pub(crate) fn from_unchecked(value: u8) -> Self {
+        Self(value.into())
+    }
 }

@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    compiler::bytecode::{BinArgs, FnHandle, JmpArgs, UnArgs},
+    compiler::bytecode::{BinArgs, FnHandle, JmpArgs, NVArgs, NumberHandle, UnArgs, VNArgs},
     eval::{
         macros::trace_gc,
         vals::{closure::Closure, IntoRuaVal},
@@ -140,22 +140,22 @@ impl Vm {
                     trace_err(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame)?;
                 }
                 I::Len(args) => trace_err(self.len_op(&frame, args), &frame)?,
-                I::Add(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a + b), &frame)?;
-                }
-                I::Sub(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a - b), &frame)?;
-                }
-                I::Mul(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a * b), &frame)?;
-                }
-                I::Div(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a / b), &frame)?;
-                }
-                I::Mod(args) => {
-                    trace_err(self.number_binary_op(&frame, args, |a, b| a % b), &frame)?;
-                }
-                I::Pow(args) => trace_err(self.number_binary_op(&frame, args, f64::powf), &frame)?,
+                I::AddVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a + b), &frame)?,
+                I::SubVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a - b), &frame)?,
+                I::MulVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a * b), &frame)?,
+                I::DivVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a / b), &frame)?,
+                I::ModVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a % b), &frame)?,
+                I::PowVV(args) => trace_err(self.num_bin_op(&frame, args, f64::powf), &frame)?,
+                I::AddVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a + b), &frame)?,
+                I::SubVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a - b), &frame)?,
+                I::MulVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a * b), &frame)?,
+                I::DivVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a / b), &frame)?,
+                I::ModVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a % b), &frame)?,
+                I::PowVN(args) => trace_err(self.num_vn_op(&frame, args, f64::powf), &frame)?,
+                I::SubNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a - b), &frame)?,
+                I::DivNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a / b), &frame)?,
+                I::ModNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a % b), &frame)?,
+                I::PowNV(args) => trace_err(self.num_nv_op(&frame, args, f64::powf), &frame)?,
                 I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
                 I::Eq(args) => {
                     trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a == b)), &frame)?;
@@ -411,13 +411,39 @@ impl Vm {
     }
 
     #[inline]
-    fn number_binary_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
+    fn num_bin_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
         &mut self,
         frame: &CallFrame,
         args: BinArgs,
         f: F,
     ) -> Result<(), EvalError> {
         self.binary_op(frame, args, |a, b| Ok(f(a.as_number()?, b.as_number()?).into()))
+    }
+
+    #[inline]
+    fn num_vn_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
+        &mut self,
+        frame: &CallFrame,
+        args: VNArgs,
+        f: F,
+    ) -> Result<(), EvalError> {
+        let v = self.stack_at(frame, args.lhs).as_number()?;
+        let n = frame.read_number(NumberHandle::from_unchecked(args.rhs));
+        self.set_stack_at(frame, args.dst, f(v, n).into());
+        Ok(())
+    }
+
+    #[inline]
+    fn num_nv_op<T: Into<RuaVal>, F: Fn(f64, f64) -> T>(
+        &mut self,
+        frame: &CallFrame,
+        args: NVArgs,
+        f: F,
+    ) -> Result<(), EvalError> {
+        let n = frame.read_number(NumberHandle::from_unchecked(args.lhs));
+        let v = self.stack_at(frame, args.rhs).as_number()?;
+        self.set_stack_at(frame, args.dst, f(n, v).into());
+        Ok(())
     }
 
     fn str_concat(&mut self, frame: &CallFrame, args: BinArgs) -> Result<(), EvalError> {
