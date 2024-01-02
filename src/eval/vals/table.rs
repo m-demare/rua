@@ -117,8 +117,7 @@ impl Table {
     }
 
     pub(super) fn blacken(&self, gc_data: &mut GcData) {
-        let map: &FxHashMap<_, _> = &self.map.borrow();
-        for (k, v) in map {
+        for (k, v) in &*self.map.borrow() {
             k.mark(gc_data);
             v.mark(gc_data);
         }

@@ -4,16 +4,14 @@ use std::{
     rc::Rc,
 };
 
-use either::Either::{self, Left, Right};
-
 use crate::{
     compiler::upvalues::UpvalueHandle,
     eval::{macros::trace_gc, GcData, Vm},
 };
 
-use super::{function::Function, IntoRuaVal, RuaVal, RuaValInner, UpvalueObj};
+use super::{function::Function, IntoRuaVal, RuaVal, RuaValInner, Upvalue, UpvalueObj};
 
-#[derive(Clone, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Closure {
     function: Function,
     upvalues: RefCell<Vec<UpvalueObj>>,
@@ -26,6 +24,8 @@ impl PartialEq for Closure {
         std::ptr::eq(self, other)
     }
 }
+
+impl Eq for Closure {}
 
 impl std::hash::Hash for Closure {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -58,28 +58,27 @@ impl Closure {
 
     pub(in crate::eval) fn get_upvalue_val(&self, vm: &Vm, up: UpvalueHandle) -> RuaVal {
         let upvalues = self.upvalues.borrow();
-        let location: &Either<_, _> = &upvalues[up.pos()].borrow();
-        match location {
-            Left(idx) => vm.stack_at_abs(*idx).clone(),
-            Right(v) => v.clone(),
-        }
+        let val = match &*upvalues[up.pos()].borrow() {
+            Upvalue::Open(idx) => vm.stack_at_abs(*idx).clone(),
+            Upvalue::Closed(v) => v.clone(),
+        };
+        val
     }
 
     pub(in crate::eval) fn set_upvalue(&self, vm: &mut Vm, up: UpvalueHandle, val: RuaVal) {
         let upvalues = self.upvalues.borrow();
         {
-            let location: &Either<_, _> = &upvalues[up.pos()].borrow();
-            match location {
-                Left(idx) => {
+            match &*upvalues[up.pos()].borrow() {
+                Upvalue::Open(idx) => {
                     vm.set_stack_at_abs(*idx, val);
                     return;
                 }
-                Right(_) => {
+                Upvalue::Closed(_) => {
                     // cannot replace here since refcell is borrowed
                 }
             }
         }
-        upvalues[up.pos()].replace(Right(val));
+        upvalues[up.pos()].replace(Upvalue::Closed(val));
     }
 
     #[must_use]
@@ -102,7 +101,7 @@ impl Closure {
     pub(super) fn blacken(&self, gc_data: &mut GcData) {
         let upvalues: &Vec<_> = &self.upvalues.borrow();
         for up in upvalues {
-            if let Right(v) = up.borrow().as_ref() {
+            if let Upvalue::Closed(v) = &*up.borrow() {
                 v.mark(gc_data);
             }
         }

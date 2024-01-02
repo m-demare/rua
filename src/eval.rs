@@ -10,13 +10,15 @@ use std::{
 };
 
 use crate::{
-    compiler::bytecode::{BinArgs, FnHandle, JmpArgs, NVArgs, NumberHandle, UnArgs, VNArgs},
+    compiler::{
+        bytecode::{BinArgs, FnHandle, JmpArgs, NVArgs, NumberHandle, UnArgs, VNArgs},
+        upvalues::UpvalueLocation,
+    },
     eval::{
         macros::trace_gc,
         vals::{closure::Closure, IntoRuaVal},
     },
 };
-use either::Either::{self, Left, Right};
 use rua_trie::Trie;
 use rustc_hash::FxHasher;
 use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
@@ -32,7 +34,7 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{EvalErrorTraced, RuaResult, RuaResultUntraced, UpvalueObj},
+    vals::{EvalErrorTraced, RuaResult, RuaResultUntraced, Upvalue, UpvalueObj, Callable},
 };
 
 mod call_frame;
@@ -290,7 +292,7 @@ impl Vm {
     fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
         let func = self.stack_at(frame, base).clone();
         match func.into_callable() {
-            Ok(Left(closure)) => {
+            Ok(Callable::Closure(closure)) => {
                 let og_len = self.stack.len();
                 let stack_start_pos = frame.resolve_reg(base);
                 self.stack.resize(
@@ -311,7 +313,7 @@ impl Vm {
                 self.frames.push(old_frame);
                 Ok(())
             }
-            Ok(Right(f)) => {
+            Ok(Callable::Native(f)) => {
                 let arg_start = frame.resolve_reg(base) + 1;
                 let args = self.stack[arg_start..arg_start + nargs as usize].to_vec();
                 let retval = match f.call(&args, self) {
@@ -366,10 +368,10 @@ impl Vm {
         for _ in 0..upvalue_count {
             if let I::Upvalue(up) = frame.curr_instr() {
                 match up.location() {
-                    Left(local) => {
+                    UpvalueLocation::ParentStack(local) => {
                         self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
                     }
-                    Right(upvalue) => {
+                    UpvalueLocation::ParentUpval(upvalue) => {
                         closure.push_upvalue(frame.closure().get_upvalue(upvalue));
                     }
                 }
@@ -503,16 +505,15 @@ impl Vm {
 
     fn capture_upvalue(&mut self, closure: &mut Closure, pos: usize) {
         let existing = self.open_upvalues.iter().find(|up| {
-            let up: &Either<_, _> = &up.borrow();
-            match up {
-                Left(up_pos) => *up_pos == pos,
-                Right(_) => unreachable!("upvalue in open_upvalues is closed"),
+            match &*up.borrow() {
+                Upvalue::Open(up_pos) => *up_pos == pos,
+                Upvalue::Closed(_) => unreachable!("upvalue in open_upvalues is closed"),
             }
         });
         if let Some(up) = existing {
             closure.push_upvalue(up.clone());
         } else {
-            let up = Rc::new(RefCell::new(Left(pos)));
+            let up = Rc::new(RefCell::new(Upvalue::Open(pos)));
             self.open_upvalues.push(up.clone());
             closure.push_upvalue(up);
         }
@@ -521,15 +522,14 @@ impl Vm {
     fn close_upvalues(&mut self, from: usize, to: usize) {
         self.open_upvalues.retain(|up| {
             let up_pos = {
-                let up: &Either<_, _> = &up.borrow();
-                match up {
-                    Left(up_pos) => *up_pos,
-                    Right(_) => unreachable!("upvalue in open_upvalues is closed"),
+                match &*up.borrow() {
+                    Upvalue::Open(up_pos) => *up_pos,
+                    Upvalue::Closed(_) => unreachable!("upvalue in open_upvalues is closed"),
                 }
             };
             let close = up_pos >= from && to >= up_pos;
             if close {
-                up.replace(Right(self.stack[up_pos].clone()));
+                up.replace(Upvalue::Closed(self.stack[up_pos].clone()));
             }
             !close
         });

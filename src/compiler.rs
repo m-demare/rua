@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use either::Either::{self, Left, Right};
-
 use crate::{
     eval::{
         vals::{closure::Closure, function::Function, string::RuaString},
@@ -19,7 +17,7 @@ use self::{
     },
     fold::{BinFolder, CommutativeFolder, NonCommutativeFolder, StringFolder},
     locals::{LocalHandle, Locals},
-    upvalues::{UpvalueHandle, Upvalues},
+    upvalues::{UpvalueHandle, UpvalueLocation, Upvalues},
     utils::{consume, debug_peek_token, match_token, peek_token_is},
 };
 
@@ -1226,11 +1224,11 @@ impl CompilerCtxt {
         if let Some((parent, tail)) = context_stack.split_last_mut() {
             if let Some(local) = parent.resolve_local(id) {
                 parent.capture(local);
-                Some(self.add_upvalue(Left(local))).transpose()
+                Some(self.add_upvalue(UpvalueLocation::ParentStack(local))).transpose()
             } else {
                 parent
                     .resolve_upvalue(id, tail)?
-                    .map(|upvalue| self.add_upvalue(Right(upvalue)))
+                    .map(|upvalue| self.add_upvalue(UpvalueLocation::ParentUpval(upvalue)))
                     .transpose()
             }
         } else {
@@ -1238,10 +1236,7 @@ impl CompilerCtxt {
         }
     }
 
-    fn add_upvalue(
-        &mut self,
-        upvalue: Either<LocalHandle, UpvalueHandle>,
-    ) -> Result<UpvalueHandle, ParseError> {
+    fn add_upvalue(&mut self, upvalue: UpvalueLocation) -> Result<UpvalueHandle, ParseError> {
         self.upvalues.find_or_add(upvalue)
     }
 
@@ -1283,7 +1278,6 @@ impl ExprDesc {
         &mut self,
         compiler: &mut Compiler<'_, T>,
     ) -> Result<u8, ParseError> {
-        // TODO dischage_vars for handling globals/upvals
         match &self.kind {
             ExprKind::Tmp { reg, .. } | ExprKind::Local { reg, .. } if *reg != 255 => {
                 let reg = *reg;

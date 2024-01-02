@@ -1,16 +1,21 @@
-use either::Either;
 use struct_invariant::invariant;
 
 use super::{bytecode::ParseError, locals::LocalHandle};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Upvalue {
-    location: Either<LocalHandle, UpvalueHandle>,
+pub enum UpvalueLocation {
+    ParentStack(LocalHandle),
+    ParentUpval(UpvalueHandle),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct UpvalueDesc {
+    location: UpvalueLocation,
 }
 
 #[derive(Default, Debug)]
 pub(crate) struct Upvalues {
-    upvalues: Vec<Upvalue>,
+    upvalues: Vec<UpvalueDesc>,
 }
 
 #[cfg(not(test))]
@@ -25,7 +30,7 @@ pub struct UpvalueHandle(pub u8);
 impl Upvalues {
     pub(super) fn find_or_add(
         &mut self,
-        upvalue: Either<LocalHandle, UpvalueHandle>,
+        upvalue: UpvalueLocation,
     ) -> Result<UpvalueHandle, ParseError> {
         if let Some((i, _)) =
             self.upvalues.iter().enumerate().find(|(_, up)| up.location == upvalue)
@@ -36,7 +41,7 @@ impl Upvalues {
         if len == u8::MAX {
             return Err(ParseError::TooManyLocals);
         }
-        let up = Upvalue { location: upvalue };
+        let up = UpvalueDesc { location: upvalue };
         self.upvalues.push(up);
         Ok(UpvalueHandle(len))
     }
@@ -47,8 +52,8 @@ impl Upvalues {
     }
 }
 
-impl Upvalue {
-    pub(crate) const fn location(self) -> Either<LocalHandle, UpvalueHandle> {
+impl UpvalueDesc {
+    pub(crate) const fn location(self) -> UpvalueLocation {
         self.location
     }
 }
@@ -60,9 +65,9 @@ impl UpvalueHandle {
 }
 
 impl IntoIterator for Upvalues {
-    type Item = Upvalue;
+    type Item = UpvalueDesc;
 
-    type IntoIter = std::vec::IntoIter<Upvalue>;
+    type IntoIter = std::vec::IntoIter<UpvalueDesc>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.upvalues.into_iter()

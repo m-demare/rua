@@ -7,7 +7,7 @@ use crate::{
     lex::tokens::{Token, TokenType},
 };
 
-use super::upvalues::{Upvalue, UpvalueHandle, Upvalues};
+use super::upvalues::{UpvalueDesc, UpvalueHandle, Upvalues};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instruction {
@@ -72,7 +72,7 @@ pub enum Instruction {
     Index(BinArgs),
 
     Closure { dst: u8, src: FnHandle },
-    Upvalue(Upvalue),
+    Upvalue(UpvalueDesc),
     CloseUpvalues { from: u8, to: u8 },
     GetUpvalue { dst: u8, src: UpvalueHandle },
     SetUpvalue { dst: UpvalueHandle, src: u8 },

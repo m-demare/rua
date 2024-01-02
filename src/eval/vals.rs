@@ -4,7 +4,6 @@ pub mod number;
 pub mod string;
 pub mod table;
 
-use either::Either::{self, Left, Right};
 use std::{
     cell::RefCell,
     convert::Infallible,
@@ -39,10 +38,21 @@ pub struct RuaVal(RuaValInner);
 #[cfg(target_arch = "x86_64")]
 static_assertions::assert_eq_size!(RuaVal, [u8; 16]);
 
-pub type UpvalueObj = Rc<RefCell<Either<usize, RuaVal>>>;
+#[derive(Debug)]
+pub enum Upvalue {
+    Open(usize),
+    Closed(RuaVal),
+}
+
+pub type UpvalueObj = Rc<RefCell<Upvalue>>;
 
 pub type RuaResult = Result<RuaVal, EvalErrorTraced>;
 pub type RuaResultUntraced = Result<RuaVal, EvalError>;
+
+pub enum Callable {
+    Closure(Rc<Closure>),
+    Native(Rc<NativeFunction>),
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuaType {
@@ -153,10 +163,10 @@ impl RuaVal {
     /// # Errors
     ///
     /// Returns `TypeError` if value is not a `Closure` or `NativeFunction`
-    pub fn into_callable(self) -> Result<Either<Rc<Closure>, Rc<NativeFunction>>, EvalError> {
+    pub fn into_callable(self) -> Result<Callable, EvalError> {
         match self.0 {
-            RuaValInner::Closure(c) => Ok(Left(c)),
-            RuaValInner::NativeFunction(f) => Ok(Right(f)),
+            RuaValInner::Closure(c) => Ok(Callable::Closure(c)),
+            RuaValInner::NativeFunction(f) => Ok(Callable::Native(f)),
             v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
         }
     }

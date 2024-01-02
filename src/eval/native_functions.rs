@@ -1,14 +1,13 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::{eval::Vm, lex::utils::read_number_radix};
+use crate::{eval::{Vm, vals::Callable}, lex::utils::read_number_radix};
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
     EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal, TryIntoOpt,
 };
-use either::Either::{Left, Right};
 use rua_func_macros::rua_func;
 
 mod io;
@@ -69,8 +68,8 @@ fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
 #[rua_func]
 fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func.into_callable() {
-        Ok(Left(closure)) => ctxt.vm.interpret(closure),
-        Ok(Right(native_fn)) => native_fn.call(&ctxt.args[1..], ctxt.vm),
+        Ok(Callable::Closure(closure)) => ctxt.vm.interpret(closure),
+        Ok(Callable::Native(native_fn)) => native_fn.call(&ctxt.args[1..], ctxt.vm),
         Err(_) => return false.into(),
     }
     .map_or(false.into(), |v| v)
