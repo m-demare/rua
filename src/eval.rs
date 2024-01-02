@@ -34,7 +34,7 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{EvalErrorTraced, RuaResult, RuaResultUntraced, Upvalue, UpvalueObj, Callable},
+    vals::{Callable, EvalErrorTraced, RuaResult, RuaResultUntraced, Upvalue, UpvalueObj},
 };
 
 mod call_frame;
@@ -315,8 +315,7 @@ impl Vm {
             }
             Ok(Callable::Native(f)) => {
                 let arg_start = frame.resolve_reg(base) + 1;
-                let args = self.stack[arg_start..arg_start + nargs as usize].to_vec();
-                let retval = match f.call(&args, self) {
+                let retval = match f.call(self, arg_start, nargs) {
                     Ok(v) => v,
                     Err(mut e) => {
                         e.push_stack_trace(frame.func_name(), frame.curr_line());
@@ -504,11 +503,9 @@ impl Vm {
     }
 
     fn capture_upvalue(&mut self, closure: &mut Closure, pos: usize) {
-        let existing = self.open_upvalues.iter().find(|up| {
-            match &*up.borrow() {
-                Upvalue::Open(up_pos) => *up_pos == pos,
-                Upvalue::Closed(_) => unreachable!("upvalue in open_upvalues is closed"),
-            }
+        let existing = self.open_upvalues.iter().find(|up| match &*up.borrow() {
+            Upvalue::Open(up_pos) => *up_pos == pos,
+            Upvalue::Closed(_) => unreachable!("upvalue in open_upvalues is closed"),
         });
         if let Some(up) = existing {
             closure.push_upvalue(up.clone());

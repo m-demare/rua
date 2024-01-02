@@ -30,7 +30,8 @@ pub struct NativeFunction {
 }
 
 pub struct FunctionContext<'vm> {
-    pub args: Vec<RuaVal>,
+    pub args_start: usize,
+    pub nargs: u8,
     pub vm: &'vm mut Vm,
 }
 
@@ -75,8 +76,8 @@ impl NativeFunction {
         Self { func }
     }
 
-    pub fn call(&self, args: &[RuaVal], vm: &mut Vm) -> RuaResult {
-        (self.func)(&mut FunctionContext::new(args.to_vec(), vm))
+    pub fn call(&self, vm: &mut Vm, args_start: usize, nargs: u8) -> RuaResult {
+        (self.func)(&mut FunctionContext::new(vm, args_start, nargs))
     }
 }
 
@@ -112,8 +113,20 @@ impl Hash for NativeFunction {
 }
 
 impl<'vm> FunctionContext<'vm> {
-    pub fn new(args: Vec<RuaVal>, vm: &'vm mut Vm) -> Self {
-        Self { args, vm }
+    pub fn new(vm: &'vm mut Vm, args_start: usize, nargs: u8) -> Self {
+        Self { args_start, nargs, vm }
+    }
+
+    pub fn get_arg(&self, i: usize) -> Option<&RuaVal> {
+        if i < self.nargs as usize {
+            Some(self.vm.stack_at_abs(self.args_start + i))
+        } else {
+            None
+        }
+    }
+
+    pub fn args(&self) -> &[RuaVal] {
+        &self.vm.stack[self.args_start..self.args_start + self.nargs as usize]
     }
 }
 

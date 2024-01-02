@@ -13,7 +13,7 @@ use rua_func_macros::rua_func;
 fn io_write(ctxt: &FunctionContext) {
     use std::fmt::Write;
 
-    let s = ctxt.args.iter().fold(String::new(), |mut out, arg| {
+    let s = ctxt.args().iter().fold(String::new(), |mut out, arg| {
         let _ = write!(out, "{arg}");
         out
     });

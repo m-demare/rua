@@ -1,7 +1,10 @@
 #![allow(clippy::needless_pass_by_value)]
 use std::{convert::identity, rc::Rc};
 
-use crate::{eval::{Vm, vals::Callable}, lex::utils::read_number_radix};
+use crate::{
+    eval::{vals::Callable, Vm},
+    lex::utils::read_number_radix,
+};
 
 use super::vals::{
     function::{FunctionContext, NativeFunction},
@@ -18,7 +21,7 @@ mod table;
 
 #[rua_func]
 fn print(ctxt: &FunctionContext) {
-    let s = ctxt.args.iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
+    let s = ctxt.args().iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
 
     println!("{s}");
 }
@@ -69,7 +72,9 @@ fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
 fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func.into_callable() {
         Ok(Callable::Closure(closure)) => ctxt.vm.interpret(closure),
-        Ok(Callable::Native(native_fn)) => native_fn.call(&ctxt.args[1..], ctxt.vm),
+        Ok(Callable::Native(native_fn)) => {
+            native_fn.call(ctxt.vm, ctxt.args_start + 1, ctxt.nargs - 1)
+        }
         Err(_) => return false.into(),
     }
     .map_or(false.into(), |v| v)

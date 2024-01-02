@@ -46,7 +46,7 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
         #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResult {
             let name_str = #name_str;
             #validate_cant_args
-            // TODO test inlining?
+            #[inline]
             #func
             let res = #name(#(#parameters),*);
             #output_wrap
@@ -122,7 +122,7 @@ fn get_parameters(
                 if path.segments.first().unwrap().ident == "Option" =>
             {
                 params.push(quote!(
-                    match ctxt.args.get(#i).cloned() {
+                    match ctxt.get_arg(#i).cloned() {
                         None => None,
                         Some(a) => Some(a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?),
                     }
@@ -130,7 +130,7 @@ fn get_parameters(
             }
             FnArg::Typed(PatType { ty: box Type::Path(TypePath { .. }), .. }) => {
                 params.push(quote!(
-                    match ctxt.args.get(#i).cloned() {
+                    match ctxt.get_arg(#i).cloned() {
                         None => return Err(EvalErrorTraced::new(EvalError::ExpectedArgument(#i as u8, name_str.into()), vec![(#fn_name.into(), 0)])),
                         Some(a) => a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
                     }
@@ -142,8 +142,8 @@ fn get_parameters(
 
     let validate_cant_args = if args.exact_args {
         quote!(
-        if ctxt.args.len() > #cant_params{
-            return Err(EvalErrorTraced::new(EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()), vec![(#fn_name.into(), 0)]))
+        if ctxt.nargs as usize > #cant_params{
+            return Err(EvalErrorTraced::new(EvalError::TooManyArguments(ctxt.nargs, name_str.into()), vec![(#fn_name.into(), 0)]))
         })
     } else {
         quote!()
