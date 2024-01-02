@@ -68,10 +68,11 @@ impl RuaVal {
     /// # Errors
     ///
     /// Returns `TypeError` if value is not a `Number`
+    #[inline]
     pub const fn as_number(&self) -> Result<f64, EvalError> {
         match &self.0 {
             RuaValInner::Number(n) => Ok(n.val()),
-            v => Err(EvalError::TypeError { expected: RuaType::Number, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Number)),
         }
     }
 
@@ -81,7 +82,7 @@ impl RuaVal {
     pub const fn as_table(&self) -> Result<&Rc<Table>, EvalError> {
         match &self.0 {
             RuaValInner::Table(t) => Ok(t),
-            v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Table)),
         }
     }
 
@@ -91,8 +92,13 @@ impl RuaVal {
     pub fn as_str(&self) -> Result<Rc<[u8]>, EvalError> {
         match &self.0 {
             RuaValInner::String(s) => Ok(s.inner()),
-            v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::String)),
         }
+    }
+
+    #[must_use]
+    const fn type_error(&self, expected: RuaType) -> EvalError {
+        EvalError::TypeError { expected, got: self.get_type() }
     }
 
     #[must_use]
@@ -118,7 +124,7 @@ impl RuaVal {
         match &self.0 {
             RuaValInner::String(s) => Ok(s.len()),
             RuaValInner::Table(t) => Ok(t.arr_size()),
-            v => Err(EvalError::TypeError { expected: v.get_type(), got: RuaType::Table }),
+            _ => Err(self.type_error(RuaType::Table)),
         }
     }
 
@@ -142,6 +148,7 @@ impl RuaVal {
     }
 
     #[must_use]
+    #[inline]
     pub const fn nil() -> Self {
         Self(RuaValInner::Nil)
     }
@@ -167,7 +174,7 @@ impl RuaVal {
         match self.0 {
             RuaValInner::Closure(c) => Ok(Callable::Closure(c)),
             RuaValInner::NativeFunction(f) => Ok(Callable::Native(f)),
-            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Function)),
         }
     }
 
@@ -334,18 +341,21 @@ impl IntoRuaVal for String {
 }
 
 impl From<bool> for RuaVal {
+    #[inline]
     fn from(val: bool) -> Self {
         Self(RuaValInner::Bool(val))
     }
 }
 
 impl From<RuaString> for RuaVal {
+    #[inline]
     fn from(val: RuaString) -> Self {
         Self(RuaValInner::String(val))
     }
 }
 
 impl From<()> for RuaVal {
+    #[inline]
     fn from((): ()) -> Self {
         Self::nil()
     }
@@ -366,12 +376,14 @@ impl From<NativeFunction> for RuaVal {
 impl TryInto<f64> for RuaVal {
     type Error = EvalError;
 
+    #[inline]
     fn try_into(self) -> Result<f64, Self::Error> {
         self.as_number()
     }
 }
 
 impl From<RuaVal> for bool {
+    #[inline]
     fn from(val: RuaVal) -> Self {
         val.truthy()
     }
@@ -382,8 +394,8 @@ impl TryInto<Rc<[u8]>> for RuaVal {
 
     fn try_into(self) -> Result<Rc<[u8]>, Self::Error> {
         match self.0 {
-            RuaValInner::String(s) => Ok(s.inner()),
-            v => Err(EvalError::TypeError { expected: RuaType::String, got: v.get_type() }),
+            RuaValInner::String(s) => Ok(s.into()),
+            _ => Err(self.type_error(RuaType::String)),
         }
     }
 }
@@ -394,7 +406,7 @@ impl TryInto<Rc<Table>> for RuaVal {
     fn try_into(self) -> Result<Rc<Table>, Self::Error> {
         match self.0 {
             RuaValInner::Table(t) => Ok(t),
-            v => Err(EvalError::TypeError { expected: RuaType::Table, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Table)),
         }
     }
 }
@@ -405,7 +417,7 @@ impl TryInto<Rc<Closure>> for RuaVal {
     fn try_into(self) -> Result<Rc<Closure>, Self::Error> {
         match self.0 {
             RuaValInner::Closure(c) => Ok(c),
-            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Function)),
         }
     }
 }
@@ -416,7 +428,7 @@ impl TryInto<Rc<NativeFunction>> for RuaVal {
     fn try_into(self) -> Result<Rc<NativeFunction>, Self::Error> {
         match self.0 {
             RuaValInner::NativeFunction(f) => Ok(f),
-            v => Err(EvalError::TypeError { expected: RuaType::Function, got: v.get_type() }),
+            _ => Err(self.type_error(RuaType::Function)),
         }
     }
 }
@@ -428,42 +440,10 @@ impl From<Infallible> for EvalError {
     }
 }
 
-pub trait TryIntoOpt<T> {
-    type Error;
-    /// # Errors
-    ///
-    /// Returns `TypeError` if value is not nil, and cannot be converted to type T
-    fn try_into_opt(self) -> Result<Option<T>, Self::Error>;
-}
-
-// Cannot implement TryInto<Option<T>> for RuaVal, since it
-// conflicts with the default implementation of TryInto<Option<RuaVal>>
-impl<T> TryIntoOpt<T> for RuaVal
-where
-    Self: TryInto<T, Error = EvalError>,
-{
-    type Error = EvalError;
-
-    fn try_into_opt(self) -> Result<Option<T>, Self::Error> {
-        Ok(match self {
-            Self(RuaValInner::Nil) => None,
-            v => Some(v.try_into()?),
-        })
-    }
-}
-
-impl TryIntoOpt<Self> for RuaVal {
-    type Error = EvalError;
-
-    fn try_into_opt(self) -> Result<Option<Self>, Self::Error> {
-        Ok(Some(self))
-    }
-}
-
-impl From<Option<Self>> for RuaVal {
-    fn from(val: Option<Self>) -> Self {
+impl<T: Into<Self>> From<Option<T>> for RuaVal {
+    fn from(val: Option<T>) -> Self {
         match val {
-            Some(v) => v,
+            Some(v) => v.into(),
             None => Self(RuaValInner::Nil),
         }
     }

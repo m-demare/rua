@@ -124,7 +124,7 @@ fn get_parameters(
                 params.push(quote!(
                     match ctxt.args.get(#i).cloned() {
                         None => None,
-                        Some(a) => a.try_into_opt().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
+                        Some(a) => Some(a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?),
                     }
                 ))
             }

@@ -538,12 +538,14 @@ pub enum ParseError {
 impl TryInto<u8> for NumberHandle {
     type Error = ();
 
+    #[inline]
     fn try_into(self) -> Result<u8, Self::Error> {
         self.0.try_into().map_err(|_| ())
     }
 }
 
 impl NumberHandle {
+    #[inline]
     pub(crate) fn from_unchecked(value: u8) -> Self {
         Self(value.into())
     }

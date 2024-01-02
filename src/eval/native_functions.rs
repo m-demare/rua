@@ -6,7 +6,7 @@ use crate::{eval::{Vm, vals::Callable}, lex::utils::read_number_radix};
 use super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal, TryIntoOpt,
+    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal,
 };
 use rua_func_macros::rua_func;
 
