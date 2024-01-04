@@ -623,7 +623,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             }
             _ => {
                 match self.current_chunk().code().last() {
-                    // TODO not all expressions output instructions now
                     Some(I::Call { .. }) => {
                         dst.free_reg(self);
                     }
@@ -1398,7 +1397,6 @@ impl ExprDesc {
             ExprKind::Function(_) => {
                 let old_kind =
                     std::mem::replace(&mut self.kind, ExprKind::Tmp { reg: dst, instr_idx: None });
-                // TODO find nicer way to take ownership
                 if let ExprKind::Function(f) = old_kind {
                     let (func, upvals) = *f;
                     compiler.emit_closure(dst, func, upvals, 0)?;

@@ -178,6 +178,7 @@ impl Chunk {
     }
 
     #[must_use]
+    #[inline]
     pub(crate) fn read_number(&self, c: NumberHandle) -> f64 {
         *self.numbers.get(c.0 as usize).expect("Invalid constant")
     }
@@ -193,6 +194,7 @@ impl Chunk {
     }
 
     #[must_use]
+    #[inline]
     pub(crate) const fn code(&self) -> &Vec<Instruction> {
         &self.code
     }

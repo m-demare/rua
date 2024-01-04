@@ -44,6 +44,7 @@ impl Closure {
         }
     }
 
+    #[inline]
     pub(crate) const fn function(&self) -> &Function {
         &self.function
     }

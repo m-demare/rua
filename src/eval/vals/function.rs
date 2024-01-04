@@ -46,6 +46,7 @@ impl Function {
         Self { inner: Rc::new(FunctionInner { chunk, arity, name, max_used_regs, upvalue_count }) }
     }
 
+    #[inline]
     pub fn chunk(&self) -> &Chunk {
         &self.inner.chunk
     }
