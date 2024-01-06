@@ -326,6 +326,37 @@ test_interpret!(
 );
 
 test_interpret!(
+    repeat_statement1,
+    "local i = 0
+    repeat
+        i = i + 1
+    until i>42
+    return i",
+    |_| Ok(43.0.into())
+);
+
+test_interpret!(
+    repeat_statement2,
+    "local i = 0
+    repeat
+        if i > 25 then return i end
+        i = i + 1
+    until false
+    assert(false)",
+    |_| Ok(26.0.into())
+);
+
+test_interpret!(
+    repeat_statement3,
+    "local i = 0
+    repeat
+        i = i + 1
+    until true
+    return i",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
     function,
     "
 local function foo()

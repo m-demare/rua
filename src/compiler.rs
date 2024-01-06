@@ -146,6 +146,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     let line = *line;
                     self.for_st(line)?;
                 }
+                Token { ttype: TT::REPEAT, line } => {
+                    let line = *line;
+                    self.repeat_until_st(line)?;
+                }
                 Token { ttype: TT::SEMICOLON, .. } => {
                     self.next_token();
                 }
@@ -162,6 +166,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                             TT::END,
                             TT::ELSE,
                             TT::ELSEIF,
+                            TT::REPEAT,
                             TT::UNTIL,
                         ]),
                     ))
@@ -859,6 +864,23 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         );
 
         self.context.locals.drop(3);
+        Ok(())
+    }
+
+    fn repeat_until_st(&mut self, line: usize) -> Result<(), ParseError> {
+        debug_peek_token!(self, TT::REPEAT);
+        self.next_token();
+        let loop_start = self.pc();
+        self.scoped_block()?;
+        consume!(self; (TT::UNTIL));
+
+        let mut cond = self.expression(Precedence::Lowest)?;
+        let exit_jmp = cond.skip_if_false(self, line, false)?;
+
+        if let Some(exit_jmp) = exit_jmp {
+            self.patch_jmp(exit_jmp, loop_start, line)?;
+        }
+
         Ok(())
     }
 
