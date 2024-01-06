@@ -121,6 +121,66 @@ test_interpret!(if_lt_false, "a = 4; if 5<a then return 1 end return true", |_| 
 test_interpret!(if_else_false, "if 5<=4 then return 1 else return true end", |_| Ok(true.into()));
 test_interpret!(if_else_true, "if 4<=5 then return 1 else return true end", |_| Ok(1.0.into()));
 
+test_interpret!(
+    if_elseif1,
+    "
+if 4<=5 then
+    return 1;
+elseif assert(false) then
+    assert(false)
+elseif nil+nil<2 then
+    assert(false)
+else
+    assert(false)
+end",
+    |_| Ok(1.0.into())
+);
+
+test_interpret!(
+    if_elseif2,
+    "
+if 5<=4 then
+    assert(false)
+elseif 123 then
+    return 5
+elseif nil+nil<2 then
+    assert(false)
+else
+    assert(false)
+end",
+    |_| Ok(5.0.into())
+);
+
+test_interpret!(
+    if_elseif3,
+    "
+if 5<=4 then
+    assert(false)
+elseif false then
+    return nil + nil
+elseif 2<5 and 'asdf' == 'as' .. 'df' then
+    return 7
+else
+    assert(false)
+end",
+    |_| Ok(7.0.into())
+);
+
+test_interpret!(
+    if_elseif4,
+    "
+if 5<=4 then
+    assert(false)
+elseif false then
+    return nil + nil
+elseif 2<5 and 'asdf' ~= 'as' .. 'df' then
+    assert(false)
+else
+    return 18
+end",
+    |_| Ok(18.0.into())
+);
+
 test_interpret!(if_local_true, "local a = 2; if a then return 1 else return 2 end", |_| Ok(
     1.0.into()
 ));

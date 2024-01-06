@@ -132,7 +132,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     self.next_token();
                     self.function_st(line, false)?;
                 }
-                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. } => break,
+                Token { ttype: TT::END | TT::ELSE | TT::ELSEIF | TT::UNTIL, .. } => break,
                 Token { ttype: TT::IF, line, .. } => {
                     let line = *line;
                     self.if_st(line)?;
@@ -162,6 +162,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                             TT::END,
                             TT::ELSE,
                             TT::ELSEIF,
+                            TT::UNTIL,
                         ]),
                     ))
                 }
@@ -501,7 +502,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::RETURN);
         self.next_token();
 
-        if peek_token_is!(self, TT::END | TT::ELSE | TT::ELSEIF | TT::SEMICOLON)
+        if peek_token_is!(self, TT::END | TT::ELSE | TT::ELSEIF | TT::UNTIL | TT::SEMICOLON)
             || self.peek_token().is_none()
         {
             self.instruction(I::ReturnNil, line);
@@ -509,12 +510,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
 
         let mut desc = self.expression(Precedence::Lowest)?;
+        match_token!(self, TT::SEMICOLON);
         match self.peek_token() {
-            Some(Token { ttype: TT::END | TT::ELSE | TT::ELSEIF, .. }) | None => {}
+            Some(Token { ttype: TT::END | TT::ELSE | TT::ELSEIF | TT::UNTIL, .. }) | None => {}
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
                     t.clone().into(),
-                    [TT::END, TT::ELSE, TT::ELSEIF].into(),
+                    [TT::END, TT::ELSE, TT::ELSEIF, TT::UNTIL].into(),
                 ))
             }
         }
@@ -621,14 +623,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 let line = *line;
                 return self.multiassign(dst, line);
             }
-            _ => {
-                match self.current_chunk().code().last() {
-                    Some(I::Call { .. }) => {
-                        dst.free_reg(self);
-                    }
-                    _ => return Err(ParseError::UnexpectedExpression(line)),
+            _ => match self.current_chunk().code().last() {
+                Some(I::Call { .. }) => {
+                    dst.free_reg(self);
                 }
-            }
+                _ => return Err(ParseError::UnexpectedExpression(line)),
+            },
         }
 
         Ok(())
@@ -746,26 +746,37 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         debug_peek_token!(self, TT::IF);
         self.next_token();
         let mut cond = self.expression(Precedence::Lowest)?;
-        let jmp_idx = cond.skip_if_false(self, line, false)?;
+        let mut jmp_idx = cond.skip_if_false(self, line, false)?;
         consume!(self; (TT::THEN));
         self.scoped_block()?;
 
-        match self.next_token() {
-            Some(Token { ttype: TT::END, .. }) => {
-                if let Some(jmp_idx) = jmp_idx {
-                    self.patch_jmp_here(jmp_idx, line)?;
-                }
+        let mut else_jmp = None;
+        while match_token!(self, TT::ELSEIF) {
+            let new_else_jmp = Some(self.jmp(0, line));
+            if let Some(jmp_idx) = jmp_idx {
+                self.patch_jmp_here(jmp_idx, line)?;
             }
+            let mut cond = self.expression(Precedence::Lowest)?;
+            jmp_idx = cond.skip_if_false(self, line, false)?;
+            consume!(self; (TT::THEN));
+            self.scoped_block()?;
+
+            self.patch_list_to_here(else_jmp)?;
+            if else_jmp.is_none() {
+                else_jmp = new_else_jmp;
+            }
+        }
+
+        match self.next_token() {
+            Some(Token { ttype: TT::END, .. }) => self.patch_list_to_here(jmp_idx)?,
             Some(Token { ttype: TT::ELSE, line: line_else, .. }) => {
-                let else_jmp = self.jmp(0, line);
-                if let Some(jmp_idx) = jmp_idx {
-                    self.patch_jmp_here(jmp_idx, line)?;
-                }
+                let new_else_jmp = self.jmp(0, line);
+                self.patch_list_to_here(jmp_idx)?;
                 self.scoped_block()?;
-                self.patch_jmp_here(else_jmp, line_else)?;
+
+                self.patch_jmp_here(else_jmp.unwrap_or(new_else_jmp), line_else)?;
                 consume!(self; (TT::END));
             }
-            Some(Token { ttype: TT::ELSEIF, .. }) => todo!(),
             Some(t) => {
                 return Err(ParseError::UnexpectedToken(
                     t.into(),
@@ -940,11 +951,11 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             match self.current_chunk().code().get(l - 1) {
                 Some(I::TestSet { .. } | I::UntestSet { .. }) => {
                     self.current_chunk_mut().chg_dst_of(l - 1, reg);
-                    self.patch_jmp(l, vtarget, 0)?;
+                    self.patch_jmp(l, vtarget, self.peek_token().map_or(0, |t| t.line))?;
                 }
                 _ => {
                     self.patch_jmp(l, dtarget.unwrap_or_else(||
-                        panic!("dtarget should've been computed, jmp at {l} needed val. Code: {:?}", self.current_chunk().code())), 0)?;
+                        panic!("dtarget should've been computed, jmp at {l} needed val. Code: {:?}", self.current_chunk().code())), self.peek_token().map_or(0, |t| t.line))?;
                 }
             }
             list = next;
