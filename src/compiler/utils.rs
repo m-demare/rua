@@ -1,3 +1,5 @@
+use crate::lex::tokens::TokenType as TT;
+
 macro_rules! peek_token_is {
     ($compiler: expr, $($args: pat),+) => {
         match $compiler.peek_token() {
@@ -44,6 +46,35 @@ macro_rules! consume {
     ($compiler: expr; allow_eof, $($args: tt),+) => {
         consume!($compiler, true, $($args),+)
     };
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Copy)]
+pub(super) enum Precedence {
+    Lowest,
+    Or,
+    And,
+    Comparator,  // >, <, <=, >=, ~=, ==
+    Dotdot,      // ..
+    Sum,         // +, -
+    Product,     // *, /, %
+    Prefix,      // not, #, - (unary)
+    Exp,         // ^
+    Call,        // foo(...)
+    FieldAccess, // foo.bar, foo[bar]
+}
+
+pub(super) fn precedence_of_binary(op: &TT) -> Precedence {
+    match op {
+        TT::OR => Precedence::Or,
+        TT::AND => Precedence::And,
+        TT::EQ | TT::NEQ | TT::LE | TT::GE | TT::LT | TT::GT => Precedence::Comparator,
+        TT::DOTDOT => Precedence::Dotdot,
+        TT::PLUS | TT::MINUS => Precedence::Sum,
+        TT::TIMES | TT::DIV | TT::MOD => Precedence::Product,
+        TT::EXP => Precedence::Exp,
+        TT::LBRACK | TT::DOT => Precedence::FieldAccess,
+        _ => unreachable!("Invalid binary"),
+    }
 }
 
 pub(super) use consume;
