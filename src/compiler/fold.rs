@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use super::{
-    bytecode::{BinArgs, Instruction, NVArgs, ParseError, VNArgs},
+    bytecode::{BinArgs, Instruction, NVArgs, NumberHandle, ParseError, VNArgs, VVJmpArgs},
     Compiler, ExprDesc, ExprKind,
 };
 
@@ -255,5 +255,80 @@ impl<Folder: FnOnce(Rc<[u8]>, Rc<[u8]>) -> Rc<[u8]>, I1: FnOnce(BinArgs) -> Inst
         rhs.free_reg(compiler);
         lhs.free_reg(compiler);
         retval
+    }
+}
+
+#[allow(clippy::similar_names)]
+pub struct ComparisonFolder<
+    Folder: FnOnce(f64, f64) -> bool,
+    I1: FnOnce(VVJmpArgs) -> Instruction,
+    I2: FnOnce(u8, NumberHandle) -> Instruction,
+    I3: FnOnce(NumberHandle, u8) -> Instruction,
+> {
+    folder: Folder,
+    vv_instr: I1,
+    vn_instr: I2,
+    nv_instr: I3,
+}
+
+impl<
+        Folder: FnOnce(f64, f64) -> bool,
+        I1: FnOnce(VVJmpArgs) -> Instruction,
+        I2: FnOnce(u8, NumberHandle) -> Instruction,
+        I3: FnOnce(NumberHandle, u8) -> Instruction,
+    > ComparisonFolder<Folder, I1, I2, I3>
+{
+    #[allow(clippy::similar_names)]
+    pub const fn new(folder: Folder, vv_instr: I1, vn_instr: I2, nv_instr: I3) -> Self {
+        Self { folder, vv_instr, vn_instr, nv_instr }
+    }
+}
+
+impl<
+        Folder: FnOnce(f64, f64) -> bool,
+        I1: FnOnce(VVJmpArgs) -> Instruction,
+        I2: FnOnce(u8, NumberHandle) -> Instruction,
+        I3: FnOnce(NumberHandle, u8) -> Instruction,
+    > BinFolder for ComparisonFolder<Folder, I1, I2, I3>
+{
+    fn is_foldable(&self, expr: &ExprDesc) -> bool {
+        expr.as_number().is_some()
+    }
+
+    fn get_res<T: Iterator<Item = u8> + Clone>(
+        self,
+        compiler: &mut Compiler<'_, T>,
+        mut lhs: ExprDesc,
+        mut rhs: ExprDesc,
+        line: usize,
+    ) -> Result<ExprDesc, ParseError> {
+        match (lhs.as_number(), rhs.as_number()) {
+            (Some(n1), Some(n2)) => {
+                let folded = (self.folder)(n1, n2);
+                Ok(ExprDesc::new(if folded { ExprKind::True } else { ExprKind::False }))
+            }
+            (Some(n), None) => {
+                let handle = compiler.current_chunk_mut().new_number_constant(n)?;
+                let v = rhs.to_any_reg(compiler)?;
+                let instr_idx = compiler.cond_jmp((self.nv_instr)(handle, v), line);
+                rhs.free_reg(compiler);
+                Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
+            }
+            (None, Some(n)) => {
+                let handle = compiler.current_chunk_mut().new_number_constant(n)?;
+                let v = lhs.to_any_reg(compiler)?;
+                let instr_idx = compiler.cond_jmp((self.vn_instr)(v, handle), line);
+                lhs.free_reg(compiler);
+                Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
+            }
+            (_, _) => {
+                let lhs = lhs.to_any_reg(compiler)?;
+                let rhs = rhs.to_any_reg(compiler)?;
+                let instr_idx = compiler.cond_jmp((self.vv_instr)(VVJmpArgs { lhs, rhs }), line);
+
+                compiler.free2reg(lhs, rhs);
+                Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
+            }
+        }
     }
 }

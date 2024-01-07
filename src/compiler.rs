@@ -10,9 +10,9 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Chunk, Instruction as I, Instruction, JmpArgs, ParseError, StringHandle, UnArgs},
+    bytecode::{Chunk, Instruction as I, Instruction, ParseError, StringHandle, UnArgs},
     expr::{ExprDesc, ExprKind},
-    fold::{BinFolder, CommutativeFolder, NonCommutativeFolder, StringFolder},
+    fold::{BinFolder, CommutativeFolder, ComparisonFolder, NonCommutativeFolder, StringFolder},
     locals::{LocalHandle, Locals},
     upvalues::{UpvalueHandle, UpvalueLocation, Upvalues},
     utils::{
@@ -343,24 +343,27 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.instruction(I::Jmp(0), line)
     }
 
-    fn comparison<F: FnOnce(JmpArgs) -> Instruction>(
+    fn comparison<Instr: BinFolder>(
         &mut self,
         mut lhs_desc: ExprDesc,
-        i: F,
+        i: Instr,
         line: usize,
         precedence: Precedence,
+        swap: bool,
     ) -> Result<ExprDesc, ParseError> {
-        let lhs = lhs_desc.to_any_reg(self)?;
+        if !i.is_foldable(&lhs_desc) {
+            lhs_desc.to_any_reg(self)?;
+        }
 
         let mut rhs_desc = self.expression(precedence)?;
-        let rhs = rhs_desc.to_any_reg(self)?;
-        self.free2reg(lhs, rhs);
+        if swap {
+            std::mem::swap(&mut lhs_desc, &mut rhs_desc);
+        }
 
-        let instr_idx = self.cond_jmp(i(JmpArgs { lhs, rhs }), line);
-        Ok(ExprDesc::new(ExprKind::Jmp { instr_idx }))
+        i.get_res(self, lhs_desc, rhs_desc, line)
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::float_cmp)]
     fn infix_exp(
         &mut self,
         mut lhs_desc: ExprDesc,
@@ -374,6 +377,11 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
                 self.next_token();
                 new_precedence
+            }};
+        }
+        macro_rules! func {
+            ($variant: ident) => {{
+                |lhs, rhs| I::$variant { lhs, rhs }
             }};
         }
 
@@ -444,27 +452,63 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
                 Some(Token { ttype: t @ TT::EQ, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Eq, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a == b, I::EqVV, func!(EqVN), func!(EqNV)),
+                        line,
+                        new_precedence,
+                        false,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::NEQ, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Neq, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a != b, I::NeqVV, func!(NeqVN), func!(NeqNV)),
+                        line,
+                        new_precedence,
+                        false,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::LT, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Lt, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a < b, I::LtVV, func!(LtVN), func!(LtNV)),
+                        line,
+                        new_precedence,
+                        false,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::GT, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Gt, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a < b, I::LtVV, func!(LtVN), func!(LtNV)),
+                        line,
+                        new_precedence,
+                        true,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::LE, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Le, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a <= b, I::LeVV, func!(LeVN), func!(LeNV)),
+                        line,
+                        new_precedence,
+                        false,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::GE, line, .. }) => {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
-                    lhs_desc = self.comparison(lhs_desc, I::Ge, line, new_precedence)?;
+                    lhs_desc = self.comparison(
+                        lhs_desc,
+                        ComparisonFolder::new(|a, b| a >= b, I::LeVV, func!(LeVN), func!(LeNV)),
+                        line,
+                        new_precedence,
+                        true,
+                    )?;
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
                     let (_, _) = (*line, validate_precedence!(t));

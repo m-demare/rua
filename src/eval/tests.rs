@@ -36,10 +36,24 @@ macro_rules! test_interpret {
 
 test_interpret!(arithmetic_ops1, "return (5 + -2) * 4", |_| Ok(12.0.into()));
 test_interpret!(arithmetic_ops2, "return - -2 / 4 + 1", |_| Ok(1.5.into()));
-test_interpret!(arithmetic_ops3, "return 2+5 > 6", |_| Ok(true.into()));
-test_interpret!(arithmetic_ops4, "return 2+6 % 4", |_| Ok(4.0.into()));
-test_interpret!(arithmetic_ops5, "return 2 - 1 + 3", |_| Ok(4.0.into()));
-test_interpret!(arithmetic_ops6, "return 4 / 2 * 3", |_| Ok(6.0.into()));
+test_interpret!(arithmetic_ops3, "return 2+6 % 4", |_| Ok(4.0.into()));
+test_interpret!(arithmetic_ops4, "return 2 - 1 + 3", |_| Ok(4.0.into()));
+test_interpret!(arithmetic_ops5, "return 4 / 2 * 3", |_| Ok(6.0.into()));
+
+test_interpret!(comparison_ops1, "return 2+5 > 6", |_| Ok(true.into()));
+test_interpret!(comparison_ops2, "return 2+5 < 6", |_| Ok(false.into()));
+test_interpret!(comparison_ops3, "return 2+5 <= 6+1", |_| Ok(true.into()));
+test_interpret!(comparison_ops4, "return 2+5 >= 6+1", |_| Ok(true.into()));
+
+test_interpret!(comparison_ops5, "a = 7; return a > 6", |_| Ok(true.into()));
+test_interpret!(comparison_ops6, "a = 7; return a < 6", |_| Ok(false.into()));
+test_interpret!(comparison_ops7, "a = 7; return a <= 6+1", |_| Ok(true.into()));
+test_interpret!(comparison_ops8, "a = 7; return a >= 6+1", |_| Ok(true.into()));
+
+test_interpret!(comparison_ops9, "a = 7; b = 6; return a > b", |_| Ok(true.into()));
+test_interpret!(comparison_ops10, "a = 7; b = 6; return a < b", |_| Ok(false.into()));
+test_interpret!(comparison_ops11, "a = 7; b = 6; return a <= b+1", |_| Ok(true.into()));
+test_interpret!(comparison_ops12, "a = 7; b = 6; return a >= b+1", |_| Ok(true.into()));
 
 test_interpret!(string_concat, "return 'hello' .. ' ' .. 'world'", |vm| Ok(vm
     .new_string((*b"hello world").into())

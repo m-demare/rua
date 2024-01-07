@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     compiler::{
-        bytecode::{BinArgs, FnHandle, JmpArgs, NVArgs, NumberHandle, UnArgs, VNArgs},
+        bytecode::{BinArgs, FnHandle, NVArgs, NumberHandle, UnArgs, VNArgs, VVJmpArgs},
         upvalues::UpvalueLocation,
     },
     eval::{
@@ -159,26 +159,58 @@ impl Vm {
                 I::ModNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a % b), &frame)?,
                 I::PowNV(args) => trace_err(self.num_nv_op(&frame, args, f64::powf), &frame)?,
                 I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
-                I::Eq(args) => {
-                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a == b)), &frame)?;
+                I::EqVV(args) => {
+                    trace_err(self.skip_if_vv(&mut frame, args, |a, b| Ok(a == b)), &frame)?;
                 }
-                I::Neq(args) => {
-                    trace_err(self.skip_if(&mut frame, args, |a, b| Ok(a != b)), &frame)?;
+                I::NeqVV(args) => {
+                    trace_err(self.skip_if_vv(&mut frame, args, |a, b| Ok(a != b)), &frame)?;
                 }
-                I::Lt(args) => trace_err(
-                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? < b.as_number()?)),
+                I::LtVV(args) => trace_err(
+                    self.skip_if_vv(&mut frame, args, |a, b| Ok(a.as_number()? < b.as_number()?)),
                     &frame,
                 )?,
-                I::Gt(args) => trace_err(
-                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? > b.as_number()?)),
+                I::LeVV(args) => trace_err(
+                    self.skip_if_vv(&mut frame, args, |a, b| Ok(a.as_number()? <= b.as_number()?)),
                     &frame,
                 )?,
-                I::Le(args) => trace_err(
-                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? <= b.as_number()?)),
+                I::EqVN { lhs, rhs } => {
+                    trace_err(
+                        self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a == &b.into())),
+                        &frame,
+                    )?;
+                }
+                I::NeqVN { lhs, rhs } => {
+                    trace_err(
+                        self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a != &b.into())),
+                        &frame,
+                    )?;
+                }
+                I::LtVN { lhs, rhs } => trace_err(
+                    self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a.as_number()? < b)),
                     &frame,
                 )?,
-                I::Ge(args) => trace_err(
-                    self.skip_if(&mut frame, args, |a, b| Ok(a.as_number()? >= b.as_number()?)),
+                I::LeVN { lhs, rhs } => trace_err(
+                    self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a.as_number()? <= b)),
+                    &frame,
+                )?,
+                I::EqNV { lhs, rhs } => {
+                    trace_err(
+                        self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) == b)),
+                        &frame,
+                    )?;
+                }
+                I::NeqNV { lhs, rhs } => {
+                    trace_err(
+                        self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) != b)),
+                        &frame,
+                    )?;
+                }
+                I::LtNV { lhs, rhs } => trace_err(
+                    self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(a < b.as_number()?)),
+                    &frame,
+                )?,
+                I::LeNV { lhs, rhs } => trace_err(
+                    self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(a <= b.as_number()?)),
                     &frame,
                 )?,
                 I::Test { src } => {
@@ -455,10 +487,10 @@ impl Vm {
     }
 
     #[inline]
-    fn skip_if<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
+    fn skip_if_vv<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
         &self,
         frame: &mut CallFrame,
-        args: JmpArgs,
+        args: VVJmpArgs,
         pred: F,
     ) -> Result<(), EvalError> {
         let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
@@ -467,6 +499,36 @@ impl Vm {
         }
         Ok(())
         // TODO optimize JMPs to avoid another instr dispatch cycle
+    }
+
+    #[inline]
+    fn skip_if_vn<F: FnOnce(&RuaVal, f64) -> Result<bool, EvalError>>(
+        &self,
+        frame: &mut CallFrame,
+        lhs: u8,
+        rhs: NumberHandle,
+        pred: F,
+    ) -> Result<(), EvalError> {
+        let (a, b) = (self.stack_at(frame, lhs), frame.read_number(rhs));
+        if pred(a, b)? {
+            frame.skip_instr();
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn skip_if_nv<F: FnOnce(f64, &RuaVal) -> Result<bool, EvalError>>(
+        &self,
+        frame: &mut CallFrame,
+        lhs: NumberHandle,
+        rhs: u8,
+        pred: F,
+    ) -> Result<(), EvalError> {
+        let (a, b) = (frame.read_number(lhs), self.stack_at(frame, rhs));
+        if pred(a, b)? {
+            frame.skip_instr();
+        }
+        Ok(())
     }
 
     #[inline]

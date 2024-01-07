@@ -45,12 +45,21 @@ pub enum Instruction {
     ModNV(NVArgs),
     PowNV(NVArgs),
 
-    Eq(JmpArgs),
-    Neq(JmpArgs),
-    Lt(JmpArgs),
-    Gt(JmpArgs),
-    Le(JmpArgs),
-    Ge(JmpArgs),
+    EqVV(VVJmpArgs),
+    NeqVV(VVJmpArgs),
+    LtVV(VVJmpArgs),
+    LeVV(VVJmpArgs),
+
+    EqVN { lhs: u8, rhs: NumberHandle },
+    NeqVN { lhs: u8, rhs: NumberHandle },
+    LtVN { lhs: u8, rhs: NumberHandle },
+    LeVN { lhs: u8, rhs: NumberHandle },
+
+    EqNV { lhs: NumberHandle, rhs: u8 },
+    NeqNV { lhs: NumberHandle, rhs: u8 },
+    LtNV { lhs: NumberHandle, rhs: u8 },
+    LeNV { lhs: NumberHandle, rhs: u8 },
+
     Test { src: u8 },
     Untest { src: u8 },
     TestSet { dst: u8, src: u8 },
@@ -103,7 +112,7 @@ pub struct VNArgs {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct JmpArgs {
+pub struct VVJmpArgs {
     pub(crate) lhs: u8,
     pub(crate) rhs: u8,
 }
@@ -276,12 +285,21 @@ impl Chunk {
     pub(super) fn negate_cond(&mut self, instr_idx: usize) {
         use Instruction as I;
         let new_instr = match self.code.get(instr_idx) {
-            Some(I::Eq(JmpArgs { lhs, rhs })) => I::Neq(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Neq(JmpArgs { lhs, rhs })) => I::Eq(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Lt(JmpArgs { lhs, rhs })) => I::Ge(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Gt(JmpArgs { lhs, rhs })) => I::Le(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Le(JmpArgs { lhs, rhs })) => I::Gt(JmpArgs { lhs: *lhs, rhs: *rhs }),
-            Some(I::Ge(JmpArgs { lhs, rhs })) => I::Lt(JmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::EqVV(VVJmpArgs { lhs, rhs })) => I::NeqVV(VVJmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::NeqVV(VVJmpArgs { lhs, rhs })) => I::EqVV(VVJmpArgs { lhs: *lhs, rhs: *rhs }),
+            Some(I::LtVV(VVJmpArgs { lhs, rhs })) => I::LeVV(VVJmpArgs { lhs: *rhs, rhs: *lhs }),
+            Some(I::LeVV(VVJmpArgs { lhs, rhs })) => I::LtVV(VVJmpArgs { lhs: *rhs, rhs: *lhs }),
+
+            Some(I::EqVN { lhs, rhs }) => I::NeqVN { lhs: *lhs, rhs: *rhs },
+            Some(I::NeqVN { lhs, rhs }) => I::EqVN { lhs: *lhs, rhs: *rhs },
+            Some(I::LtVN { lhs, rhs }) => I::LeNV { lhs: *rhs, rhs: *lhs },
+            Some(I::LeVN { lhs, rhs }) => I::LtNV { lhs: *rhs, rhs: *lhs },
+
+            Some(I::EqNV { lhs, rhs }) => I::NeqNV { lhs: *lhs, rhs: *rhs },
+            Some(I::NeqNV { lhs, rhs }) => I::EqNV { lhs: *lhs, rhs: *rhs },
+            Some(I::LtNV { lhs, rhs }) => I::LeVN { lhs: *rhs, rhs: *lhs },
+            Some(I::LeNV { lhs, rhs }) => I::LtVN { lhs: *rhs, rhs: *lhs },
+
             Some(I::TestSet { dst, src }) => I::UntestSet { dst: *dst, src: *src },
             Some(I::UntestSet { dst, src }) => I::TestSet { dst: *dst, src: *src },
             i => unreachable!("Tried to negate a non conditional instruction {i:?}"),
@@ -387,7 +405,7 @@ impl Instruction {
         const fn validate_un(args: UnArgs) -> bool {
             validate(args.dst) && validate(args.src)
         }
-        const fn validate_jmp(args: JmpArgs) -> bool {
+        const fn validate_jmp_vv(args: VVJmpArgs) -> bool {
             validate(args.lhs) && validate(args.rhs)
         }
         const fn validate_vn(args: VNArgs) -> bool {
@@ -419,9 +437,15 @@ impl Instruction {
             Self::TestSet { dst, src } | Self::UntestSet { dst, src } => {
                 validate(dst) && validate(src)
             }
-            Self::Eq(i) | Self::Neq(i) | Self::Lt(i) | Self::Gt(i) | Self::Le(i) | Self::Ge(i) => {
-                validate_jmp(i)
-            }
+            Self::EqVV(i) | Self::NeqVV(i) | Self::LtVV(i) | Self::LeVV(i) => validate_jmp_vv(i),
+            Self::EqVN { lhs, .. }
+            | Self::NeqVN { lhs, .. }
+            | Self::LtVN { lhs, .. }
+            | Self::LeVN { lhs, .. } => validate(lhs),
+            Self::EqNV { rhs, .. }
+            | Self::NeqNV { rhs, .. }
+            | Self::LtNV { rhs, .. }
+            | Self::LeNV { rhs, .. } => validate(rhs),
             Self::Return { src }
             | Self::Test { src }
             | Self::Untest { src }
