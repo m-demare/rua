@@ -258,7 +258,7 @@ impl Vm {
                     trace_err(self.for_prep(&mut frame, from, offset), &frame)?;
                 }
                 I::ForLoop { from, offset } => {
-                    trace_err(self.for_loop(&mut frame, from, offset), &frame)?;
+                    self.for_loop(&mut frame, from, offset);
                 }
                 I::NewTable { dst, capacity } => {
                     let table = self.new_table(capacity);
@@ -298,26 +298,43 @@ impl Vm {
         }
     }
 
-    fn for_loop(&mut self, frame: &mut CallFrame, from: u8, offset: u16) -> Result<(), EvalError> {
+    fn continue_loop(from: f64, to: f64, step: f64) -> bool {
+        (step>=0.0 && from<=to) || (step <0.0 && from >= to)
+    }
+
+    fn for_loop(&mut self, frame: &mut CallFrame, from: u8, offset: u16) {
+        const ERR_MSG: &str = "Loop vals must be numbers (checked at for_prep)";
+
         let step_val = self.stack_at(frame, from + 2);
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
-        let from_val = from_val.as_number()? + step_val.as_number()?;
-        if from_val <= to_val.as_number()? {
+
+        let step_val = step_val.as_number().expect(ERR_MSG);
+        let to_val = to_val.as_number().expect(ERR_MSG);
+        let from_val = from_val.as_number().expect(ERR_MSG);
+
+        let from_val = from_val + step_val;
+        if Self::continue_loop(from_val, to_val, step_val) {
             frame.backward_jmp(offset);
             self.set_stack_at(frame, from + 3, from_val.into());
             self.set_stack_at(frame, from, from_val.into());
         }
-        Ok(())
     }
 
     fn for_prep(&mut self, frame: &mut CallFrame, from: u8, offset: u16) -> Result<(), EvalError> {
+        let step_val = self.stack_at(frame, from + 2);
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
-        if from_val.as_number()? > to_val.as_number()? {
+
+        let step_val = step_val.as_number()?;
+        let to_val = to_val.as_number()?;
+        let from_val = from_val.as_number()?;
+
+        if Self::continue_loop(from_val, to_val, step_val){
+            self.set_stack_at(frame, from + 3, from_val.into());
+        } else {
             frame.forward_jmp(offset);
         }
-        self.set_stack_at(frame, from + 3, from_val.clone());
         Ok(())
     }
 
@@ -549,7 +566,7 @@ impl Vm {
         self.stack[idx] = val;
     }
 
-    pub fn identifiers(&mut self) -> &mut Trie<TokenType> {
+    pub(crate) fn identifiers(&mut self) -> &mut Trie<TokenType> {
         &mut self.identifiers
     }
 

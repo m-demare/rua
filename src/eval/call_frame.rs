@@ -64,6 +64,7 @@ impl CallFrame {
         self.ip -= offset as usize;
     }
 
+    #[inline]
     pub fn read_number(&self, c: NumberHandle) -> f64 {
         self.closure.function().chunk().read_number(c)
     }

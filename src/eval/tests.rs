@@ -948,6 +948,31 @@ test_interpret!(
 );
 
 test_interpret!(
+    backward_for_loop,
+    "
+    local sum = 0
+    for i = 5, 1, -1 do
+        sum = sum + i
+    end
+    return sum
+",
+    |_| Ok(15.0.into())
+);
+
+test_interpret!(
+    backward_for_loop_that_never_runs,
+    "
+    local a = {}
+    for i = 10, 11, -1 do
+        table.insert(a, function() return i end)
+    end
+
+    return #a
+",
+    |_| Ok(0.0.into())
+);
+
+test_interpret!(
     val_in_stack_isnt_gced,
     "
     local a = {1, 2}
