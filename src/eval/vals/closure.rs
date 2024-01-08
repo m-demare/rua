@@ -119,12 +119,10 @@ impl Closure {
         self.marked.replace(false)
     }
 
-    #[must_use]
-    fn register_in(&self, vm: &Vm) -> bool {
-        let id = vm.id();
-        let old_id = self.vm_id.replace(Some(id));
+    pub(super) fn register_in(&self, vm_id: NonZeroU32) -> bool {
+        let old_id = self.vm_id.replace(Some(vm_id));
         if let Some(old_id) = old_id {
-            assert!(id == old_id, "Cannot register closure in a different Vm");
+            assert!(vm_id == old_id, "Cannot register closure in a different Vm");
             false
         } else {
             true
@@ -140,7 +138,7 @@ impl IntoRuaVal for Closure {
 
 impl IntoRuaVal for Rc<Closure> {
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
-        if self.register_in(vm) {
+        if self.register_in(vm.id()) {
             vm.register_closure(&self);
         }
         RuaVal(RuaValInner::Closure(self))

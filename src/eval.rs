@@ -299,7 +299,7 @@ impl Vm {
     }
 
     fn continue_loop(from: f64, to: f64, step: f64) -> bool {
-        (step>=0.0 && from<=to) || (step <0.0 && from >= to)
+        (step >= 0.0 && from <= to) || (step < 0.0 && from >= to)
     }
 
     fn for_loop(&mut self, frame: &mut CallFrame, from: u8, offset: u16) {
@@ -330,7 +330,7 @@ impl Vm {
         let to_val = to_val.as_number()?;
         let from_val = from_val.as_number()?;
 
-        if Self::continue_loop(from_val, to_val, step_val){
+        if Self::continue_loop(from_val, to_val, step_val) {
             self.set_stack_at(frame, from + 3, from_val.into());
         } else {
             frame.forward_jmp(offset);
@@ -678,10 +678,11 @@ impl Vm {
         }
 
         trace_gc!("Global root:");
+        let id = self.id();
         if self.global.mark() {
             // SAFETY: global doesn't need to be garbage collected, since it'll be valid
             // as long as the Vm is valid, and it's dropped when the Vm is dropped
-            self.gc_data.add_grey(RuaVal::from_table_unregistered(self.global.clone()));
+            self.gc_data.add_grey(RuaVal::from_table_unregistered(self.global.clone(), id));
         }
 
         trace_gc!("Frame roots:");
@@ -689,7 +690,8 @@ impl Vm {
             if frame.closure().mark() {
                 // SAFETY: any closure in self.frames has been created and registered
                 // at some other point in time
-                self.gc_data.add_grey(RuaVal::from_closure_unregistered(frame.closure().clone()));
+                self.gc_data
+                    .add_grey(RuaVal::from_closure_unregistered(frame.closure().clone(), id));
             }
         }
     }

@@ -9,6 +9,7 @@ use std::{
     convert::Infallible,
     fmt::{self, Debug, Display},
     hint::unreachable_unchecked,
+    num::NonZeroU32,
     rc::Rc,
 };
 use thiserror::Error;
@@ -180,13 +181,15 @@ impl RuaVal {
 
     /// # Safety
     /// An unregistered table will not be garbage collected
-    pub fn from_table_unregistered(table: Rc<Table>) -> Self {
+    pub fn from_table_unregistered(table: Rc<Table>, vm_id: NonZeroU32) -> Self {
+        table.register_in(vm_id);
         Self(RuaValInner::Table(table))
     }
 
     /// # Safety
     /// An unregistered closure will not be garbage collected
-    pub fn from_closure_unregistered(closure: Rc<Closure>) -> Self {
+    pub fn from_closure_unregistered(closure: Rc<Closure>, vm_id: NonZeroU32) -> Self {
+        closure.register_in(vm_id);
         Self(RuaValInner::Closure(closure))
     }
 }

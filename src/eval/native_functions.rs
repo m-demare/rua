@@ -109,7 +109,7 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
     // as long as the Vm is valid, and it's dropped when the Vm is dropped
     global.insert(
         Into::<Rc<str>>::into("_G").into_rua(vm),
-        RuaVal::from_table_unregistered(global.clone()),
+        RuaVal::from_table_unregistered(global.clone(), vm.id()),
     );
 
     global
