@@ -15,7 +15,9 @@ pub(super) enum ExprKind {
     Number(f64),
     String(RuaString),
     Function(Box<(Function, Upvalues)>),
-    Index { table: u8, key: u8 },
+    IndexV { table: u8, key: u8 },
+    IndexS { table: u8, key: u8 },
+    IndexN { table: u8, key: u8 },
     True,
     False,
     Nil,
@@ -179,8 +181,14 @@ impl ExprDesc {
                 compiler.negate_cond(*instr_idx - 1);
                 compiler.concat_jmp_lists(&mut self.t_jmp, Some(*instr_idx))?;
             }
-            ExprKind::Index { table, key } => {
-                compiler.instruction(I::Index(BinArgs { dst, lhs: *table, rhs: *key }), 0);
+            ExprKind::IndexV { table, key } => {
+                compiler.instruction(I::IndexV(BinArgs { dst, lhs: *table, rhs: *key }), 0);
+            }
+            ExprKind::IndexS { table, key } => {
+                compiler.instruction(I::IndexS(BinArgs { dst, lhs: *table, rhs: *key }), 0);
+            }
+            ExprKind::IndexN { table, key } => {
+                compiler.instruction(I::IndexN(BinArgs { dst, lhs: *table, rhs: *key }), 0);
             }
         };
         if self.has_jmps() {
@@ -210,8 +218,10 @@ impl ExprDesc {
         &self,
         compiler: &mut Compiler<'_, T>,
     ) {
-        if let ExprKind::Index { table, key } = &self.kind {
+        if let ExprKind::IndexV { table, key } = &self.kind {
             compiler.free2reg(*table, *key);
+        } else if let ExprKind::IndexS { table, .. } | ExprKind::IndexN { table, .. } = &self.kind {
+            compiler.free_reg(*table);
         }
     }
 

@@ -77,8 +77,12 @@ pub enum Instruction {
     ForLoop { from: u8, offset: u16 },
 
     NewTable { dst: u8, capacity: u16 },
-    InsertKeyVal { table: u8, key: u8, val: u8 },
-    Index(BinArgs),
+    InsertV { table: u8, key: u8, val: u8 },
+    InsertS { table: u8, key: u8, val: u8 },
+    InsertN { table: u8, key: u8, val: u8 },
+    IndexV(BinArgs),
+    IndexS(BinArgs),
+    IndexN(BinArgs),
 
     Closure { dst: u8, src: FnHandle },
     Upvalue(UpvalueDesc),
@@ -368,7 +372,9 @@ impl Instruction {
             | Self::ModVV(i)
             | Self::PowVV(i)
             | Self::StrConcat(i)
-            | Self::Index(i) => i.dst = new_dst,
+            | Self::IndexV(i)
+            | Self::IndexS(i)
+            | Self::IndexN(i) => i.dst = new_dst,
             Self::AddVN(i)
             | Self::SubVN(i)
             | Self::MulVN(i)
@@ -433,7 +439,9 @@ impl Instruction {
             | Self::ModVV(i)
             | Self::PowVV(i)
             | Self::StrConcat(i)
-            | Self::Index(i) => validate_bin(i),
+            | Self::IndexV(i)
+            | Self::IndexS(i)
+            | Self::IndexN(i) => validate_bin(i),
             Self::TestSet { dst, src } | Self::UntestSet { dst, src } => {
                 validate(dst) && validate(src)
             }
@@ -452,8 +460,9 @@ impl Instruction {
             | Self::SetGlobal { src, .. }
             | Self::SetUpvalue { src, .. } => validate(src),
             Self::Call { base, .. } => validate(base),
-            Self::InsertKeyVal { table, key, val } => {
-                validate(table) && validate(key) && validate(val)
+            Self::InsertV { table, key, val } => validate(table) && validate(key) && validate(val),
+            Self::InsertS { table, val, .. } | Self::InsertN { table, val, .. } => {
+                validate(table) && validate(val)
             }
             Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
@@ -577,6 +586,22 @@ impl TryInto<u8> for NumberHandle {
 }
 
 impl NumberHandle {
+    #[inline]
+    pub(crate) fn from_unchecked(value: u8) -> Self {
+        Self(value.into())
+    }
+}
+
+impl TryInto<u8> for StringHandle {
+    type Error = ();
+
+    #[inline]
+    fn try_into(self) -> Result<u8, Self::Error> {
+        self.0.try_into().map_err(|_| ())
+    }
+}
+
+impl StringHandle {
     #[inline]
     pub(crate) fn from_unchecked(value: u8) -> Self {
         Self(value.into())

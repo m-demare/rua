@@ -515,11 +515,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
                     let (_, _) = (*line, validate_precedence!(t));
                     let table = lhs_desc.to_any_reg(self)?;
-                    let mut rhs_desc = self.expression(Precedence::Lowest)?;
-                    let key = rhs_desc.to_any_reg(self)?;
-
-                    lhs_desc = ExprDesc::new(ExprKind::Index { table, key });
+                    let rhs_desc = self.expression(Precedence::Lowest)?;
                     consume!(self; (TT::RBRACK));
+
+                    lhs_desc = self.index(table, rhs_desc)?;
                 }
                 Some(Token { ttype: t @ TT::AND, line, .. }) => {
                     let (line, _new_precedence) = (*line, validate_precedence!(t));
@@ -537,15 +536,50 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: t @ TT::DOT, line, .. }) => {
-                    let (line, _) = (*line, validate_precedence!(t));
+                    let (_, _) = (*line, validate_precedence!(t));
                     let id = self.identifier()?;
                     let table = lhs_desc.to_any_reg(self)?;
-                    let key = self.tmp()?;
-                    self.emit_string(key, id, line)?;
-                    lhs_desc = ExprDesc::new(ExprKind::Index { table, key });
+                    lhs_desc = self.index_string(table, id)?;
                 }
                 _ => break Ok(lhs_desc),
             }
+        }
+    }
+
+    fn index(&mut self, table: u8, mut key_desc: ExprDesc) -> Result<ExprDesc, ParseError> {
+        match key_desc.kind {
+            ExprKind::String(key) => self.index_string(table, key),
+            ExprKind::Number(key) => self.index_number(table, key),
+            _ => {
+                let key = key_desc.to_any_reg(self)?;
+                Ok(ExprDesc::new(ExprKind::IndexV { table, key }))
+            }
+        }
+    }
+
+    fn index_string(&mut self, table: u8, key: RuaString) -> Result<ExprDesc, ParseError> {
+        let handle = self.current_chunk_mut().new_string_constant(key.clone())?.try_into();
+        if let Ok(handle) = handle {
+            Ok(ExprDesc::new(ExprKind::IndexS { table, key: handle }))
+        } else {
+            // Constant handle is too big,
+            // discharge constant to reg and use VV operation
+            let mut key_desc = ExprDesc::new(ExprKind::String(key));
+            key_desc.to_any_reg(self)?;
+            self.index(table, key_desc)
+        }
+    }
+
+    fn index_number(&mut self, table: u8, key: f64) -> Result<ExprDesc, ParseError> {
+        let handle = self.current_chunk_mut().new_number_constant(key)?.try_into();
+        if let Ok(handle) = handle {
+            Ok(ExprDesc::new(ExprKind::IndexN { table, key: handle }))
+        } else {
+            // Constant handle is too big,
+            // discharge constant to reg and use VV operation
+            let mut key_desc = ExprDesc::new(ExprKind::Number(key));
+            key_desc.to_any_reg(self)?;
+            self.index(table, key_desc)
         }
     }
 
@@ -710,9 +744,19 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 self.instruction(I::SetUpvalue { dst, src }, line);
                 self.free_reg(src);
             }
-            ExprKind::Index { table, key } => {
+            ExprKind::IndexV { table, key } => {
                 let val = src.to_any_reg(self)?;
-                self.instruction(I::InsertKeyVal { table, key, val }, line);
+                self.instruction(I::InsertV { table, key, val }, line);
+                self.free_reg(val);
+            }
+            ExprKind::IndexS { table, key } => {
+                let val = src.to_any_reg(self)?;
+                self.instruction(I::InsertS { table, key, val }, line);
+                self.free_reg(val);
+            }
+            ExprKind::IndexN { table, key } => {
+                let val = src.to_any_reg(self)?;
+                self.instruction(I::InsertN { table, key, val }, line);
                 self.free_reg(val);
             }
             _ => return Err(ParseError::InvalidAssignLHS(line)),
@@ -1175,22 +1219,23 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             match self.peek_token() {
                 Some(Token { ttype: TT::ASSIGN, .. }) => {
                     self.next_token();
-                    let mut rhs_desc = self.expression(Precedence::Lowest)?;
-                    let mut lhs_desc = desc;
-                    let lhs = lhs_desc.to_any_reg(self)?;
-                    let rhs = rhs_desc.to_any_reg(self)?;
-                    self.instruction(I::InsertKeyVal { table, key: lhs, val: rhs }, line);
-                    self.free2reg(lhs, rhs);
+                    let mut key_desc = desc;
+                    if !matches!(key_desc.kind, ExprKind::Number(_) | ExprKind::String(_)) {
+                        key_desc.to_any_reg(self)?;
+                    }
+                    let rhs_desc = self.expression(Precedence::Lowest)?;
+                    let index_desc = self.index(table, key_desc)?;
+                    self.assign(&index_desc, rhs_desc, line)?;
+                    index_desc.free_reg(self);
                 }
                 Some(Token { line, .. }) => {
                     let line = *line;
-                    let mut rhs_desc = desc;
-                    let rhs = rhs_desc.to_any_reg(self)?;
-                    let lhs = self.tmp()?;
+                    let rhs_desc = desc;
                     arr_count += 1;
-                    self.emit_number(lhs, f64::from(arr_count), line)?;
-                    self.instruction(I::InsertKeyVal { table, key: lhs, val: rhs }, line);
-                    self.free2reg(lhs, rhs);
+
+                    let index_desc = self.index_number(table, f64::from(arr_count))?;
+                    self.assign(&index_desc, rhs_desc, line)?;
+                    index_desc.free_reg(self);
                 }
                 None => {}
             }

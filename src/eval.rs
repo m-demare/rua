@@ -11,7 +11,9 @@ use std::{
 
 use crate::{
     compiler::{
-        bytecode::{BinArgs, FnHandle, NVArgs, NumberHandle, UnArgs, VNArgs, VVJmpArgs},
+        bytecode::{
+            BinArgs, FnHandle, NVArgs, NumberHandle, StringHandle, UnArgs, VNArgs, VVJmpArgs,
+        },
         upvalues::UpvalueLocation,
     },
     eval::{
@@ -103,6 +105,14 @@ impl Vm {
 
     #[allow(clippy::too_many_lines)]
     fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResult {
+        macro_rules! table_get {
+            ($dst: expr, $table: expr, $key: expr) => {{
+                let table = self.stack_at(&frame, $table);
+                let table = trace_err(table.as_table(), &frame)?;
+                self.set_stack_at(&frame, $dst, table.get($key).into());
+            }};
+        }
+
         let first_frame_id = frame.id();
         loop {
             #[cfg(test)]
@@ -264,18 +274,41 @@ impl Vm {
                     let table = self.new_table(capacity);
                     self.set_stack_at(&frame, dst, table);
                 }
-                I::InsertKeyVal { table, key, val } => {
-                    let table = self.stack_at(&frame, table);
-                    let key = self.stack_at(&frame, key);
-                    let val = self.stack_at(&frame, val);
-                    let table = trace_err(table.as_table(), &frame)?;
-                    table.insert(key.clone(), val.clone());
+                I::InsertV { table, key, val } => {
+                    self.table_insert(&frame, table, val, self.stack_at(&frame, key).clone())?;
                 }
-                I::Index(BinArgs { dst, lhs, rhs }) => {
-                    let table = self.stack_at(&frame, lhs);
-                    let key = self.stack_at(&frame, rhs);
-                    let table = trace_err(table.as_table(), &frame)?;
-                    self.set_stack_at(&frame, dst, table.get(key).into());
+                I::InsertS { table, key, val } => {
+                    self.table_insert(
+                        &frame,
+                        table,
+                        val,
+                        frame.read_string(StringHandle::from_unchecked(key)).into(),
+                    )?;
+                }
+                I::InsertN { table, key, val } => {
+                    self.table_insert(
+                        &frame,
+                        table,
+                        val,
+                        frame.read_number(NumberHandle::from_unchecked(key)).into(),
+                    )?;
+                }
+                I::IndexV(BinArgs { dst, lhs, rhs }) => {
+                    table_get!(dst, lhs, self.stack_at(&frame, rhs));
+                }
+                I::IndexS(BinArgs { dst, lhs, rhs }) => {
+                    table_get!(
+                        dst,
+                        lhs,
+                        &frame.read_string(StringHandle::from_unchecked(rhs)).into()
+                    );
+                }
+                I::IndexN(BinArgs { dst, lhs, rhs }) => {
+                    table_get!(
+                        dst,
+                        lhs,
+                        &frame.read_number(NumberHandle::from_unchecked(rhs)).into()
+                    );
                 }
                 I::Closure { dst, src } => {
                     self.closure(&mut frame, dst, src);
@@ -296,6 +329,20 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn table_insert(
+        &mut self,
+        frame: &CallFrame,
+        table: u8,
+        val: u8,
+        key: RuaVal,
+    ) -> Result<(), EvalErrorTraced> {
+        let table = self.stack_at(frame, table);
+        let table = trace_err(table.as_table(), frame)?;
+        let val = self.stack_at(frame, val);
+        table.insert(key, val.clone());
+        Ok(())
     }
 
     fn continue_loop(from: f64, to: f64, step: f64) -> bool {
