@@ -2,7 +2,7 @@ use crate::eval::vals::string::RuaString;
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
-pub enum TokenType {
+pub(crate) enum TokenType {
     ILLEGAL(Box<str>),
 
     NUMBER(f64),
@@ -79,8 +79,8 @@ pub enum TokenType {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
-    pub ttype: TokenType,
-    pub line: usize,
+    pub(crate) ttype: TokenType,
+    pub(crate) line: usize,
 }
 
 pub(super) const fn lookup_keyword(identifier: &[u8]) -> Option<TokenType> {

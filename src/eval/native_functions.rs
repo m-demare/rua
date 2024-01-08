@@ -73,7 +73,7 @@ fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
     match func.into_callable() {
         Ok(Callable::Closure(closure)) => ctxt.vm.interpret(closure),
         Ok(Callable::Native(native_fn)) => {
-            native_fn.call(ctxt.vm, ctxt.args_start + 1, ctxt.nargs - 1)
+            native_fn.call(ctxt.vm, ctxt.args_start() + 1, ctxt.nargs() - 1)
         }
         Err(_) => return false.into(),
     }

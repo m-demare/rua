@@ -531,8 +531,8 @@ impl Debug for Chunk {
 
 #[derive(Debug, PartialEq, Error)]
 pub enum ParseError {
-    #[error("Unexpected token. Got {0:?}, expected {}{1:?}", if .1.len() > 1 { "one of " } else { "" })]
-    UnexpectedToken(Box<Token>, Box<[TokenType]>),
+    #[error("Unexpected token. Got {:?}, expected {}{1:?}", .0.got, if .0.expected.len() > 1 { "one of " } else { "" })]
+    UnexpectedToken(UnexpectedToken),
     #[error("Unexpected token. Got {:?}, expected {1} (line {2})", .0.ttype)]
     UnexpectedTokenWithErrorMsg(Box<Token>, Box<str>, usize),
     #[error("Function expression cannot have a name (got {0:?} at line {1})")]
@@ -559,6 +559,12 @@ pub enum ParseError {
     TooManyAssignLhs(usize),
     #[error("Too many instructions")]
     TooManyInstructions,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct UnexpectedToken {
+    pub(super) got: Box<Token>,
+    pub(super) expected: Box<[TokenType]>,
 }
 
 impl TryInto<u8> for NumberHandle {

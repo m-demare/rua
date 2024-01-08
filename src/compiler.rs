@@ -10,7 +10,9 @@ use crate::{
 };
 
 use self::{
-    bytecode::{Chunk, Instruction as I, Instruction, ParseError, StringHandle, UnArgs},
+    bytecode::{
+        Chunk, Instruction as I, Instruction, ParseError, StringHandle, UnArgs, UnexpectedToken,
+    },
     expr::{ExprDesc, ExprKind},
     fold::{BinFolder, CommutativeFolder, ComparisonFolder, NonCommutativeFolder, StringFolder},
     locals::{LocalHandle, Locals},
@@ -154,9 +156,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     self.next_token();
                 }
                 t => {
-                    return Err(ParseError::UnexpectedToken(
-                        Box::new(t.clone()),
-                        Box::new([
+                    return Err(ParseError::UnexpectedToken(UnexpectedToken {
+                        got: Box::new(t.clone()),
+                        expected: Box::new([
                             TT::LOCAL,
                             TT::RETURN,
                             TT::SEMICOLON,
@@ -169,7 +171,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                             TT::REPEAT,
                             TT::UNTIL,
                         ]),
-                    ))
+                    }))
                 }
             }
         }
@@ -563,10 +565,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         match self.peek_token() {
             Some(Token { ttype: TT::END | TT::ELSE | TT::ELSEIF | TT::UNTIL, .. }) | None => {}
             Some(t) => {
-                return Err(ParseError::UnexpectedToken(
-                    t.clone().into(),
-                    [TT::END, TT::ELSE, TT::ELSEIF, TT::UNTIL].into(),
-                ))
+                return Err(ParseError::UnexpectedToken(UnexpectedToken {
+                    got: t.clone().into(),
+                    expected: [TT::END, TT::ELSE, TT::ELSEIF, TT::UNTIL].into(),
+                }))
             }
         }
         let src = desc.to_any_reg(self)?;
@@ -583,10 +585,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             Some(Token { ttype: TT::FUNCTION, line, .. }) => return self.function_st(line, true),
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => vec![id],
             Some(t) => {
-                return Err(ParseError::UnexpectedToken(
-                    t.into(),
-                    [TT::IDENTIFIER_DUMMY, TT::FUNCTION].into(),
-                ))
+                return Err(ParseError::UnexpectedToken(UnexpectedToken {
+                    got: t.into(),
+                    expected: [TT::IDENTIFIER_DUMMY, TT::FUNCTION].into(),
+                }))
             }
             None => return Err(ParseError::UnexpectedEOF),
         };
@@ -645,7 +647,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn identifier(&mut self) -> Result<RuaString, ParseError> {
         match self.next_token() {
             Some(Token { ttype: TT::IDENTIFIER(id), .. }) => Ok(id),
-            Some(t) => Err(ParseError::UnexpectedToken(t.into(), [TT::IDENTIFIER_DUMMY].into())),
+            Some(t) => Err(ParseError::UnexpectedToken(UnexpectedToken {
+                got: t.into(),
+                expected: [TT::IDENTIFIER_DUMMY].into(),
+            })),
             None => Err(ParseError::UnexpectedEOF),
         }
     }
@@ -827,10 +832,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 consume!(self; (TT::END));
             }
             Some(t) => {
-                return Err(ParseError::UnexpectedToken(
-                    t.into(),
-                    [TT::END, TT::ELSE, TT::ELSEIF].into(),
-                ))
+                return Err(ParseError::UnexpectedToken(UnexpectedToken {
+                    got: t.into(),
+                    expected: [TT::END, TT::ELSE, TT::ELSEIF].into(),
+                }))
             }
             None => return Err(ParseError::UnexpectedEOF),
         }
@@ -1131,10 +1136,10 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     match self.peek_token() {
                         Some(Token { ttype: TT::ASSIGN, .. }) => lhs_desc,
                         Some(t) => {
-                            return Err(ParseError::UnexpectedToken(
-                                t.clone().into(),
-                                [TT::ASSIGN].into(),
-                            ))
+                            return Err(ParseError::UnexpectedToken(UnexpectedToken {
+                                got: t.clone().into(),
+                                expected: [TT::ASSIGN].into(),
+                            }))
                         }
                         None => return Err(ParseError::UnexpectedEOF),
                     }

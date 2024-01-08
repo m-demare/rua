@@ -142,8 +142,8 @@ fn get_parameters(
 
     let validate_cant_args = if args.exact_args {
         quote!(
-        if ctxt.nargs as usize > #cant_params{
-            return Err(EvalErrorTraced::new(EvalError::TooManyArguments(ctxt.nargs, name_str.into()), vec![(#fn_name.into(), 0)]))
+        if ctxt.nargs() as usize > #cant_params{
+            return Err(EvalErrorTraced::new(EvalError::TooManyArguments(ctxt.nargs(), name_str.into()), vec![(#fn_name.into(), 0)]))
         })
     } else {
         quote!()

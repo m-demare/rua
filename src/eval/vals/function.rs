@@ -30,8 +30,8 @@ pub struct NativeFunction {
 }
 
 pub struct FunctionContext<'vm> {
-    pub args_start: usize,
-    pub nargs: u8,
+    args_start: usize,
+    nargs: u8,
     pub vm: &'vm mut Vm,
 }
 
@@ -128,6 +128,16 @@ impl<'vm> FunctionContext<'vm> {
 
     pub fn args(&self) -> &[RuaVal] {
         &self.vm.stack[self.args_start..self.args_start + self.nargs as usize]
+    }
+
+    #[inline]
+    pub const fn nargs(&self) -> u8 {
+        self.nargs
+    }
+
+    #[inline]
+    pub const fn args_start(&self) -> usize {
+        self.args_start
     }
 }
 

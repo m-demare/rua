@@ -35,7 +35,10 @@ macro_rules! consume {
             $(
                 Some(Token{ttype: $args, ..}) => {},
             )+
-            Some(t) => return Err(ParseError::UnexpectedToken(Box::new(t), [$($args,)+].into())),
+            Some(t) => return Err(ParseError::UnexpectedToken(UnexpectedToken{
+                got: Box::new(t),
+                expected: [$($args,)+].into()
+            })),
             None if $allow_eof => {},
             None => return Err(ParseError::UnexpectedEOF),
         }
