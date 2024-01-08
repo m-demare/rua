@@ -7,4 +7,5 @@ hyperfine -N --warmup 3 --min-runs 5 \
     -n lua5.4 "lua5.4 $1.lua" \
     -n luajit "luajit $1.lua" \
     -n "luajit (no jit)" "luajit -joff $1.lua" \
-    -n luau "luau $1.lua"
+    -n luau "luau $1.lua" \
+    -n "luau codegen" "luau --codegen $1.lua"

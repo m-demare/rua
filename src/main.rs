@@ -35,7 +35,7 @@ fn main() {
 }
 
 fn evaluate(path: &PathBuf, args: &Args) -> Result<(), ParseError> {
-    let contents = std::fs::read(path) // TODO maybe not read file all at once? Need some perf testing
+    let contents = std::fs::read(path)
         .expect("Error: input file does not exist");
 
     let mut vm = Vm::new();

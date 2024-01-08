@@ -1,10 +1,10 @@
 for _ in range(8000):
-    first = []
+    first = {}
     last = first
     for _ in range(1000):
-        new = [last]
+        new = { "prev": last }
         last = new
-    first.append(last)
+    first["prev"] = last
 
 
 
