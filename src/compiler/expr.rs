@@ -249,4 +249,21 @@ impl ExprDesc {
             None
         }
     }
+
+    pub(super) const fn truthyness(&self) -> Option<bool> {
+        match self.kind {
+            ExprKind::Local { .. }
+            | ExprKind::Global(_)
+            | ExprKind::Upvalue(_)
+            | ExprKind::Tmp { .. }
+            | ExprKind::IndexV { .. }
+            | ExprKind::IndexS { .. }
+            | ExprKind::IndexN { .. }
+            | ExprKind::Jmp { .. } => None,
+            ExprKind::False | ExprKind::Nil => Some(false),
+            ExprKind::Number(_) | ExprKind::String(_) | ExprKind::Function(_) | ExprKind::True => {
+                Some(true)
+            }
+        }
+    }
 }

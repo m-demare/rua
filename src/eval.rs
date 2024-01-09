@@ -56,6 +56,8 @@ pub struct Vm {
     id: NonZeroU32,
 }
 
+const REMAINDER: fn(f64, f64) -> f64 = f64::rem_euclid;
+
 impl Vm {
     #[allow(clippy::missing_panics_doc)]
     pub fn new() -> Self {
@@ -156,17 +158,17 @@ impl Vm {
                 I::SubVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a - b), &frame)?,
                 I::MulVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a * b), &frame)?,
                 I::DivVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a % b), &frame)?,
+                I::ModVV(args) => trace_err(self.num_bin_op(&frame, args, REMAINDER), &frame)?,
                 I::PowVV(args) => trace_err(self.num_bin_op(&frame, args, f64::powf), &frame)?,
                 I::AddVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a + b), &frame)?,
                 I::SubVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a - b), &frame)?,
                 I::MulVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a * b), &frame)?,
                 I::DivVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a % b), &frame)?,
+                I::ModVN(args) => trace_err(self.num_vn_op(&frame, args, REMAINDER), &frame)?,
                 I::PowVN(args) => trace_err(self.num_vn_op(&frame, args, f64::powf), &frame)?,
                 I::SubNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a - b), &frame)?,
                 I::DivNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a % b), &frame)?,
+                I::ModNV(args) => trace_err(self.num_nv_op(&frame, args, REMAINDER), &frame)?,
                 I::PowNV(args) => trace_err(self.num_nv_op(&frame, args, f64::powf), &frame)?,
                 I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
                 I::EqVV(args) => {

@@ -271,18 +271,50 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn unary(&mut self, op: &TT, line: usize) -> Result<ExprDesc, ParseError> {
-        let mut inner_desc = self.expression(Precedence::Prefix)?;
-        let src = inner_desc.to_any_reg(self)?;
-        self.free_reg(src);
-        let dst = u8::MAX;
-        let instr_idx = match op {
-            TT::NOT => self.instruction(I::Not(UnArgs { dst, src }), line),
-            TT::LEN => self.instruction(I::Len(UnArgs { dst, src }), line),
-            TT::MINUS => self.instruction(I::Neg(UnArgs { dst, src }), line),
-            _ => unreachable!("Invalid unary"),
-        };
-        let instr_idx = Some(instr_idx);
-        Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        let inner_desc = self.expression(Precedence::Prefix)?;
+        match op {
+            TT::NOT => self.not(inner_desc, line),
+            TT::LEN => self.len(inner_desc, line),
+            TT::MINUS => self.neg(inner_desc, line),
+            t => unreachable!("Invalid unary {t:?}"),
+        }
+    }
+
+    fn neg(&mut self, mut inner_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
+        if let Some(n) = inner_desc.as_number() {
+            Ok(ExprDesc::new(ExprKind::Number(-n)))
+        } else {
+            let dst = u8::MAX;
+            let src = inner_desc.to_any_reg(self)?;
+            self.free_reg(src);
+            let instr_idx = Some(self.instruction(I::Neg(UnArgs { dst, src }), line));
+            Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        }
+    }
+
+    fn not(&mut self, mut inner_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
+        if let Some(b) = inner_desc.truthyness() {
+            Ok(ExprDesc::new(if b { ExprKind::False } else { ExprKind::True }))
+        } else {
+            let dst = u8::MAX;
+            let src = inner_desc.to_any_reg(self)?;
+            self.free_reg(src);
+            let instr_idx = Some(self.instruction(I::Not(UnArgs { dst, src }), line));
+            Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        }
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn len(&mut self, mut inner_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
+        if let Some(s) = inner_desc.as_str() {
+            Ok(ExprDesc::new(ExprKind::Number(s.len() as f64)))
+        } else {
+            let dst = u8::MAX;
+            let src = inner_desc.to_any_reg(self)?;
+            self.free_reg(src);
+            let instr_idx = Some(self.instruction(I::Len(UnArgs { dst, src }), line));
+            Ok(ExprDesc::new(ExprKind::Tmp { reg: dst, instr_idx }))
+        }
     }
 
     fn prefix_exp(&mut self) -> Result<ExprDesc, ParseError> {
@@ -429,7 +461,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     let (line, new_precedence) = (*line, validate_precedence!(t));
                     lhs_desc = self.binary(
                         lhs_desc,
-                        NonCommutativeFolder::new(|a, b| a % b, I::ModVV, I::ModVN, I::ModNV),
+                        NonCommutativeFolder::new(f64::rem_euclid, I::ModVV, I::ModVN, I::ModNV),
                         line,
                         new_precedence,
                     )?;

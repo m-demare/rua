@@ -103,13 +103,28 @@ fn test_globals() {
 }
 
 #[test]
-fn test_fold() {
-    let input = "return 5 + 8 * (4 + 2) ^ 3 % 28";
+fn test_number_fold() {
+    let input = "return 5 + -8 * (4 + 2) ^ 3 % 28";
 
     test_compile(input, |_| {
         Ok(Chunk::new(
             vec![I::Number { dst: 0, src: NumberHandle(0) }, I::Return { src: 0 }, I::ReturnNil],
-            vec![25.0],
+            vec![13.0],
+            vec![],
+            Vec::new(),
+            vec![(0, 1), (1, 1), (0, 1)],
+        ))
+    });
+}
+
+#[test]
+fn test_bool_fold() {
+    let input = "return not (true and 5>#'asdf')";
+
+    test_compile(input, |_| {
+        Ok(Chunk::new(
+            vec![I::False { dst: 0 }, I::Return { src: 0 }, I::ReturnNil],
+            vec![],
             vec![],
             Vec::new(),
             vec![(0, 1), (1, 1), (0, 1)],
