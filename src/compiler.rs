@@ -545,12 +545,12 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     )?;
                 }
                 Some(Token { ttype: t @ TT::LBRACK, line, .. }) => {
-                    let (_, _) = (*line, validate_precedence!(t));
+                    let (line, _) = (*line, validate_precedence!(t));
                     let table = lhs_desc.to_any_reg(self)?;
                     let rhs_desc = self.expression(Precedence::Lowest)?;
                     consume!(self; (TT::RBRACK));
 
-                    lhs_desc = self.index(table, rhs_desc)?;
+                    lhs_desc = self.index(table, rhs_desc, line)?;
                 }
                 Some(Token { ttype: t @ TT::AND, line, .. }) => {
                     let (line, _new_precedence) = (*line, validate_precedence!(t));
@@ -568,50 +568,60 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     }
                 }
                 Some(Token { ttype: t @ TT::DOT, line, .. }) => {
-                    let (_, _) = (*line, validate_precedence!(t));
+                    let (line, _) = (*line, validate_precedence!(t));
                     let id = self.identifier()?;
                     let table = lhs_desc.to_any_reg(self)?;
-                    lhs_desc = self.index_string(table, id)?;
+                    lhs_desc = self.index_string(table, id, line)?;
                 }
                 _ => break Ok(lhs_desc),
             }
         }
     }
 
-    fn index(&mut self, table: u8, mut key_desc: ExprDesc) -> Result<ExprDesc, ParseError> {
+    fn index(
+        &mut self,
+        table: u8,
+        mut key_desc: ExprDesc,
+        line: usize,
+    ) -> Result<ExprDesc, ParseError> {
         match key_desc.kind {
-            ExprKind::String(key) => self.index_string(table, key),
-            ExprKind::Number(key) => self.index_number(table, key),
+            ExprKind::String(key) => self.index_string(table, key, line),
+            ExprKind::Number(key) => self.index_number(table, key, line),
             _ => {
                 let key = key_desc.to_any_reg(self)?;
-                Ok(ExprDesc::new(ExprKind::IndexV { table, key }))
+                Ok(ExprDesc::new(ExprKind::IndexV { table, key, line }))
             }
         }
     }
 
-    fn index_string(&mut self, table: u8, key: RuaString) -> Result<ExprDesc, ParseError> {
+    fn index_string(
+        &mut self,
+        table: u8,
+        key: RuaString,
+        line: usize,
+    ) -> Result<ExprDesc, ParseError> {
         let handle = self.current_chunk_mut().new_string_constant(key.clone())?.try_into();
         if let Ok(handle) = handle {
-            Ok(ExprDesc::new(ExprKind::IndexS { table, key: handle }))
+            Ok(ExprDesc::new(ExprKind::IndexS { table, key: handle, line }))
         } else {
             // Constant handle is too big,
             // discharge constant to reg and use VV operation
             let mut key_desc = ExprDesc::new(ExprKind::String(key));
             key_desc.to_any_reg(self)?;
-            self.index(table, key_desc)
+            self.index(table, key_desc, line)
         }
     }
 
-    fn index_number(&mut self, table: u8, key: f64) -> Result<ExprDesc, ParseError> {
+    fn index_number(&mut self, table: u8, key: f64, line: usize) -> Result<ExprDesc, ParseError> {
         let handle = self.current_chunk_mut().new_number_constant(key)?.try_into();
         if let Ok(handle) = handle {
-            Ok(ExprDesc::new(ExprKind::IndexN { table, key: handle }))
+            Ok(ExprDesc::new(ExprKind::IndexN { table, key: handle, line }))
         } else {
             // Constant handle is too big,
             // discharge constant to reg and use VV operation
             let mut key_desc = ExprDesc::new(ExprKind::Number(key));
             key_desc.to_any_reg(self)?;
-            self.index(table, key_desc)
+            self.index(table, key_desc, line)
         }
     }
 
@@ -769,17 +779,17 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 self.instruction(I::SetUpvalue { dst, src }, line);
                 self.free_reg(src);
             }
-            ExprKind::IndexV { table, key } => {
+            ExprKind::IndexV { table, key, line } => {
                 let val = src.to_any_reg(self)?;
                 self.instruction(I::InsertV { table, key, val }, line);
                 self.free_reg(val);
             }
-            ExprKind::IndexS { table, key } => {
+            ExprKind::IndexS { table, key, line } => {
                 let val = src.to_any_reg(self)?;
                 self.instruction(I::InsertS { table, key, val }, line);
                 self.free_reg(val);
             }
-            ExprKind::IndexN { table, key } => {
+            ExprKind::IndexN { table, key, line } => {
                 let val = src.to_any_reg(self)?;
                 self.instruction(I::InsertN { table, key, val }, line);
                 self.free_reg(val);
@@ -1238,14 +1248,15 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
             total_count += 1;
             match self.peek_token() {
-                Some(Token { ttype: TT::ASSIGN, .. }) => {
+                Some(Token { ttype: TT::ASSIGN, line, .. }) => {
+                    let line = *line;
                     self.next_token();
                     let mut key_desc = desc;
                     if !matches!(key_desc.kind, ExprKind::Number(_) | ExprKind::String(_)) {
                         key_desc.to_any_reg(self)?;
                     }
                     let rhs_desc = self.expression(Precedence::Lowest)?;
-                    let index_desc = self.index(table, key_desc)?;
+                    let index_desc = self.index(table, key_desc, line)?;
                     self.assign(&index_desc, rhs_desc, line)?;
                     index_desc.free_reg(self);
                 }
@@ -1254,7 +1265,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     let rhs_desc = desc;
                     arr_count += 1;
 
-                    let index_desc = self.index_number(table, f64::from(arr_count))?;
+                    let index_desc = self.index_number(table, f64::from(arr_count), line)?;
                     self.assign(&index_desc, rhs_desc, line)?;
                     index_desc.free_reg(self);
                 }
