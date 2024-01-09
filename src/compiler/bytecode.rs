@@ -522,6 +522,14 @@ impl Debug for Chunk {
                 | Instruction::PowNV(NVArgs { lhs: n, .. }) => {
                     format!("; {}", self.numbers[*n as usize])
                 }
+                Instruction::InsertN { key, .. }
+                | Instruction::IndexN(BinArgs { rhs: key, .. }) => {
+                    format!("; {}", self.numbers[*key as usize])
+                }
+                Instruction::InsertS { key, .. }
+                | Instruction::IndexS(BinArgs { rhs: key, .. }) => {
+                    format!("; \"{}\"", self.strings[*key as usize])
+                }
                 _ => String::new(),
             };
             writeln!(f, "{i:4} {line_str}  {instr:?} {clarification}")?;

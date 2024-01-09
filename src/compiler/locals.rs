@@ -9,7 +9,6 @@ const MAX_LOCALS: u8 = u8::MAX;
 pub(super) struct Local {
     name: RuaString,
     depth: usize,
-    usable: bool,
     is_captured: bool,
 }
 
@@ -62,16 +61,12 @@ impl Locals {
         Ok(local)
     }
 
-    pub(super) fn make_usable(&mut self, handle: LocalHandle) {
-        self.locals[handle.0 as usize].usable = true;
-    }
-
     pub(super) fn resolve(&self, id: &RuaString) -> Option<LocalHandle> {
         self.locals
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, local)| local.usable && &local.name == id)
+            .find(|(_, local)| &local.name == id)
             .map(|(i, _)| LocalHandle(i.try_into().expect("Locals shouldn't exceed u8::MAX")))
     }
 
@@ -109,7 +104,7 @@ impl LocalHandle {
 
 impl Local {
     const fn new(name: RuaString, depth: usize) -> Self {
-        Self { name, depth, is_captured: false, usable: false }
+        Self { name, depth, is_captured: false }
     }
 
     pub(super) const fn is_captured(&self) -> bool {

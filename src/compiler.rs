@@ -663,37 +663,30 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             locals.push(self.identifier()?);
         }
         let mut locals = locals.into_iter();
-        let mut handles = Vec::new();
         if match_token!(self, TT::ASSIGN) {
             while {
-                let dst = if let Some(local) = locals.next() {
-                    let handle = self.declare_local(local)?;
-                    handles.push(handle);
-                    Some(handle.into())
-                } else {
-                    None
-                };
                 let mut val = self.expression(Precedence::Lowest)?;
                 val.free_tmp_regs(self);
-                if let Some(dst) = dst {
+                if let Some(local) = locals.next() {
                     val.free_reg(self);
-                    val.to_reg(self, dst)?;
+
+                    let handle = self.declare_local(local)?;
+
+                    val.to_reg(self, handle.into())?;
                 } else {
                     val.to_any_reg(self)?;
                     val.free_reg(self);
                 }
-                debug_assert_eq!(self.context.rh, 0);
+                debug_assert_eq!(
+                    self.context.rh, 0,
+                    "Everything should be freed after local declaration"
+                );
                 match_token!(self, TT::COMMA)
             } {}
         }
         for local in locals {
             let handle = self.declare_local(local)?;
-            handles.push(handle);
             self.instruction(Instruction::Nil { dst: handle.into() }, line);
-        }
-
-        for handle in handles {
-            self.context.locals.make_usable(handle);
         }
 
         Ok(())
@@ -964,8 +957,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         self.begin_scope();
 
-        let it_var = self.declare_local(id)?;
-        self.context.locals.make_usable(it_var);
+        let _it_var = self.declare_local(id)?;
 
         self.do_block(false)?;
 
@@ -1147,7 +1139,6 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         if local {
             let loc = self.declare_local(id)?;
-            self.context.locals.make_usable(loc);
             self.emit_closure(loc.into(), function, upvalues, line)?;
         } else {
             let id = self.new_string_constant(id)?;
@@ -1171,8 +1162,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn function(&mut self, id: RuaString) -> Result<(Function, Upvalues), ParseError> {
         consume!(self; (TT::LPAREN));
         let mut locals = Locals::new();
-        let loc = locals.declare(id.clone())?;
-        locals.make_usable(loc);
+        let _func = locals.declare(id.clone())?;
         let arity = self.parameter_list(&mut locals)?;
 
         let old_ctxt =
@@ -1190,8 +1180,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         }
         while {
             arity += 1;
-            let loc = locals.declare(self.identifier()?)?;
-            locals.make_usable(loc);
+            locals.declare(self.identifier()?)?;
             match_token!(self, TT::COMMA)
         } {}
         consume!(self; (TT::RPAREN));
