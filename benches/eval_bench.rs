@@ -118,6 +118,14 @@ fn nbody(c: &mut Criterion) {
     bench_file(c, "test_scripts/nbody.lua", "nbody");
 }
 
+fn merge_sort(c: &mut Criterion) {
+    bench_file(c, "test_scripts/merge_sort.lua", "merge_sort");
+}
+
+fn table_insert(c: &mut Criterion) {
+    bench_file(c, "test_scripts/table_insert.lua", "table_insert");
+}
+
 criterion_group! {
     name=eval_bench;
     config = Criterion::default().measurement_time(Duration::from_secs(10));
@@ -129,5 +137,7 @@ criterion_group! {
         stress_gc,
         bintrees,
         nbody,
+        merge_sort,
+        table_insert,
 }
 criterion_main!(eval_bench);
