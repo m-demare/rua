@@ -241,7 +241,9 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             debug_assert_eq!(
                 r,
                 self.context.locals.len() + self.context.rh,
-                "Can only free last reserved reg (tried to free {r})"
+                "Can only free last reserved reg (tried to free {r}). Next token was {:?}, generated code was {:?}",
+                self.peek_token(),
+                self.current_chunk()
             );
         }
     }
@@ -829,6 +831,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
     fn call_expr(&mut self, mut lhs_desc: ExprDesc, line: usize) -> Result<ExprDesc, ParseError> {
         debug_peek_token!(self, TT::LPAREN | TT::STRING(_) | TT::LBRACE);
+        lhs_desc.free_reg(self);
         let base = lhs_desc.to_next_reg(self)?;
         let rh = self.context.rh;
         let cant_args = match self.next_token() {
@@ -942,24 +945,29 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         let empty_str = self.tokens.vm().new_string([].into());
 
         let id = self.identifier()?;
+
+        let from = self.declare_local(empty_str.clone())?;
+        let to = self.declare_local(empty_str.clone())?;
+        let step = self.declare_local(empty_str)?;
+
         consume!(self; (TT::ASSIGN));
         let mut from_desc = self.expression(Precedence::Lowest)?;
-        let from = self.declare_local(empty_str.clone())?;
         consume!(self; (TT::COMMA));
         let mut to_desc = self.expression(Precedence::Lowest)?;
-        let to = self.declare_local(empty_str.clone())?;
         let mut step_desc = if match_token!(self, (TT::COMMA)) {
             self.expression(Precedence::Lowest)?
         } else {
             ExprDesc::new(ExprKind::Number(1.0))
         };
-        let step = self.declare_local(empty_str)?;
-        from_desc.free_tmp_regs(self);
-        from_desc.to_reg(self, from.into())?;
-        to_desc.free_tmp_regs(self);
-        to_desc.to_reg(self, to.into())?;
         step_desc.free_tmp_regs(self);
+        step_desc.free_reg(self);
         step_desc.to_reg(self, step.into())?;
+        to_desc.free_tmp_regs(self);
+        to_desc.free_reg(self);
+        to_desc.to_reg(self, to.into())?;
+        from_desc.free_tmp_regs(self);
+        from_desc.free_reg(self);
+        from_desc.to_reg(self, from.into())?;
 
         let forprep = self.instruction(I::ForPrep { from: from.into(), offset: u16::MAX }, line);
 

@@ -145,7 +145,7 @@ fn test_table_literal() {
     test_compile(input, |vm| {
         Ok(Chunk::new(
             vec![
-                I::Number { dst: 0, src:NumberHandle(0) },
+                I::Number { dst: 0, src: NumberHandle(0) },
                 I::NewTable { dst: 1, capacity },
                 I::True { dst: 2 },
                 I::InsertN { table: 1, key: 1, val: 2 },
@@ -160,9 +160,25 @@ fn test_table_literal() {
                 I::ReturnNil,
             ],
             vec![2.0, 1.0, 3.0],
-            vec![vm.new_string((*b"b").into()), vm.new_string((*b"foo").into()), vm.new_string((*b"c").into())],
+            vec![
+                vm.new_string((*b"b").into()),
+                vm.new_string((*b"foo").into()),
+                vm.new_string((*b"c").into()),
+            ],
             Vec::new(),
-            vec![(0, 1), (3, 1), (0, 1), (3, 1), (0, 1), (3, 2), (0, 1), (3, 1), (4, 2), (5, 1), (0, 1)],
+            vec![
+                (0, 1),
+                (3, 1),
+                (0, 1),
+                (3, 1),
+                (0, 1),
+                (3, 2),
+                (0, 1),
+                (3, 1),
+                (4, 2),
+                (5, 1),
+                (0, 1),
+            ],
         ))
     });
 }

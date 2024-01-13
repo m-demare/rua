@@ -973,6 +973,22 @@ test_interpret!(
 );
 
 test_interpret!(
+    for_loop_frees_registers_properly,
+    "
+    local function add(x)
+        return function(y) return x+y end
+    end
+    local sum=0
+    for i = math.pi, add(5)(math.pi), math.exp(1) do
+        sum = sum + i
+    end
+
+    return sum
+",
+    |_| Ok(9.001_467_135_638_63.into())
+);
+
+test_interpret!(
     val_in_stack_isnt_gced,
     "
     local a = {1, 2}
