@@ -431,13 +431,17 @@ mod tests {
         ];
         let table = Table::from_iter(vec);
 
-        assert!(table.length() == 4 || table.length() == 6);
+        assert!(table.length() == 4 || table.length() == 6, "length was {}", table.length());
         match table.pop() {
             Some(RuaVal(RuaValInner::Number(n))) if n.val() == 56.0 => {
-                assert_eq!(table.length(), 4);
+                assert_eq!(table.length(), 4, "length was {}", table.length());
             }
             Some(RuaVal(RuaValInner::Number(n))) if n.val() == 54.0 => {
-                assert!(table.length() == 3 || table.length() == 6);
+                assert!(
+                    table.length() == 3 || table.length() == 6,
+                    "length was {}",
+                    table.length()
+                );
             }
             Some(n) => panic!("Should have popped 54 or 56, not {n}"),
             None => panic!("There were items to pop"),
@@ -448,13 +452,61 @@ mod tests {
         assert_eq!(table.get(&b"hello".into_rua(&mut vm)), None);
 
         table.pop();
-        assert!(table.length() == 2 || table.length() == 3 || table.length() == 6);
+        assert!(
+            table.length() == 2 || table.length() == 3 || table.length() == 6,
+            "length was {}",
+            table.length()
+        );
         table.remove(&6.0.into());
 
         match table.get(&3.0.into()) {
             Some(_) => assert_eq!(table.length(), 3),
             None => assert_eq!(table.length(), 2),
         }
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss)]
+    fn test_array() {
+        let table = Table::new();
+        (1u16..200)
+            .filter(|i| i % 10 != 0)
+            .map(f64::from)
+            .for_each(|i| table.insert(i.into(), i.into()).expect("All keys are valid"));
+
+        assert!(table.length() % 10 == 9 && table.length() < 200, "length was {}", table.length());
+        assert!(table.get(&(table.length() as f64).into()).is_some());
+        assert_eq!(table.get(&(1.0 + table.length() as f64).into()), None);
+
+        // All elements should be in the array part
+        assert_eq!(table.map.borrow().capacity(), 0);
+        assert!(
+            table.array.borrow().capacity() >= 200 - 20,
+            "capacity was {}",
+            table.array.borrow().capacity()
+        );
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss)]
+    fn test_sparse_array() {
+        let table = Table::new();
+        (1u16..200)
+            .filter(|i| i % 10 != 0)
+            .map(|i| (i + 50) * 4)
+            .map(f64::from)
+            .for_each(|i| table.insert(i.into(), i.into()).expect("All keys are valid"));
+
+        assert!(table.length() == 0 || table.get(&(table.length() as f64).into()).is_some());
+        assert_eq!(table.get(&(1.0 + table.length() as f64).into()), None);
+
+        // All elements should be in the map part
+        assert!(
+            table.map.borrow().capacity() >= 200 - 20,
+            "capacity was {}",
+            table.array.borrow().capacity()
+        );
+        assert_eq!(table.array.borrow().capacity(), 0);
     }
 }
 
