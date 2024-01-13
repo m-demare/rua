@@ -51,8 +51,8 @@ impl Table {
         let new_key_idx = key.as_number().ok().and_then(try_into_usize);
         if let Some(n) = new_key_idx {
             let mut array = self.array.borrow_mut();
-            if n < array.len() {
-                array[n] = val;
+            if let Some(slot) = array.get_mut(n) {
+                *slot = val;
                 return Ok(());
             }
         }
@@ -83,8 +83,8 @@ impl Table {
             Self::resize(opt_arr_size, &mut arr, &mut map);
 
             if let Some(n) = new_key_idx {
-                if n < arr.len() {
-                    arr[n] = val;
+                if let Some(slot) = arr.get_mut(n) {
+                    *slot = val;
                     return Ok(());
                 }
             }
@@ -133,6 +133,13 @@ impl Table {
     }
 
     pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
+        let new_key_idx = key.as_number().ok().and_then(try_into_usize);
+        if let Some(n) = new_key_idx {
+            let mut array = self.array.borrow_mut();
+            if let Some(v) = array.get_mut(n) {
+                return Some(std::mem::replace(v, RuaVal::nil()));
+            }
+        }
         self.map.borrow_mut().remove(key)
     }
 
@@ -306,8 +313,8 @@ impl Table {
             map.retain(|k, v| {
                 let arr_key = k.as_number().ok().and_then(try_into_usize);
                 if let Some(arr_key) = arr_key {
-                    if arr_key < arr.len() {
-                        arr[arr_key] = std::mem::replace(v, RuaVal::nil());
+                    if let Some(slot) = arr.get_mut(arr_key) {
+                        *slot = std::mem::replace(v, RuaVal::nil());
                         return false;
                     }
                 }
@@ -458,6 +465,7 @@ mod tests {
             table.length()
         );
         table.remove(&6.0.into());
+        assert_eq!(table.get(&6.0.into()), None);
 
         match table.get(&3.0.into()) {
             Some(_) => assert_eq!(table.length(), 3),
@@ -469,10 +477,8 @@ mod tests {
     #[allow(clippy::cast_precision_loss)]
     fn test_array() {
         let table = Table::new();
-        (1u16..200)
-            .filter(|i| i % 10 != 0)
-            .map(f64::from)
-            .for_each(|i| table.insert(i.into(), i.into()).expect("All keys are valid"));
+        insert_all(&table, (1..200)
+            .filter(|i| i % 10 != 0));
 
         assert!(table.length() % 10 == 9 && table.length() < 200, "length was {}", table.length());
         assert!(table.get(&(table.length() as f64).into()).is_some());
@@ -485,17 +491,18 @@ mod tests {
             "capacity was {}",
             table.array.borrow().capacity()
         );
+
+        table.remove(&3.0.into());
+        assert_eq!(table.get(&3.0.into()), None);
     }
 
     #[test]
     #[allow(clippy::cast_precision_loss)]
     fn test_sparse_array() {
         let table = Table::new();
-        (1u16..200)
+        insert_all(&table, (1..200)
             .filter(|i| i % 10 != 0)
-            .map(|i| (i + 50) * 4)
-            .map(f64::from)
-            .for_each(|i| table.insert(i.into(), i.into()).expect("All keys are valid"));
+            .map(|i| (i + 50) * 4));
 
         assert!(table.length() == 0 || table.get(&(table.length() as f64).into()).is_some());
         assert_eq!(table.get(&(1.0 + table.length() as f64).into()), None);
@@ -507,6 +514,29 @@ mod tests {
             table.array.borrow().capacity()
         );
         assert_eq!(table.array.borrow().capacity(), 0);
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss)]
+    fn test_sparse_array_to_array_conversion() {
+        let table = Table::new();
+        insert_all(&table, 170..201);
+        insert_all(&table, (0..50).rev());
+        insert_all(&table, 50..170);
+
+        assert_eq!(table.length(), 200);
+
+        // All elements should be in the array part, but map capacity may be non-zero
+        assert!(
+            table.map.borrow().capacity() < 100,
+            "capacity was {}",
+            table.map.borrow().capacity()
+        );
+        assert!(table.array.borrow().capacity() >= 200);
+    }
+
+    fn insert_all<I: Iterator<Item=u16>>(t: &Table, it: I) {
+        it.map(f64::from).for_each(|i| t.insert(i.into(), i.into()).expect("All keys are valid"));
     }
 }
 
