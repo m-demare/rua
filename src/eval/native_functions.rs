@@ -107,7 +107,7 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
     let global = Rc::new(Table::from_iter(global));
     // SAFETY: global doesn't need to be garbage collected, since it'll be valid
     // as long as the Vm is valid, and it's dropped when the Vm is dropped
-    global.insert(
+    let _ = global.insert(
         Into::<Rc<str>>::into("_G").into_rua(vm),
         RuaVal::from_table_unregistered(global.clone(), vm.id()),
     );

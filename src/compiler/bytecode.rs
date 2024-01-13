@@ -576,6 +576,8 @@ pub enum ParseError {
     TooManyAssignLhs(usize),
     #[error("Too many instructions")]
     TooManyInstructions,
+    #[error("Table to large near {0}")]
+    TableTooLarge(usize),
 }
 
 #[derive(Debug, PartialEq)]

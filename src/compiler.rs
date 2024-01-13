@@ -1,6 +1,8 @@
+use std::ops::BitAnd;
+
 use crate::{
     eval::{
-        vals::{closure::Closure, function::Function, string::RuaString},
+        vals::{closure::Closure, function::Function, string::RuaString, table::try_into_f64},
         Vm,
     },
     lex::{
@@ -863,11 +865,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             }
             cant_args += 1;
             let mut item = self.expression(Precedence::Lowest)?;
-            if let ExprKind::Tmp { reg, .. } = item.kind {
-                if reg != u8::MAX {
-                    self.free_reg(reg);
-                }
-            }
+            item.free_reg(self);
             item.to_next_reg(self)?;
             match_token!(self, TT::COMMA)
         } {}
@@ -1198,8 +1196,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn table_literal(&mut self, line: usize) -> Result<ExprDesc, ParseError> {
-        let mut arr_count = 0;
-        let mut total_count = 0;
+        let mut arr_count = 0usize;
+        let mut map_count = 0usize;
         let table = self.tmp()?;
         let table_instr = self.instruction(I::NewTable { dst: table, capacity: 0 }, line);
         loop {
@@ -1246,28 +1244,37 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 None => return Err(ParseError::UnexpectedEOF),
             };
 
-            total_count += 1;
             match self.peek_token() {
                 Some(Token { ttype: TT::ASSIGN, line, .. }) => {
                     let line = *line;
                     self.next_token();
                     let mut key_desc = desc;
+                    map_count += 1;
                     if !matches!(key_desc.kind, ExprKind::Number(_) | ExprKind::String(_)) {
                         key_desc.to_any_reg(self)?;
                     }
                     let rhs_desc = self.expression(Precedence::Lowest)?;
                     let index_desc = self.index(table, key_desc, line)?;
+                    rhs_desc.free_tmp_regs(self);
                     self.assign(&index_desc, rhs_desc, line)?;
                     index_desc.free_reg(self);
+                    index_desc.free_key_regs(self);
                 }
                 Some(Token { line, .. }) => {
                     let line = *line;
                     let rhs_desc = desc;
                     arr_count += 1;
 
-                    let index_desc = self.index_number(table, f64::from(arr_count), line)?;
+                    #[allow(clippy::cast_precision_loss)]
+                    let index_desc = self.index_number(
+                        table,
+                        try_into_f64(arr_count).ok_or(ParseError::TableTooLarge(line))?,
+                        line,
+                    )?;
+                    rhs_desc.free_tmp_regs(self);
                     self.assign(&index_desc, rhs_desc, line)?;
                     index_desc.free_reg(self);
+                    index_desc.free_key_regs(self);
                 }
                 None => {}
             }
@@ -1277,9 +1284,20 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             }
         }
         consume!(self; (TT::RBRACE));
+        if arr_count > 0 {
+            arr_count += 1;
+        }
 
+        // Capacity: 12 bits for array_capacity, 4 bits for log2(map_capacity)
+        let arr_capacity = u16::min(0x0FFF, arr_count.try_into().unwrap_or(u16::MAX));
+        let map_capacity: u16 = (if map_count == 1 { 2 } else { map_count })
+            .checked_ilog2()
+            .unwrap_or(0)
+            .try_into()
+            .expect("Log cannot be bigger than 32");
+        let capacity = (arr_capacity << 4) + map_capacity.bitand(0x000F);
         self.current_chunk_mut()
-            .replace_instruction(table_instr, I::NewTable { dst: table, capacity: total_count });
+            .replace_instruction(table_instr, I::NewTable { dst: table, capacity });
 
         Ok(ExprDesc::new(ExprKind::Tmp { reg: table, instr_idx: None }))
     }

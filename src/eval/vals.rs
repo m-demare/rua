@@ -124,7 +124,7 @@ impl RuaVal {
     pub fn len(&self) -> Result<usize, EvalError> {
         match &self.0 {
             RuaValInner::String(s) => Ok(s.len()),
-            RuaValInner::Table(t) => Ok(t.arr_size()),
+            RuaValInner::Table(t) => Ok(t.length()),
             _ => Err(self.type_error(RuaType::Table)),
         }
     }
@@ -285,6 +285,8 @@ pub enum EvalError {
     Exception(Box<str>),
     #[error("Assertion failed. Error: {0:?}")]
     AssertionFailed(Option<RuaVal>),
+    #[error("table index is {}", if *.0 {"nil"} else {"NaN"})]
+    InvalidTableIndex(bool),
 }
 
 impl Debug for EvalErrorTraced {

@@ -225,6 +225,15 @@ impl ExprDesc {
         }
     }
 
+    pub(super) fn free_key_regs<T: Iterator<Item = u8> + Clone>(
+        &self,
+        compiler: &mut Compiler<'_, T>,
+    ) {
+        if let ExprKind::IndexV { key, .. } = &self.kind {
+            compiler.free_reg(*key);
+        }
+    }
+
     pub(super) fn to_next_reg<T: Iterator<Item = u8> + Clone>(
         &mut self,
         compiler: &mut Compiler<'_, T>,

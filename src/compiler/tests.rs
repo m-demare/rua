@@ -135,28 +135,34 @@ fn test_bool_fold() {
 #[test]
 fn test_table_literal() {
     let input = "
-        local a = { true; b=3; }
+        local n = 2
+        local a = { true; b=3; [n + 3] = 'foo' }
         local b = a.b.c
         return b
 ";
 
+    let capacity = (2 << 4) + 1;
     test_compile(input, |vm| {
         Ok(Chunk::new(
             vec![
-                I::NewTable { dst: 0, capacity: 2 },
-                I::True { dst: 1 },
-                I::InsertN { table: 0, key: 0, val: 1 },
-                I::Number { dst: 1, src: NumberHandle(1) },
-                I::InsertS { table: 0, key: 0, val: 1 },
-                I::IndexS(BinArgs { dst: 1, lhs: 0, rhs: 0 }),
-                I::IndexS(BinArgs { dst: 1, lhs: 1, rhs: 1 }),
-                I::Return { src: 1 },
+                I::Number { dst: 0, src:NumberHandle(0) },
+                I::NewTable { dst: 1, capacity },
+                I::True { dst: 2 },
+                I::InsertN { table: 1, key: 1, val: 2 },
+                I::Number { dst: 2, src: NumberHandle(2) },
+                I::InsertS { table: 1, key: 0, val: 2 },
+                I::AddVN(VNArgs { dst: 2, lhs: 0, rhs: 2 }),
+                I::String { dst: 3, src: StringHandle(1) },
+                I::InsertV { table: 1, key: 2, val: 3 },
+                I::IndexS(BinArgs { dst: 2, lhs: 1, rhs: 0 }),
+                I::IndexS(BinArgs { dst: 2, lhs: 2, rhs: 2 }),
+                I::Return { src: 2 },
                 I::ReturnNil,
             ],
-            vec![1.0, 3.0],
-            vec![vm.new_string((*b"b").into()), vm.new_string((*b"c").into())],
+            vec![2.0, 1.0, 3.0],
+            vec![vm.new_string((*b"b").into()), vm.new_string((*b"foo").into()), vm.new_string((*b"c").into())],
             Vec::new(),
-            vec![(0, 0), (2, 1), (0, 1), (2, 1), (0, 1), (2, 1), (3, 2), (4, 1), (0, 1)],
+            vec![(0, 1), (3, 1), (0, 1), (3, 1), (0, 1), (3, 2), (0, 1), (3, 1), (4, 2), (5, 1), (0, 1)],
         ))
     });
 }

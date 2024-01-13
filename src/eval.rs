@@ -5,6 +5,7 @@ use std::{
     cell::RefCell,
     hash::BuildHasherDefault,
     num::NonZeroU32,
+    ops::BitAnd,
     rc::{Rc, Weak},
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
 };
@@ -254,7 +255,7 @@ impl Vm {
                 I::SetGlobal { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     let key = frame.read_string(dst);
-                    self.global.insert(key.into(), val.clone());
+                    trace_err(self.global.insert(key.into(), val.clone()), &frame)?;
                 }
                 I::GetGlobal { dst, src } => {
                     let key = frame.read_string(src);
@@ -343,7 +344,7 @@ impl Vm {
         let table = self.stack_at(frame, table);
         let table = trace_err(table.as_table(), frame)?;
         let val = self.stack_at(frame, val);
-        table.insert(key, val.clone());
+        trace_err(table.insert(key, val.clone()), frame)?;
         Ok(())
     }
 
@@ -674,7 +675,10 @@ impl Vm {
     }
 
     fn new_table(&mut self, capacity: u16) -> RuaVal {
-        Rc::new(Table::with_capacity(capacity.into())).into_rua(self)
+        let map_capacity_log = capacity.bitand(0x000F);
+        let map_capacity = if map_capacity_log == 0 { 0usize } else { 1 << map_capacity_log };
+        let arr_capacity = capacity.bitand(0xFFF0) >> 4;
+        Rc::new(Table::with_capacities(map_capacity, arr_capacity.into())).into_rua(self)
     }
 
     fn register_table(&mut self, table: &Rc<Table>) {
