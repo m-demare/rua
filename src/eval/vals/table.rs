@@ -373,9 +373,29 @@ where
     I: Into<RuaVal>,
 {
     fn from_iter<T: IntoIterator<Item = (I, RuaVal)>>(iter: T) -> Self {
-        let table = Self::new();
+        let iter = iter.into_iter();
+        let table = Self::with_capacities(iter.size_hint().0, 0);
         for (key, val) in iter {
             table.insert(key.into(), val).expect("Table::from_iter with invalid keys");
+        }
+        table
+    }
+}
+
+impl<I> FromIterator<I> for Table
+where
+    I: Into<RuaVal>,
+{
+    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
+        let iter = iter.into_iter();
+        let table = Self::with_capacities(0, iter.size_hint().0);
+        for (key, val) in iter.enumerate() {
+            table
+                .insert(
+                    try_into_f64(key).expect("Array too large for Table::from_iter").into(),
+                    val.into(),
+                )
+                .expect("Table::from_iter with invalid keys");
         }
         table
     }
