@@ -20,6 +20,7 @@ pub struct Closure {
 }
 
 impl PartialEq for Closure {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self, other)
     }

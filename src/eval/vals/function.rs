@@ -11,6 +11,7 @@ use crate::{compiler::bytecode::Chunk, eval::Vm};
 use super::string::RuaString;
 use super::{RuaResult, RuaVal};
 
+#[derive(PartialEq)]
 struct FunctionInner {
     chunk: Chunk,
     arity: u8,
@@ -19,7 +20,7 @@ struct FunctionInner {
     upvalue_count: u8,
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Clone)]
 pub struct Function {
     inner: Rc<FunctionInner>,
 }
@@ -82,30 +83,14 @@ impl NativeFunction {
     }
 }
 
-impl PartialEq for Function {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.inner, &other.inner)
-    }
-}
-
 impl PartialEq for NativeFunction {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(
-            (self.func as *const dyn Fn(&mut FunctionContext) -> RuaResult).cast::<u8>(),
-            (other.func as *const dyn Fn(&mut FunctionContext) -> RuaResult).cast::<u8>(),
-        )
+        std::ptr::eq(self, other)
     }
 }
-
-impl Eq for Function {}
 
 impl Eq for NativeFunction {}
-
-impl Hash for Function {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (Rc::as_ptr(&self.inner) as usize).hash(state);
-    }
-}
 
 impl Hash for NativeFunction {
     fn hash<H: Hasher>(&self, state: &mut H) {

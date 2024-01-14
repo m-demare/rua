@@ -1,11 +1,12 @@
 use std::{
     cell::{Cell, RefCell},
-    hash::{BuildHasherDefault, Hash, Hasher},
+    collections::HashMap,
+    hash::{Hash, Hasher},
     num::NonZeroU32,
     rc::Rc,
 };
 
-use rustc_hash::FxHashMap;
+use nohash_hasher::BuildNoHashHasher;
 
 use crate::eval::{macros::trace_gc, GcData, Vm};
 
@@ -13,7 +14,7 @@ use super::{EvalError, IntoRuaVal, RuaVal, RuaValInner};
 
 #[derive(Debug)]
 pub struct Table {
-    map: RefCell<FxHashMap<RuaVal, RuaVal>>,
+    map: RefCell<HashMap<RuaVal, RuaVal, BuildNoHashHasher<RuaVal>>>,
     array: RefCell<Vec<RuaVal>>,
     marked: Cell<bool>,
     vm_id: Cell<Option<NonZeroU32>>,
@@ -34,9 +35,9 @@ impl Table {
         let mut array = Vec::with_capacity(array_capacity);
         array.resize(array.capacity(), RuaVal::nil());
         Self {
-            map: RefCell::new(FxHashMap::with_capacity_and_hasher(
+            map: RefCell::new(HashMap::with_capacity_and_hasher(
                 map_capacity,
-                BuildHasherDefault::default(),
+                BuildNoHashHasher::default(),
             )),
             array: array.into(),
             marked: false.into(),
@@ -239,7 +240,10 @@ impl Table {
         sum
     }
 
-    fn count_nums_map(nums: &mut [u32; MAX_ARR_BITS], map: &FxHashMap<RuaVal, RuaVal>) -> usize {
+    fn count_nums_map(
+        nums: &mut [u32; MAX_ARR_BITS],
+        map: &HashMap<RuaVal, RuaVal, BuildNoHashHasher<RuaVal>>,
+    ) -> usize {
         let mut sum = 0;
         for k in map.keys() {
             let n = k.as_number().ok().and_then(try_into_usize);
@@ -286,7 +290,11 @@ impl Table {
         (opt_arr_size, elems_in_opt_arr)
     }
 
-    fn resize(opt_arr_size: usize, arr: &mut Vec<RuaVal>, map: &mut FxHashMap<RuaVal, RuaVal>) {
+    fn resize(
+        opt_arr_size: usize,
+        arr: &mut Vec<RuaVal>,
+        map: &mut HashMap<RuaVal, RuaVal, BuildNoHashHasher<RuaVal>>,
+    ) {
         const SHRINK_FACTOR: usize = 4;
         const EXTRA_SPACE_FACTOR: usize = 5;
         const MIN_GROWING_CAPACITY: usize = 8;
@@ -346,6 +354,7 @@ impl Default for Table {
 }
 
 impl PartialEq for Table {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self, other)
     }
@@ -477,12 +486,12 @@ mod tests {
     #[allow(clippy::cast_precision_loss)]
     fn test_array() {
         let table = Table::new();
-        insert_all(&table, (1..200)
-            .filter(|i| i % 10 != 0));
+        insert_all(&table, (1..200).filter(|i| i % 10 != 0));
 
         assert!(table.length() % 10 == 9 && table.length() < 200, "length was {}", table.length());
         assert!(table.get(&(table.length() as f64).into()).is_some());
         assert_eq!(table.get(&(1.0 + table.length() as f64).into()), None);
+        assert_all_present(&table, (1..200).filter(|i| i % 10 != 0));
 
         // All elements should be in the array part
         assert_eq!(table.map.borrow().capacity(), 0);
@@ -500,12 +509,11 @@ mod tests {
     #[allow(clippy::cast_precision_loss)]
     fn test_sparse_array() {
         let table = Table::new();
-        insert_all(&table, (1..200)
-            .filter(|i| i % 10 != 0)
-            .map(|i| (i + 50) * 4));
+        insert_all(&table, (1..200).filter(|i| i % 10 != 0).map(|i| (i + 50) * 4));
 
         assert!(table.length() == 0 || table.get(&(table.length() as f64).into()).is_some());
         assert_eq!(table.get(&(1.0 + table.length() as f64).into()), None);
+        assert_all_present(&table, (1..200).filter(|i| i % 10 != 0).map(|i| (i + 50) * 4));
 
         // All elements should be in the map part
         assert!(
@@ -525,6 +533,7 @@ mod tests {
         insert_all(&table, 50..170);
 
         assert_eq!(table.length(), 200);
+        assert_all_present(&table, 0..201);
 
         // All elements should be in the array part, but map capacity may be non-zero
         assert!(
@@ -535,8 +544,12 @@ mod tests {
         assert!(table.array.borrow().capacity() >= 200);
     }
 
-    fn insert_all<I: Iterator<Item=u16>>(t: &Table, it: I) {
+    fn insert_all<I: Iterator<Item = u16>>(t: &Table, it: I) {
         it.map(f64::from).for_each(|i| t.insert(i.into(), i.into()).expect("All keys are valid"));
+    }
+
+    fn assert_all_present<I: Iterator<Item = u16>>(t: &Table, it: I) {
+        it.map(f64::from).for_each(|i| assert!(t.get(&i.into()).is_some(), "{i} was not present"));
     }
 }
 

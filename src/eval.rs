@@ -3,11 +3,10 @@ pub mod vals;
 
 use std::{
     cell::RefCell,
-    hash::BuildHasherDefault,
     num::NonZeroU32,
     ops::BitAnd,
     rc::{Rc, Weak},
-    sync::atomic::{AtomicU32, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU32, Ordering},
 };
 
 use crate::{
@@ -23,8 +22,6 @@ use crate::{
     },
 };
 use rua_trie::Trie;
-use rustc_hash::FxHasher;
-use weak_table::{weak_key_hash_map::Entry, WeakKeyHashMap};
 
 use crate::{
     compiler::bytecode::Instruction as I,
@@ -38,11 +35,13 @@ use crate::{
 use self::{
     call_frame::CallFrame,
     vals::{Callable, EvalErrorTraced, RuaResult, RuaResultUntraced, Upvalue, UpvalueObj},
+    weak_interner::WeakInterner,
 };
 
 mod call_frame;
 mod macros;
 mod tests;
+mod weak_interner;
 
 const MIN_STACK_SIZE: usize = u8::MAX as usize;
 
@@ -51,7 +50,7 @@ pub struct Vm {
     frames: Vec<CallFrame>,
     global: Rc<Table>,
     identifiers: Trie<TokenType>,
-    strings: WeakKeyHashMap<Weak<[u8]>, StringId, BuildHasherDefault<FxHasher>>,
+    strings: WeakInterner<[u8]>,
     open_upvalues: Vec<UpvalueObj>,
     gc_data: GcData,
     id: NonZeroU32,
@@ -73,7 +72,7 @@ impl Vm {
             frames: Vec::new(),
             global,
             identifiers: Trie::new(),
-            strings: WeakKeyHashMap::default(),
+            strings: WeakInterner::default(),
             open_upvalues: Vec::new(),
             gc_data: GcData::default(),
             id: NonZeroU32::new(COUNTER.fetch_add(1, Ordering::Relaxed))
@@ -621,14 +620,8 @@ impl Vm {
     }
 
     pub fn new_string(&mut self, s: Rc<[u8]>) -> RuaString {
-        let string_id = match self.strings.entry(s.clone()) {
-            Entry::Occupied(v) => *v.get(),
-            Entry::Vacant(e) => *e.insert({
-                static COUNTER: AtomicUsize = AtomicUsize::new(0);
-                StringId(COUNTER.fetch_add(1, Ordering::Relaxed))
-            }),
-        };
-        RuaString::new(s, string_id)
+        let (s, hash) = self.strings.insert_or_get(s);
+        RuaString::new(s, hash)
     }
 
     fn capture_upvalue(&mut self, closure: &mut Closure, pos: usize) {
@@ -876,6 +869,3 @@ impl Default for Vm {
         Self::new()
     }
 }
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub(crate) struct StringId(usize);

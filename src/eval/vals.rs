@@ -4,10 +4,12 @@ pub mod number;
 pub mod string;
 pub mod table;
 
+use nohash_hasher::IsEnabled;
 use std::{
     cell::RefCell,
     convert::Infallible,
     fmt::{self, Debug, Display},
+    hash::{Hash, Hasher},
     hint::unreachable_unchecked,
     num::NonZeroU32,
     rc::Rc,
@@ -22,7 +24,7 @@ use self::{
 
 use super::GcData;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq)]
 enum RuaValInner {
     Number(RuaNumber),
     Bool(bool),
@@ -33,8 +35,28 @@ enum RuaValInner {
     Table(Rc<Table>),
 }
 
+impl std::hash::Hash for RuaValInner {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let mut ahash_state = ahash::AHasher::default();
+        // Have to do this NoHashHasher shenanigans to avoid rehashing
+        // the strings' hash every time, which is unnecessarily costly
+        match self {
+            Self::String(s) => return s.hash(state),
+            Self::Number(v) => v.hash(&mut ahash_state),
+            Self::Bool(v) => v.hash(&mut ahash_state),
+            Self::Nil => 123.hash(&mut ahash_state),
+            Self::Closure(v) => v.hash(&mut ahash_state),
+            Self::NativeFunction(v) => v.hash(&mut ahash_state),
+            Self::Table(v) => v.hash(&mut ahash_state),
+        }
+        state.write_u64(ahash_state.finish());
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct RuaVal(RuaValInner);
+
+impl IsEnabled for RuaVal {}
 
 #[cfg(target_arch = "x86_64")]
 static_assertions::assert_eq_size!(RuaVal, [u8; 16]);

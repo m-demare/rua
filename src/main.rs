@@ -2,6 +2,7 @@
 #![deny(unused_must_use)]
 #![deny(clippy::mod_module_files)]
 #![allow(clippy::option_if_let_else)]
+#![feature(hash_raw_entry)]
 
 use std::path::PathBuf;
 

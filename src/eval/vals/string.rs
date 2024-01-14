@@ -1,45 +1,41 @@
 #![allow(clippy::module_name_repetitions)]
 
-use std::{
-    fmt::Display,
-    hash::{self, Hash, Hasher},
-    ops::Deref,
-    rc::Rc,
-};
-
-use rustc_hash::FxHasher;
-
-use crate::eval::StringId;
+use std::{fmt::Display, hash, ops::Deref, rc::Rc};
 
 struct StringInner {
     data: Rc<[u8]>,
-    id: StringId,
     hash: u64,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct RuaString(Rc<StringInner>);
 
-impl Hash for StringInner {
+impl hash::Hash for RuaString {
+    #[inline]
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl hash::Hash for StringInner {
+    #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.hash);
     }
 }
 
-impl PartialEq for StringInner {
+impl PartialEq for RuaString {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        Rc::ptr_eq(&self.0.data, &other.0.data)
     }
 }
 
-impl Eq for StringInner {}
+impl Eq for RuaString {}
 
 impl RuaString {
-    pub(crate) fn new(data: Rc<[u8]>, id: StringId) -> Self {
-        let mut hasher = FxHasher::default();
-        id.hash(&mut hasher);
-        let hash = hasher.finish();
-        Self(Rc::new(StringInner { data, id, hash }))
+    pub(crate) fn new(data: Rc<[u8]>, hash: u64) -> Self {
+        Self(Rc::new(StringInner { data, hash }))
     }
 
     pub(crate) fn inner(&self) -> Rc<[u8]> {
