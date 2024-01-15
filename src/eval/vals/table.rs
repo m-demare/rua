@@ -18,6 +18,7 @@ pub struct Table {
     array: RefCell<Vec<RuaVal>>,
     marked: Cell<bool>,
     vm_id: Cell<Option<NonZeroU32>>,
+    cached_len: Cell<usize>,
 }
 
 const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
@@ -42,6 +43,7 @@ impl Table {
             array: array.into(),
             marked: false.into(),
             vm_id: None.into(),
+            cached_len: array_capacity.into(),
         }
     }
 
@@ -124,13 +126,23 @@ impl Table {
     #[allow(clippy::cast_precision_loss)]
     pub fn push(&self, val: RuaVal) {
         let pos = self.length() + 1;
+        self.inc_len();
         let _ = self.insert((pos as f64).into(), val);
     }
 
     #[allow(clippy::cast_precision_loss)]
     pub fn pop(&self) -> Option<RuaVal> {
         let pos = self.length();
+        self.dec_len();
         self.remove(&(pos as f64).into())
+    }
+
+    fn inc_len(&self) {
+        self.cached_len.set(self.cached_len.get() + 1);
+    }
+
+    fn dec_len(&self) {
+        self.cached_len.set(self.cached_len.get().saturating_sub(1));
     }
 
     pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
@@ -156,30 +168,56 @@ impl Table {
     /// Returns any number n, such that:
     /// - n is a key in the table
     /// - n+1 isn't a key in the table
-    #[allow(clippy::cast_precision_loss)]
     pub fn length(&self) -> usize {
+        self.cached_len.replace(self.length_aux());
+        self.cached_len.get()
+    }
+
+    fn length_aux(&self) -> usize {
+        // Test the surroundings of cached_len for common cases
+        // (grown by 1, shrink by 1, stayed the same)
+        let cached_len = self.cached_len.get();
+        if self.has_value(cached_len) {
+            if !self.has_value(cached_len + 1) {
+                return cached_len;
+            } else if !self.has_value(cached_len + 2) {
+                return cached_len + 1;
+            }
+        } else if cached_len > 0 && self.has_value(cached_len - 1) {
+            return cached_len - 1;
+        }
         let (mut lower, mut upper) = (0, 1);
-        while self.get(&(upper as f64).into()).is_some() {
+        while self.has_value(upper) {
             lower = upper;
             if upper > MAX_SAFE_INTEGER / 2 {
                 // Malicious input, resort to linear search
                 for i in 1.. {
-                    let val = self.get(&(i as f64).into());
-                    if val.is_none() {
+                    if !self.has_value(i) {
                         return i - 1;
                     }
                 }
             }
             upper *= 2;
         }
+        self.bin_search_len(lower, upper)
+    }
+
+    fn bin_search_len(&self, mut lower: usize, mut upper: usize) -> usize {
         while upper > lower + 1 {
             let mid = (lower + upper) / 2;
-            match self.get(&(mid as f64).into()) {
-                Some(_) => lower = mid,
-                None => upper = mid,
+            if self.has_value(mid) {
+                lower = mid;
+            } else {
+                upper = mid;
             }
         }
         lower
+    }
+
+    #[inline]
+    #[allow(clippy::cast_precision_loss)]
+    fn has_value(&self, n: usize) -> bool {
+        self.get(&(n as f64).into()).is_some()
     }
 
     #[must_use]
