@@ -85,18 +85,39 @@ impl Vm {
     /// # Errors
     ///
     /// Returns any errors encountered during evaluation
+    #[allow(clippy::missing_panics_doc)]
     pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
         let og_len = self.stack.len();
         #[cfg(test)]
         println!("Started tracing {:?}, starting at stack {og_len}\n\n", closure.function());
         self.stack.resize(og_len + closure.function().max_used_regs() as usize, RuaVal::nil());
-        let frame = CallFrame::new(closure, og_len, og_len);
+        let frame = CallFrame::new(closure, og_len, og_len, u8::MAX, usize::MAX);
         let first_frame_id = frame.id();
         match self.interpret_error_boundary(frame) {
             Ok(v) => Ok(v),
             Err(mut e) => {
-                for _ in self.frames.iter().rev().take_while(|frame| {
-                    e.push_stack_trace(frame.func_name(), frame.curr_line());
+                let mut iter = self.frames.iter().rev();
+                let mut ip = if let Some(frame) = iter.next() {
+                    // Patch last stack trace,
+                    // necessary because each frame contains the IP for the previous frame
+                    let last_trace =
+                        e.stack_trace().last_mut().expect("must be at least 1 stack_trace");
+                    last_trace.0 = frame.func_name();
+                    last_trace.1 = frame.line_at(last_trace.1);
+                    if frame.id() == first_frame_id {
+                        self.stack.truncate(og_len);
+                        return Err(e);
+                    }
+                    frame.ret_ip()
+                } else {
+                    e.stack_trace().pop();
+                    self.stack.truncate(og_len);
+                    return Err(e);
+                };
+
+                for _ in iter.take_while(|frame| {
+                    e.push_stack_trace(frame.func_name(), frame.line_at(ip));
+                    ip = frame.ret_ip();
                     frame.id() != first_frame_id
                 }) {}
                 self.stack.truncate(og_len);
@@ -107,26 +128,31 @@ impl Vm {
 
     #[allow(clippy::too_many_lines)]
     fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResult {
+        let first_frame_id = frame.id();
+        let mut ip = 0;
+
         macro_rules! table_get {
             ($dst: expr, $table: expr, $key: expr) => {{
                 let table = self.stack_at(&frame, $table);
-                let table = trace_err(table.as_table(), &frame)?;
+                let table = trace(table.as_table(), &frame, ip)?;
                 self.set_stack_at(&frame, $dst, table.get($key).into());
             }};
         }
 
-        let first_frame_id = frame.id();
         loop {
             #[cfg(test)]
-            self.trace(&frame);
-            let instr = frame.curr_instr();
+            self.trace(&frame, ip);
+            let instr = frame.instr_at(ip);
+            ip += 1;
             match instr {
                 I::Return { src } => {
+                    ip = frame.ret_ip();
                     if let Some(val) = self.return_op(&mut frame, Some(src), first_frame_id) {
                         return Ok(val);
                     }
                 }
                 I::ReturnNil => {
+                    ip = frame.ret_ip();
                     if let Some(val) = self.return_op(&mut frame, None, first_frame_id) {
                         return Ok(val);
                     }
@@ -144,140 +170,175 @@ impl Vm {
                 I::Nil { dst } => self.set_stack_at(&frame, dst, RuaVal::nil()),
                 I::LFalseSkip { dst } => {
                     self.set_stack_at(&frame, dst, false.into());
-                    frame.skip_instr();
+                    ip += 1;
                 }
-                I::Neg(args) => trace_err(
+                I::Neg(args) => trace(
                     self.unary_op(&frame, args, |v| Ok((-v.as_number()?).into())),
                     &frame,
+                    ip,
                 )?,
                 I::Not(args) => {
-                    trace_err(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame)?;
+                    trace(self.unary_op(&frame, args, |v| Ok((!v.truthy()).into())), &frame, ip)?;
                 }
-                I::Len(args) => trace_err(self.len_op(&frame, args), &frame)?,
-                I::AddVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a + b), &frame)?,
-                I::SubVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a - b), &frame)?,
-                I::MulVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a * b), &frame)?,
-                I::DivVV(args) => trace_err(self.num_bin_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModVV(args) => trace_err(self.num_bin_op(&frame, args, REMAINDER), &frame)?,
-                I::PowVV(args) => trace_err(self.num_bin_op(&frame, args, f64::powf), &frame)?,
-                I::AddVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a + b), &frame)?,
-                I::SubVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a - b), &frame)?,
-                I::MulVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a * b), &frame)?,
-                I::DivVN(args) => trace_err(self.num_vn_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModVN(args) => trace_err(self.num_vn_op(&frame, args, REMAINDER), &frame)?,
-                I::PowVN(args) => trace_err(self.num_vn_op(&frame, args, f64::powf), &frame)?,
-                I::SubNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a - b), &frame)?,
-                I::DivNV(args) => trace_err(self.num_nv_op(&frame, args, |a, b| a / b), &frame)?,
-                I::ModNV(args) => trace_err(self.num_nv_op(&frame, args, REMAINDER), &frame)?,
-                I::PowNV(args) => trace_err(self.num_nv_op(&frame, args, f64::powf), &frame)?,
-                I::StrConcat(args) => trace_err(self.str_concat(&frame, args), &frame)?,
+                I::Len(args) => trace(self.len_op(&frame, args), &frame, ip)?,
+                I::AddVV(args) => trace(self.num_bin_op(&frame, args, |a, b| a + b), &frame, ip)?,
+                I::SubVV(args) => trace(self.num_bin_op(&frame, args, |a, b| a - b), &frame, ip)?,
+                I::MulVV(args) => trace(self.num_bin_op(&frame, args, |a, b| a * b), &frame, ip)?,
+                I::DivVV(args) => trace(self.num_bin_op(&frame, args, |a, b| a / b), &frame, ip)?,
+                I::ModVV(args) => trace(self.num_bin_op(&frame, args, REMAINDER), &frame, ip)?,
+                I::PowVV(args) => trace(self.num_bin_op(&frame, args, f64::powf), &frame, ip)?,
+                I::AddVN(args) => trace(self.num_vn_op(&frame, args, |a, b| a + b), &frame, ip)?,
+                I::SubVN(args) => trace(self.num_vn_op(&frame, args, |a, b| a - b), &frame, ip)?,
+                I::MulVN(args) => trace(self.num_vn_op(&frame, args, |a, b| a * b), &frame, ip)?,
+                I::DivVN(args) => trace(self.num_vn_op(&frame, args, |a, b| a / b), &frame, ip)?,
+                I::ModVN(args) => trace(self.num_vn_op(&frame, args, REMAINDER), &frame, ip)?,
+                I::PowVN(args) => trace(self.num_vn_op(&frame, args, f64::powf), &frame, ip)?,
+                I::SubNV(args) => trace(self.num_nv_op(&frame, args, |a, b| a - b), &frame, ip)?,
+                I::DivNV(args) => trace(self.num_nv_op(&frame, args, |a, b| a / b), &frame, ip)?,
+                I::ModNV(args) => trace(self.num_nv_op(&frame, args, REMAINDER), &frame, ip)?,
+                I::PowNV(args) => trace(self.num_nv_op(&frame, args, f64::powf), &frame, ip)?,
+                I::StrConcat(args) => trace(self.str_concat(&frame, args), &frame, ip)?,
                 I::EqVV(args) => {
-                    trace_err(self.skip_if_vv(&mut frame, args, |a, b| Ok(a == b)), &frame)?;
+                    ip = trace(self.skip_if_vv(&frame, args, |a, b| Ok(a == b), ip), &frame, ip)?;
                 }
                 I::NeqVV(args) => {
-                    trace_err(self.skip_if_vv(&mut frame, args, |a, b| Ok(a != b)), &frame)?;
+                    ip = trace(self.skip_if_vv(&frame, args, |a, b| Ok(a != b), ip), &frame, ip)?;
                 }
-                I::LtVV(args) => trace_err(
-                    self.skip_if_vv(&mut frame, args, |a, b| Ok(a.as_number()? < b.as_number()?)),
-                    &frame,
-                )?,
-                I::LeVV(args) => trace_err(
-                    self.skip_if_vv(&mut frame, args, |a, b| Ok(a.as_number()? <= b.as_number()?)),
-                    &frame,
-                )?,
-                I::EqVN { lhs, rhs } => {
-                    trace_err(
-                        self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a == &b.into())),
+                I::LtVV(args) => {
+                    ip = trace(
+                        self.skip_if_vv(
+                            &frame,
+                            args,
+                            |a, b| Ok(a.as_number()? < b.as_number()?),
+                            ip,
+                        ),
                         &frame,
+                        ip,
+                    )?;
+                }
+                I::LeVV(args) => {
+                    ip = trace(
+                        self.skip_if_vv(
+                            &frame,
+                            args,
+                            |a, b| Ok(a.as_number()? <= b.as_number()?),
+                            ip,
+                        ),
+                        &frame,
+                        ip,
+                    )?;
+                }
+                I::EqVN { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a == &b.into()), ip),
+                        &frame,
+                        ip,
                     )?;
                 }
                 I::NeqVN { lhs, rhs } => {
-                    trace_err(
-                        self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a != &b.into())),
+                    ip = trace(
+                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a != &b.into()), ip),
                         &frame,
+                        ip,
                     )?;
                 }
-                I::LtVN { lhs, rhs } => trace_err(
-                    self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a.as_number()? < b)),
-                    &frame,
-                )?,
-                I::LeVN { lhs, rhs } => trace_err(
-                    self.skip_if_vn(&mut frame, lhs, rhs, |a, b| Ok(a.as_number()? <= b)),
-                    &frame,
-                )?,
-                I::EqNV { lhs, rhs } => {
-                    trace_err(
-                        self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) == b)),
+                I::LtVN { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a.as_number()? < b), ip),
                         &frame,
+                        ip,
+                    )?;
+                }
+                I::LeVN { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a.as_number()? <= b), ip),
+                        &frame,
+                        ip,
+                    )?;
+                }
+                I::EqNV { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) == b), ip),
+                        &frame,
+                        ip,
                     )?;
                 }
                 I::NeqNV { lhs, rhs } => {
-                    trace_err(
-                        self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) != b)),
+                    ip = trace(
+                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(&RuaVal::from(a) != b), ip),
                         &frame,
+                        ip,
                     )?;
                 }
-                I::LtNV { lhs, rhs } => trace_err(
-                    self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(a < b.as_number()?)),
-                    &frame,
-                )?,
-                I::LeNV { lhs, rhs } => trace_err(
-                    self.skip_if_nv(&mut frame, lhs, rhs, |a, b| Ok(a <= b.as_number()?)),
-                    &frame,
-                )?,
+                I::LtNV { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(a < b.as_number()?), ip),
+                        &frame,
+                        ip,
+                    )?;
+                }
+                I::LeNV { lhs, rhs } => {
+                    ip = trace(
+                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(a <= b.as_number()?), ip),
+                        &frame,
+                        ip,
+                    )?;
+                }
                 I::Test { src } => {
                     let val = self.stack_at(&frame, src);
                     if val.truthy() {
-                        frame.skip_instr();
+                        ip += 1;
                     }
                 }
                 I::Untest { src } => {
                     let val = self.stack_at(&frame, src);
                     if !val.truthy() {
-                        frame.skip_instr();
+                        ip += 1;
                     }
                 }
                 I::TestSet { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     if val.truthy() {
-                        frame.skip_instr();
+                        ip += 1;
                     }
                     self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::UntestSet { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     if !val.truthy() {
-                        frame.skip_instr();
+                        ip += 1;
                     }
                     self.set_stack_at(&frame, dst, val.clone());
                 }
                 I::SetGlobal { dst, src } => {
                     let val = self.stack_at(&frame, src);
                     let key = frame.read_string(dst);
-                    trace_err(self.global.insert(key.into(), val.clone()), &frame)?;
+                    trace(self.global.insert(key.into(), val.clone()), &frame, ip)?;
                 }
                 I::GetGlobal { dst, src } => {
                     let key = frame.read_string(src);
                     self.set_stack_at(&frame, dst, self.global.get(&key.into()).into());
                 }
-                I::Call { base, nargs } => self.call(base, nargs, &mut frame)?,
+                I::Call { base, nargs } => ip = self.call(base, nargs, &mut frame, ip)?,
                 I::Mv(UnArgs { dst, src }) => {
                     let val = self.stack_at(&frame, src);
                     self.set_stack_at(&frame, dst, val.clone());
                 }
-                I::Jmp(offset) => frame.rel_jmp(offset),
+                I::Jmp(offset) => {
+                    ip = compute_jmp(ip, offset);
+                },
                 I::ForPrep { from, offset } => {
-                    trace_err(self.for_prep(&mut frame, from, offset), &frame)?;
+                    ip = trace(self.for_prep(&frame, from, offset, ip), &frame, ip)?;
                 }
                 I::ForLoop { from, offset } => {
-                    self.for_loop(&mut frame, from, offset);
+                    ip = self.for_loop(&frame, from, offset, ip);
                 }
                 I::NewTable { dst, capacity } => {
                     let table = self.new_table(capacity);
                     self.set_stack_at(&frame, dst, table);
                 }
                 I::InsertV { table, key, val } => {
-                    self.table_insert(&frame, table, val, self.stack_at(&frame, key).clone())?;
+                    self.table_insert(&frame, table, val, self.stack_at(&frame, key).clone(), ip)?;
                 }
                 I::InsertS { table, key, val } => {
                     self.table_insert(
@@ -285,6 +346,7 @@ impl Vm {
                         table,
                         val,
                         frame.read_string(StringHandle::from_unchecked(key)).into(),
+                        ip,
                     )?;
                 }
                 I::InsertN { table, key, val } => {
@@ -293,6 +355,7 @@ impl Vm {
                         table,
                         val,
                         frame.read_number(NumberHandle::from_unchecked(key)).into(),
+                        ip,
                     )?;
                 }
                 I::IndexV(BinArgs { dst, lhs, rhs }) => {
@@ -313,7 +376,7 @@ impl Vm {
                     );
                 }
                 I::Closure { dst, src } => {
-                    self.closure(&mut frame, dst, src);
+                    ip = self.closure(&frame, dst, src, ip);
                 }
                 I::CloseUpvalues { from, to } => {
                     self.close_upvalues(from.into(), to.into());
@@ -339,11 +402,12 @@ impl Vm {
         table: u8,
         val: u8,
         key: RuaVal,
+        ip: usize,
     ) -> Result<(), EvalErrorTraced> {
         let table = self.stack_at(frame, table);
-        let table = trace_err(table.as_table(), frame)?;
+        let table = trace(table.as_table(), frame, ip)?;
         let val = self.stack_at(frame, val);
-        trace_err(table.insert(key, val.clone()), frame)?;
+        trace(table.insert(key, val.clone()), frame, ip)?;
         Ok(())
     }
 
@@ -351,7 +415,7 @@ impl Vm {
         (step >= 0.0 && from <= to) || (step < 0.0 && from >= to)
     }
 
-    fn for_loop(&mut self, frame: &mut CallFrame, from: u8, offset: u16) {
+    fn for_loop(&mut self, frame: &CallFrame, from: u8, offset: u16, ip: usize) -> usize {
         const ERR_MSG: &str = "Loop vals must be numbers (checked at for_prep)";
 
         let step_val = self.stack_at(frame, from + 2);
@@ -364,13 +428,21 @@ impl Vm {
 
         let from_val = from_val + step_val;
         if Self::continue_loop(from_val, to_val, step_val) {
-            frame.backward_jmp(offset);
             self.set_stack_at(frame, from + 3, from_val.into());
             self.set_stack_at(frame, from, from_val.into());
+            ip - offset as usize
+        } else {
+            ip
         }
     }
 
-    fn for_prep(&mut self, frame: &mut CallFrame, from: u8, offset: u16) -> Result<(), EvalError> {
+    fn for_prep(
+        &mut self,
+        frame: &CallFrame,
+        from: u8,
+        offset: u16,
+        ip: usize,
+    ) -> Result<usize, EvalError> {
         let step_val = self.stack_at(frame, from + 2);
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
@@ -381,13 +453,19 @@ impl Vm {
 
         if Self::continue_loop(from_val, to_val, step_val) {
             self.set_stack_at(frame, from + 3, from_val.into());
+            Ok(ip)
         } else {
-            frame.forward_jmp(offset);
+            Ok(ip + offset as usize)
         }
-        Ok(())
     }
 
-    fn call(&mut self, base: u8, nargs: u8, frame: &mut CallFrame) -> Result<(), EvalErrorTraced> {
+    fn call(
+        &mut self,
+        base: u8,
+        nargs: u8,
+        frame: &mut CallFrame,
+        curr_ip: usize,
+    ) -> Result<usize, EvalErrorTraced> {
         let func = self.stack_at(frame, base).clone();
         match func.into_callable() {
             Ok(Callable::Closure(closure)) => {
@@ -405,26 +483,29 @@ impl Vm {
                     "Started tracing {:?}, starting at stack {stack_start_pos}",
                     closure.function()
                 );
-                frame.set_ret_pos(base);
-                let old_frame =
-                    std::mem::replace(frame, CallFrame::new(closure, stack_start_pos, og_len));
+                let old_frame = std::mem::replace(
+                    frame,
+                    CallFrame::new(closure, stack_start_pos, og_len, base, curr_ip),
+                );
                 self.frames.push(old_frame);
-                Ok(())
+                Ok(0)
             }
             Ok(Callable::Native(f)) => {
                 let arg_start = frame.resolve_reg(base) + 1;
                 let retval = match f.call(self, arg_start, nargs) {
                     Ok(v) => v,
                     Err(mut e) => {
-                        e.push_stack_trace(frame.func_name(), frame.curr_line());
+                        e.push_stack_trace(frame.func_name(), frame.line_at(curr_ip));
+                        e.push_stack_trace("".into(), frame.ret_ip());
                         return Err(e);
                     }
                 };
                 self.set_stack_at(frame, base, retval);
-                Ok(())
+                Ok(curr_ip)
             }
             Err(e) => {
-                let stack_trace = vec![(frame.func_name(), frame.curr_line())];
+                let stack_trace =
+                    vec![(frame.func_name(), frame.line_at(curr_ip)), ("".into(), frame.ret_ip())];
                 Err(EvalErrorTraced::new(e, stack_trace))
             }
         }
@@ -444,13 +525,14 @@ impl Vm {
             ),
             None => RuaVal::nil(),
         };
+        let retval_dst = frame.retval_dst();
         self.stack.truncate(frame.prev_stack_size());
         if frame.id() == first_frame_id {
             return Some(retval);
         }
         match self.frames.pop() {
             Some(f) => {
-                self.set_stack_at(&f, f.ret_pos(), retval);
+                self.set_stack_at(&f, retval_dst, retval);
                 *frame = f;
                 None
             }
@@ -458,12 +540,12 @@ impl Vm {
         }
     }
 
-    fn closure(&mut self, frame: &mut CallFrame, dst: u8, f: FnHandle) {
+    fn closure(&mut self, frame: &CallFrame, dst: u8, f: FnHandle, mut ip: usize) -> usize {
         let f = frame.read_function(f);
         let upvalue_count = f.upvalue_count();
         let mut closure = Closure::new(f);
         for _ in 0..upvalue_count {
-            if let I::Upvalue(up) = frame.curr_instr() {
+            if let I::Upvalue(up) = frame.instr_at(ip) {
                 match up.location() {
                     UpvalueLocation::ParentStack(local) => {
                         self.capture_upvalue(&mut closure, frame.stack_start() + local.pos());
@@ -472,12 +554,14 @@ impl Vm {
                         closure.push_upvalue(frame.closure().get_upvalue(upvalue));
                     }
                 }
+                ip += 1;
             } else {
                 unreachable!("Expected {upvalue_count} upvalues after this closure");
             }
         }
         let closure = Rc::new(closure).into_rua(self);
         self.set_stack_at(frame, dst, closure);
+        ip
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -555,46 +639,52 @@ impl Vm {
     #[inline]
     fn skip_if_vv<F: FnOnce(&RuaVal, &RuaVal) -> Result<bool, EvalError>>(
         &self,
-        frame: &mut CallFrame,
+        frame: &CallFrame,
         args: VVJmpArgs,
         pred: F,
-    ) -> Result<(), EvalError> {
+        ip: usize,
+    ) -> Result<usize, EvalError> {
         let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
         if pred(a, b)? {
-            frame.skip_instr();
+            Ok(ip + 1)
+        } else {
+            Ok(ip)
         }
-        Ok(())
         // TODO optimize JMPs to avoid another instr dispatch cycle
     }
 
     #[inline]
     fn skip_if_vn<F: FnOnce(&RuaVal, f64) -> Result<bool, EvalError>>(
         &self,
-        frame: &mut CallFrame,
+        frame: &CallFrame,
         lhs: u8,
         rhs: NumberHandle,
         pred: F,
-    ) -> Result<(), EvalError> {
+        ip: usize,
+    ) -> Result<usize, EvalError> {
         let (a, b) = (self.stack_at(frame, lhs), frame.read_number(rhs));
         if pred(a, b)? {
-            frame.skip_instr();
+            Ok(ip + 1)
+        } else {
+            Ok(ip)
         }
-        Ok(())
     }
 
     #[inline]
     fn skip_if_nv<F: FnOnce(f64, &RuaVal) -> Result<bool, EvalError>>(
         &self,
-        frame: &mut CallFrame,
+        frame: &CallFrame,
         lhs: NumberHandle,
         rhs: u8,
         pred: F,
-    ) -> Result<(), EvalError> {
+        ip: usize,
+    ) -> Result<usize, EvalError> {
         let (a, b) = (frame.read_number(lhs), self.stack_at(frame, rhs));
         if pred(a, b)? {
-            frame.skip_instr();
+            Ok(ip + 1)
+        } else {
+            Ok(ip)
         }
-        Ok(())
     }
 
     #[inline]
@@ -655,11 +745,11 @@ impl Vm {
     }
 
     #[cfg(test)] // TODO add cfg for tracing
-    fn trace(&self, frame: &CallFrame) {
+    fn trace(&self, frame: &CallFrame, ip: usize) {
         for (i, el) in self.stack.iter().enumerate() {
             println!("[ {el:?} ] {}", if i == frame.stack_start() { "<-" } else { "" });
         }
-        frame.print_curr_instr();
+        frame.print_instr_at(ip);
     }
 
     #[cfg(test)]
@@ -745,6 +835,13 @@ impl Vm {
     const fn id(&self) -> NonZeroU32 {
         self.id
     }
+}
+
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_wrap)]
+#[inline]
+const fn compute_jmp(ip: usize, offset: i16) -> usize {
+    (ip as isize + offset as isize) as usize
 }
 
 struct GcData {
@@ -847,12 +944,12 @@ impl Drop for Vm {
 }
 
 #[inline]
-fn trace_err<T>(res: Result<T, EvalError>, frame: &CallFrame) -> Result<T, EvalErrorTraced> {
-    res.map_err(|e| trace(e, frame))
+fn trace<T>(res: Result<T, EvalError>, frame: &CallFrame, ip: usize) -> Result<T, EvalErrorTraced> {
+    res.map_err(|e| trace_err(e, frame, ip))
 }
 
-fn trace(e: EvalError, frame: &CallFrame) -> EvalErrorTraced {
-    let stack_trace = vec![(frame.func_name(), frame.curr_line())];
+fn trace_err(e: EvalError, frame: &CallFrame, ip: usize) -> EvalErrorTraced {
+    let stack_trace = vec![(frame.func_name(), frame.line_at(ip)), ("".into(), frame.ret_ip())];
     EvalErrorTraced::new(e, stack_trace)
 }
 

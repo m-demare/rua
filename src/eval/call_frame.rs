@@ -1,5 +1,3 @@
-use struct_invariant::invariant;
-
 use crate::compiler::bytecode::{FnHandle, Instruction, NumberHandle, StringHandle};
 
 use std::{
@@ -12,56 +10,41 @@ use super::vals::{closure::Closure, function::Function, string::RuaString};
 
 pub struct CallFrame {
     closure: Rc<Closure>,
-    ip: usize,
     start: usize,
     id: usize,
-    ret_pos: u8,
+    retval_dst: u8,
     prev_stack_size: usize,
+    ret_ip: usize,
 }
 
-#[invariant(self.closure.function().chunk().code().len() >= self.ip, "Invalid IP")]
 impl CallFrame {
-    pub fn new(closure: Rc<Closure>, start: usize, prev_stack_size: usize) -> Self {
+    pub fn new(
+        closure: Rc<Closure>,
+        start: usize,
+        prev_stack_size: usize,
+        retval_dst: u8,
+        ret_ip: usize,
+    ) -> Self {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         Self {
             closure,
-            ip: 0,
             start,
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
-            ret_pos: 0,
+            retval_dst,
             prev_stack_size,
+            ret_ip,
         }
     }
 
     #[cfg(test)]
-    pub fn print_curr_instr(&self) {
-        let instr = &self.closure.function().chunk().code()[self.ip];
-        println!("{} {:?}", self.ip, instr);
+    pub fn print_instr_at(&self, ip: usize) {
+        let instr = &self.closure.function().chunk().code()[ip];
+        println!("{ip} {instr:?}");
     }
 
     #[inline]
-    pub fn curr_instr(&mut self) -> Instruction {
-        let instr = self.closure.function().chunk().code()[self.ip];
-        self.ip += 1;
-        instr
-    }
-
-    #[inline]
-    pub fn skip_instr(&mut self) {
-        self.ip += 1;
-    }
-
-    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-    pub fn rel_jmp(&mut self, offset: i16) {
-        self.ip = (self.ip as isize + offset as isize) as usize;
-    }
-
-    pub fn forward_jmp(&mut self, offset: u16) {
-        self.ip += offset as usize;
-    }
-
-    pub fn backward_jmp(&mut self, offset: u16) {
-        self.ip -= offset as usize;
+    pub fn instr_at(&self, ip: usize) -> Instruction {
+        self.closure.function().chunk().code()[ip]
     }
 
     #[inline]
@@ -90,29 +73,29 @@ impl CallFrame {
         self.closure.function().pretty_name()
     }
 
-    pub fn curr_line(&self) -> usize {
-        self.closure.function().chunk().line_at(self.ip)
+    pub fn line_at(&self, ip: usize) -> usize {
+        self.closure.function().chunk().line_at(ip)
     }
 
-    pub fn closure(&self) -> &Rc<Closure> {
+    pub const fn closure(&self) -> &Rc<Closure> {
         &self.closure
     }
 
-    pub fn set_ret_pos(&mut self, ret_pos: u8) {
-        self.ret_pos = ret_pos
+    pub const fn retval_dst(&self) -> u8 {
+        self.retval_dst
     }
 
-    pub fn ret_pos(&self) -> u8 {
-        self.ret_pos
-    }
-
-    pub fn prev_stack_size(&self) -> usize {
+    pub const fn prev_stack_size(&self) -> usize {
         self.prev_stack_size
     }
 
     #[inline]
-    pub fn resolve_reg(&self, reg: u8) -> usize {
+    pub const fn resolve_reg(&self, reg: u8) -> usize {
         self.stack_start() + reg as usize
+    }
+
+    pub const fn ret_ip(&self) -> usize {
+        self.ret_ip
     }
 }
 
@@ -120,8 +103,7 @@ impl Debug for CallFrame {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "Callframe with ip {}, starting at stack position {}, at function {}",
-            self.ip,
+            "Callframe starting at stack position {}, for function {}",
             self.start,
             self.closure.function().pretty_name()
         )

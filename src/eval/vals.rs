@@ -293,6 +293,10 @@ impl EvalErrorTraced {
     pub(crate) fn push_stack_trace(&mut self, name: Rc<str>, line: usize) {
         self.0 .1.push((name, line));
     }
+
+    pub(crate) fn stack_trace(&mut self) -> &mut StackTrace {
+        &mut self.0 .1
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq)]
