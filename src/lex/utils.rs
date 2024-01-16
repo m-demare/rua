@@ -43,7 +43,7 @@ where
         };
     }
     #[allow(clippy::cast_precision_loss)]
-    let precision: f64 = u64::from(radix).pow(i as u32) as f64;
+    let precision = u64::from(radix).pow(i as u32) as f64;
     decimal_part = (decimal_part * precision).round() / precision;
     Ok(int_part + decimal_part)
 }

@@ -16,4 +16,7 @@ pub struct Args {
     /// Skip script evaluation
     #[arg(short, long = "parse-only", default_value_t = false)]
     pub(super) parse_only: bool,
+
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub(super) args: Vec<Vec<u8>>,
 }

@@ -430,7 +430,7 @@ where
         for (key, val) in iter.enumerate() {
             table
                 .insert(
-                    try_into_f64(key).expect("Array too large for Table::from_iter").into(),
+                    try_into_f64(key + 1).expect("Array too large for Table::from_iter").into(),
                     val.into(),
                 )
                 .expect("Table::from_iter with invalid keys");

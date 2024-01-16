@@ -4,7 +4,7 @@
 #![allow(clippy::option_if_let_else)]
 #![feature(hash_raw_entry)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, rc::Rc};
 
 use clap::Parser;
 use cli::Args;
@@ -18,11 +18,12 @@ pub mod lex;
 mod repl;
 
 fn main() {
-    let args = Args::parse();
+    let mut args = Args::parse();
 
+    let varargs: Vec<_> = std::mem::take(&mut args.args).into_iter().map(Into::into).collect();
     match &args.path {
         Some(path) => {
-            match evaluate(path, &args) {
+            match evaluate(path, &args, &varargs) {
                 Ok(()) => {}
                 Err(parse_err) => {
                     println!("ParseError: {parse_err}");
@@ -35,10 +36,10 @@ fn main() {
     }
 }
 
-fn evaluate(path: &PathBuf, args: &Args) -> Result<(), ParseError> {
+fn evaluate(path: &PathBuf, args: &Args, varargs: &[Rc<[u8]>]) -> Result<(), ParseError> {
     let contents = std::fs::read(path).expect("Error: input file does not exist");
 
-    let mut vm = Vm::new();
+    let mut vm = Vm::with_args(varargs);
 
     let prog = compile(contents.iter().copied(), &mut vm)?;
 

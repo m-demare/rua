@@ -60,7 +60,8 @@ const REMAINDER: fn(f64, f64) -> f64 = f64::rem_euclid;
 
 impl Vm {
     #[allow(clippy::missing_panics_doc)]
-    pub fn new() -> Self {
+    #[must_use]
+    pub fn with_args(args: &[Rc<[u8]>]) -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(1);
 
         // No need to call register_table on global, it shouldn't
@@ -79,7 +80,17 @@ impl Vm {
                 .expect("Vm id cannot be zero"),
         };
         vm.global = default_global(&mut vm);
+
+        let args: Table = args.iter().map(|s| vm.new_string(s.clone())).collect();
+        let args = args.into_rua(&mut vm);
+        let arg_str = vm.new_string((*b"arg").into()).into();
+        vm.global.insert(arg_str, args).expect("arg is a valid table key");
         vm
+    }
+
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_args(&[])
     }
 
     /// # Errors
@@ -326,7 +337,7 @@ impl Vm {
                 }
                 I::Jmp(offset) => {
                     ip = compute_jmp(ip, offset);
-                },
+                }
                 I::ForPrep { from, offset } => {
                     ip = trace(self.for_prep(&frame, from, offset, ip), &frame, ip)?;
                 }

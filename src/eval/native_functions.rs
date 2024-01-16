@@ -35,7 +35,7 @@ fn tostring(arg: RuaVal) -> String {
 #[allow(clippy::float_cmp, clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
     let radix = radix.map_or(10.0, identity);
-    let r: u32 = radix.round() as u32;
+    let r = radix.round() as u32;
     if f64::from(r) != radix {
         return Err(EvalError::Exception(
             format!("Bad argument radix: {radix} is not an integer").into(),
