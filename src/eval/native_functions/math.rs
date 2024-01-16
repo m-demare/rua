@@ -5,7 +5,7 @@ use crate::eval::Vm;
 use super::super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal,
+    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultTraced, RuaVal,
 };
 use rua_func_macros::rua_func;
 
@@ -20,13 +20,13 @@ fn abs(n: f64) -> f64 {
 }
 
 #[rua_func]
-fn max(ctxt: &mut FunctionContext, _: RuaVal) -> RuaResultUntraced {
+fn max(ctxt: &mut FunctionContext, _: RuaVal) -> RuaResult {
     let max = ctxt.args().iter().try_fold(f64::MIN, |acc, v| v.as_number().map(|v| acc.max(v)))?;
     Ok(max.into())
 }
 
 #[rua_func]
-fn min(ctxt: &mut FunctionContext, _: RuaVal) -> RuaResultUntraced {
+fn min(ctxt: &mut FunctionContext, _: RuaVal) -> RuaResult {
     let min = ctxt.args().iter().try_fold(f64::MIN, |acc, v| v.as_number().map(|v| acc.min(v)))?;
     Ok(min.into())
 }

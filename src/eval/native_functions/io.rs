@@ -5,7 +5,7 @@ use crate::eval::Vm;
 use super::super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    IntoRuaVal, RuaResult, RuaVal,
+    IntoRuaVal, RuaResultTraced, RuaVal,
 };
 use rua_func_macros::rua_func;
 

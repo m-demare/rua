@@ -8,7 +8,8 @@ use syn::{parse_macro_input, FnArg, ItemFn, PatType, Type, TypePath, TypeReferen
 
 enum OutputWrappers {
     Resultify,
-    IntoResult,
+    Result,
+    ResultTraced,
 }
 
 #[derive(Debug, FromMeta)]
@@ -43,7 +44,7 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
     let (parameters, validate_cant_args) = get_parameters(&func, &macro_args);
 
     let output = quote!(
-        #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResult {
+        #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResultTraced {
             let name_str = #name_str;
             #validate_cant_args
             #[inline]
@@ -63,7 +64,11 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
         syn::ReturnType::Type(_, ref t) => match t.as_ref() {
             Type::Path(p) => {
                 if p.path.segments.first().unwrap().ident.to_string().contains("Result") {
-                    OutputWrappers::IntoResult
+                    if p.path.segments.first().unwrap().ident.to_string().contains("Traced") {
+                        OutputWrappers::ResultTraced
+                    } else {
+                        OutputWrappers::Result
+                    }
                 } else {
                     OutputWrappers::Resultify
                 }
@@ -73,10 +78,13 @@ fn wrap_output(input_fn: &ItemFn) -> proc_macro2::TokenStream {
     };
     match wrap_output_with {
         OutputWrappers::Resultify => quote!(Ok(res.into_rua(ctxt.vm))),
-        OutputWrappers::IntoResult => quote!(match res {
+        OutputWrappers::ResultTraced => {
+            quote!(res.map_err(|mut e| { e.push_stack_trace(#fn_name.into(), 0); e }))
+        }
+        OutputWrappers::Result => quote!(match res {
             Ok(r) => Ok(r.into_rua(ctxt.vm)),
             Err(mut e) => {
-                let mut e: EvalErrorTraced = e.into();
+                let mut e = EvalErrorTraced::new(e.into(), Default::default());
                 e.push_stack_trace(#fn_name.into(), 0);
                 Err(e)
             }

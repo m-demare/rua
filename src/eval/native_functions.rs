@@ -9,7 +9,7 @@ use crate::{
 use super::vals::{
     function::{FunctionContext, NativeFunction},
     table::Table,
-    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultUntraced, RuaVal,
+    EvalError, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultTraced, RuaVal,
 };
 use rua_func_macros::rua_func;
 
@@ -33,7 +33,7 @@ fn tostring(arg: RuaVal) -> String {
 
 #[rua_func]
 #[allow(clippy::float_cmp, clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResultUntraced {
+fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResult {
     let radix = radix.map_or(10.0, identity);
     let r = radix.round() as u32;
     if f64::from(r) != radix {
@@ -59,7 +59,7 @@ fn rua_type(val: RuaVal) -> String {
 }
 
 #[rua_func]
-fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResultUntraced {
+fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
     if assertion.truthy() {
         Ok(assertion)
     } else {

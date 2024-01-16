@@ -34,7 +34,7 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{Callable, EvalErrorTraced, RuaResult, RuaResultUntraced, Upvalue, UpvalueObj},
+    vals::{Callable, EvalErrorTraced, RuaResult, RuaResultTraced, Upvalue, UpvalueObj},
     weak_interner::WeakInterner,
 };
 
@@ -97,7 +97,7 @@ impl Vm {
     ///
     /// Returns any errors encountered during evaluation
     #[allow(clippy::missing_panics_doc)]
-    pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResult {
+    pub fn interpret(&mut self, closure: Rc<Closure>) -> RuaResultTraced {
         let og_len = self.stack.len();
         #[cfg(test)]
         println!("Started tracing {:?}, starting at stack {og_len}\n\n", closure.function());
@@ -138,7 +138,7 @@ impl Vm {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResult {
+    fn interpret_error_boundary(&mut self, mut frame: CallFrame) -> RuaResultTraced {
         let first_frame_id = frame.id();
         let mut ip = 0;
 
@@ -581,7 +581,7 @@ impl Vm {
     }
 
     #[inline]
-    fn unary_op<F: Fn(&RuaVal) -> RuaResultUntraced>(
+    fn unary_op<F: Fn(&RuaVal) -> RuaResult>(
         &mut self,
         frame: &CallFrame,
         args: UnArgs,
@@ -593,7 +593,7 @@ impl Vm {
     }
 
     #[inline]
-    fn binary_op<F: Fn(&RuaVal, &RuaVal) -> RuaResultUntraced>(
+    fn binary_op<F: Fn(&RuaVal, &RuaVal) -> RuaResult>(
         &mut self,
         frame: &CallFrame,
         args: BinArgs,

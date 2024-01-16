@@ -69,8 +69,8 @@ pub enum Upvalue {
 
 pub type UpvalueObj = Rc<RefCell<Upvalue>>;
 
-pub type RuaResult = Result<RuaVal, EvalErrorTraced>;
-pub type RuaResultUntraced = Result<RuaVal, EvalError>;
+pub type RuaResultTraced = Result<RuaVal, EvalErrorTraced>;
+pub type RuaResult = Result<RuaVal, EvalError>;
 
 pub enum Callable {
     Closure(Rc<Closure>),
@@ -328,12 +328,6 @@ impl Display for EvalErrorTraced {
             writeln!(f, "{func} at {line}")?;
         }
         Ok(())
-    }
-}
-
-impl From<EvalError> for EvalErrorTraced {
-    fn from(err: EvalError) -> Self {
-        Self::new(err, StackTrace::new())
     }
 }
 

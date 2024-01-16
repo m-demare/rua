@@ -9,7 +9,7 @@ use std::{
 use crate::{compiler::bytecode::Chunk, eval::Vm};
 
 use super::string::RuaString;
-use super::{RuaResult, RuaVal};
+use super::{RuaResultTraced, RuaVal};
 
 #[derive(PartialEq)]
 struct FunctionInner {
@@ -27,7 +27,7 @@ pub struct Function {
 
 #[derive(Clone)]
 pub struct NativeFunction {
-    func: &'static dyn Fn(&mut FunctionContext) -> RuaResult,
+    func: &'static dyn Fn(&mut FunctionContext) -> RuaResultTraced,
 }
 
 pub struct FunctionContext<'vm> {
@@ -74,11 +74,11 @@ impl Function {
 }
 
 impl NativeFunction {
-    pub fn new(func: &'static dyn Fn(&mut FunctionContext) -> RuaResult) -> Self {
+    pub fn new(func: &'static dyn Fn(&mut FunctionContext) -> RuaResultTraced) -> Self {
         Self { func }
     }
 
-    pub fn call(&self, vm: &mut Vm, args_start: usize, nargs: u8) -> RuaResult {
+    pub fn call(&self, vm: &mut Vm, args_start: usize, nargs: u8) -> RuaResultTraced {
         (self.func)(&mut FunctionContext::new(vm, args_start, nargs))
     }
 }
