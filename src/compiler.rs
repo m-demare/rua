@@ -652,7 +652,20 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
             }
         }
         let src = desc.to_any_reg(self)?;
-        self.instruction(I::Return { src }, line);
+
+        match self.current_chunk().code().last() {
+            Some(I::Call { base, nargs })
+                if matches!(desc, ExprDesc { kind: ExprKind::Tmp { .. }, .. }) =>
+            {
+                let (base, nargs) = (*base, *nargs);
+                let pos = self.current_chunk().code().len() - 1;
+                self.current_chunk_mut().replace_instruction(pos, I::TailCall { base, nargs });
+            }
+            _ => {
+                self.instruction(I::Return { src }, line);
+            }
+        }
+
         self.free_reg(src);
         Ok(())
     }

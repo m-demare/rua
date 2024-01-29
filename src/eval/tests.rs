@@ -1090,7 +1090,7 @@ test_interpret!(
 
 test_interpret!(
     long_table_literal,
-"local a = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, }",
+    &("local a = {".to_owned() + &"1, ".repeat(450) + "}"),
     |_| Ok(RuaVal::nil()) // Just testing it doesn't panic due to bad register allocation
 );
 
@@ -1103,4 +1103,31 @@ test_interpret!(
     assert(arg[3] == nil)
 ",
     |_| Ok(RuaVal::nil())
+);
+
+test_interpret!(
+    test_tail_call,
+    "
+local DEFAULT = 1
+local function fact(n, acc)
+    if n < 2 then return acc end
+    return fact(n-1, n*acc)
+end
+return fact(30, DEFAULT)
+",
+    |_| Ok(2.652_528_598_121_911e32.into())
+);
+
+test_interpret!(
+    test_stack_overflow,
+    "
+local DEFAULT = 1
+local function fact(n, acc)
+    if n < 2 then return acc end
+    local res = fact(n-1, n*acc)
+    return res
+end
+return fact(50, DEFAULT)
+",
+    |_| Err(EvalErrorTraced::new(EvalError::StackOverflow, vec![("fact".into(), 5); 11]))
 );

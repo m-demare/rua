@@ -182,3 +182,32 @@ fn test_table_literal() {
         ))
     });
 }
+
+#[test]
+fn test_tail_rec() {
+    let input = "return foo(bar(a + b))";
+
+    test_compile(input, |vm| {
+        Ok(Chunk::new(
+            vec![
+                I::GetGlobal { dst: 0, src: StringHandle(0) },
+                I::GetGlobal { dst: 1, src: StringHandle(1) },
+                I::GetGlobal { dst: 2, src: StringHandle(2) },
+                I::GetGlobal { dst: 3, src: StringHandle(3) },
+                I::AddVV(BinArgs { dst: 2, lhs: 2, rhs: 3 }),
+                I::Call { base: 1, nargs: 1 },
+                I::TailCall { base: 0, nargs: 1 },
+                I::ReturnNil,
+            ],
+            vec![],
+            vec![
+                vm.new_string((*b"foo").into()),
+                vm.new_string((*b"bar").into()),
+                vm.new_string((*b"a").into()),
+                vm.new_string((*b"b").into()),
+            ],
+            Vec::new(),
+            vec![(0, 4), (1, 3), (0, 1)],
+        ))
+    });
+}

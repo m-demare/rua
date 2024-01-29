@@ -34,7 +34,10 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
-    vals::{Callable, EvalErrorTraced, RuaResult, RuaResultTraced, Upvalue, UpvalueObj},
+    vals::{
+        function::NativeFunction, Callable, EvalErrorTraced, RuaResult, RuaResultTraced, Upvalue,
+        UpvalueObj,
+    },
     weak_interner::WeakInterner,
 };
 
@@ -43,7 +46,10 @@ mod macros;
 mod tests;
 mod weak_interner;
 
-const MIN_STACK_SIZE: usize = u8::MAX as usize;
+#[cfg(not(test))]
+const RECURSION_LIMIT: usize = 500_000;
+#[cfg(test)]
+const RECURSION_LIMIT: usize = 10;
 
 pub struct Vm {
     stack: Vec<RuaVal>,
@@ -69,7 +75,7 @@ impl Vm {
         let global = Table::new().into();
 
         let mut vm = Self {
-            stack: Vec::with_capacity(MIN_STACK_SIZE),
+            stack: Vec::with_capacity(u8::MAX as usize),
             frames: Vec::new(),
             global,
             identifiers: Trie::new(),
@@ -331,6 +337,14 @@ impl Vm {
                     self.set_stack_at(&frame, dst, self.global.get(&key.into()).into());
                 }
                 I::Call { base, nargs } => ip = self.call(base, nargs, &mut frame, ip)?,
+                I::TailCall { base, nargs } => {
+                    let (new_ip, val) =
+                        self.tail_call(base, nargs, &mut frame, ip, first_frame_id)?;
+                    ip = new_ip;
+                    if let Some(val) = val {
+                        return Ok(val);
+                    }
+                }
                 I::Mv(UnArgs { dst, src }) => {
                     let val = self.stack_at(&frame, src);
                     self.set_stack_at(&frame, dst, val.clone());
@@ -480,39 +494,39 @@ impl Vm {
         let func = self.stack_at(frame, base).clone();
         match func.into_callable() {
             Ok(Callable::Closure(closure)) => {
-                let og_len = self.stack.len();
-                let stack_start_pos = frame.resolve_reg(base);
-                self.stack.resize(
-                    og_len.max(stack_start_pos + closure.function().max_used_regs() as usize),
-                    RuaVal::nil(),
-                );
-                for i in 0..closure.function().arity().saturating_sub(nargs) {
-                    self.set_stack_at(frame, base + nargs + i, RuaVal::nil());
-                }
-                #[cfg(test)]
-                println!(
-                    "Started tracing {:?}, starting at stack {stack_start_pos}",
-                    closure.function()
-                );
-                let old_frame = std::mem::replace(
+                trace(
+                    self.call_closure::<false>(frame, closure, base, nargs, curr_ip),
                     frame,
-                    CallFrame::new(closure, stack_start_pos, og_len, base, curr_ip),
-                );
-                self.frames.push(old_frame);
+                    curr_ip,
+                )?;
                 Ok(0)
             }
             Ok(Callable::Native(f)) => {
-                let arg_start = frame.resolve_reg(base) + 1;
-                let retval = match f.call(self, arg_start, nargs) {
-                    Ok(v) => v,
-                    Err(mut e) => {
-                        e.push_stack_trace(frame.func_name(), frame.line_at(curr_ip));
-                        e.push_stack_trace("".into(), frame.ret_ip());
-                        return Err(e);
-                    }
-                };
-                self.set_stack_at(frame, base, retval);
+                self.call_native(frame, f, base, nargs, curr_ip)?;
                 Ok(curr_ip)
+            }
+            Err(e) => Err(trace_err(e, frame, curr_ip)),
+        }
+    }
+
+    fn tail_call(
+        &mut self,
+        base: u8,
+        nargs: u8,
+        frame: &mut CallFrame,
+        curr_ip: usize,
+        first_frame_id: usize,
+    ) -> Result<(usize, Option<RuaVal>), EvalErrorTraced> {
+        let func = self.stack_at(frame, base).clone();
+        match func.into_callable() {
+            Ok(Callable::Closure(closure)) => {
+                // Tail call cannot overflow stack
+                let _ = self.call_closure::<true>(frame, closure, base, nargs, curr_ip);
+                Ok((0, None))
+            }
+            Ok(Callable::Native(f)) => {
+                self.call_native(frame, f, base, nargs, curr_ip)?;
+                Ok((curr_ip, self.return_op(frame, Some(base), first_frame_id)))
             }
             Err(e) => {
                 let stack_trace =
@@ -520,6 +534,82 @@ impl Vm {
                 Err(EvalErrorTraced::new(e, stack_trace))
             }
         }
+    }
+
+    #[inline]
+    fn call_closure<const TAIL: bool>(
+        &mut self,
+        frame: &mut CallFrame,
+        closure: Rc<Closure>,
+        base: u8,
+        nargs: u8,
+        curr_ip: usize,
+    ) -> Result<(), EvalError> {
+        let og_len = self.stack.len();
+
+        let stack_start_pos = if TAIL {
+            self.close_upvalues(frame.stack_start(), self.stack.len());
+            // Copy args and function to current stack base
+            for i in 0..=nargs {
+                let val = std::mem::take(&mut self.stack[frame.resolve_reg(base + i)]);
+                self.set_stack_at(frame, i, val);
+            }
+            frame.stack_start()
+        } else {
+            frame.resolve_reg(base)
+        };
+        self.stack.resize(
+            og_len.max(stack_start_pos + closure.function().max_used_regs() as usize),
+            RuaVal::nil(),
+        );
+        for i in 0..closure.function().arity().saturating_sub(nargs) {
+            self.set_stack_at_abs(stack_start_pos + nargs as usize + i as usize, RuaVal::nil());
+        }
+
+        #[cfg(test)]
+        println!("Started tracing {:?}, starting at stack {stack_start_pos}", closure.function());
+
+        let new_frame = if TAIL {
+            CallFrame::new(
+                closure,
+                stack_start_pos,
+                frame.prev_stack_size(),
+                frame.retval_dst(),
+                frame.ret_ip(),
+            )
+        } else {
+            CallFrame::new(closure, stack_start_pos, og_len, base, curr_ip)
+        };
+        let old_frame = std::mem::replace(frame, new_frame);
+        if !TAIL {
+            self.frames.push(old_frame);
+            if self.frames.len() >= RECURSION_LIMIT {
+                return Err(EvalError::StackOverflow);
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn call_native(
+        &mut self,
+        frame: &CallFrame,
+        native_fn: Rc<NativeFunction>,
+        base: u8,
+        nargs: u8,
+        curr_ip: usize,
+    ) -> Result<(), EvalErrorTraced> {
+        let arg_start = frame.resolve_reg(base) + 1;
+        let retval = match native_fn.call(self, arg_start, nargs) {
+            Ok(v) => v,
+            Err(mut e) => {
+                e.push_stack_trace(frame.func_name(), frame.line_at(curr_ip));
+                e.push_stack_trace("".into(), frame.ret_ip());
+                return Err(e);
+            }
+        };
+        self.set_stack_at(frame, base, retval);
+        Ok(())
     }
 
     fn return_op(
@@ -530,10 +620,7 @@ impl Vm {
     ) -> Option<RuaVal> {
         self.close_upvalues(frame.stack_start(), self.stack.len());
         let retval = match ret_src {
-            Some(src) => std::mem::replace(
-                &mut self.stack[frame.stack_start() + src as usize],
-                RuaVal::nil(),
-            ),
+            Some(src) => std::mem::take(&mut self.stack[frame.stack_start() + src as usize]),
             None => RuaVal::nil(),
         };
         let retval_dst = frame.retval_dst();

@@ -216,6 +216,12 @@ impl RuaVal {
     }
 }
 
+impl Default for RuaVal {
+    fn default() -> Self {
+        Self(RuaValInner::Nil)
+    }
+}
+
 impl RuaValInner {
     pub const fn get_type(&self) -> RuaType {
         match self {
@@ -313,6 +319,8 @@ pub enum EvalError {
     AssertionFailed(Option<RuaVal>),
     #[error("table index is {}", if *.0 {"nil"} else {"NaN"})]
     InvalidTableIndex(bool),
+    #[error("Stack overflow")]
+    StackOverflow,
 }
 
 impl Debug for EvalErrorTraced {

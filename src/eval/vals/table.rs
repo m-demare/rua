@@ -150,7 +150,7 @@ impl Table {
         if let Some(n) = new_key_idx {
             let mut array = self.array.borrow_mut();
             if let Some(v) = array.get_mut(n) {
-                return Some(std::mem::replace(v, RuaVal::nil()));
+                return Some(std::mem::take(v));
             }
         }
         self.map.borrow_mut().remove(key)
@@ -360,7 +360,7 @@ impl Table {
                 let arr_key = k.as_number().ok().and_then(try_into_usize);
                 if let Some(arr_key) = arr_key {
                     if let Some(slot) = arr.get_mut(arr_key) {
-                        *slot = std::mem::replace(v, RuaVal::nil());
+                        *slot = std::mem::take(v);
                         return false;
                     }
                 }

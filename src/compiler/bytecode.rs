@@ -69,6 +69,7 @@ pub enum Instruction {
     SetGlobal { dst: StringHandle, src: u8 },
 
     Call { base: u8, nargs: u8 },
+    TailCall { base: u8, nargs: u8 },
 
     Mv(UnArgs),
 
@@ -459,7 +460,7 @@ impl Instruction {
             | Self::Untest { src }
             | Self::SetGlobal { src, .. }
             | Self::SetUpvalue { src, .. } => validate(src),
-            Self::Call { base, .. } => validate(base),
+            Self::Call { base, .. } | Self::TailCall { base, .. } => validate(base),
             Self::InsertV { table, key, val } => validate(table) && validate(key) && validate(val),
             Self::InsertS { table, val, .. } | Self::InsertN { table, val, .. } => {
                 validate(table) && validate(val)
@@ -548,7 +549,7 @@ impl Debug for Chunk {
 
 #[derive(Debug, PartialEq, Error)]
 pub enum ParseError {
-    #[error("Unexpected token. Got {:?}, expected {}{1:?}", .0.got, if .0.expected.len() > 1 { "one of " } else { "" })]
+    #[error("Unexpected token. Got {:?}, expected {}{:?}", .0.got, if .0.expected.len() > 1 { "one of " } else { "" }, .0.expected)]
     UnexpectedToken(UnexpectedToken),
     #[error("Unexpected token. Got {:?}, expected {1} (line {2})", .0.ttype)]
     UnexpectedTokenWithErrorMsg(Box<Token>, Box<str>, usize),
