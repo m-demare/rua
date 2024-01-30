@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 pub struct Trie<T> {
     root: TrieNode<T>,
 }
@@ -13,7 +11,6 @@ pub struct TrieNode<T> {
 
 pub struct TrieWalker<'trie, T> {
     curr_node: Option<&'trie TrieNode<T>>,
-    trie: PhantomData<&'trie Trie<T>>,
 }
 
 impl<'trie, T> Trie<T> {
@@ -49,7 +46,7 @@ impl<T> Default for Trie<T> {
 
 impl<'trie, T> TrieWalker<'trie, T> {
     pub const fn new(trie: &'trie Trie<T>) -> TrieWalker<'trie, T> {
-        Self { curr_node: Some(&trie.root), trie: PhantomData }
+        Self { curr_node: Some(&trie.root) }
     }
 
     pub fn walk(&mut self, ch: u8) {

@@ -502,7 +502,7 @@ impl Vm {
                 Ok(0)
             }
             Ok(Callable::Native(f)) => {
-                self.call_native(frame, f, base, nargs, curr_ip)?;
+                self.call_native(frame, &f, base, nargs, curr_ip)?;
                 Ok(curr_ip)
             }
             Err(e) => Err(trace_err(e, frame, curr_ip)),
@@ -525,7 +525,7 @@ impl Vm {
                 Ok((0, None))
             }
             Ok(Callable::Native(f)) => {
-                self.call_native(frame, f, base, nargs, curr_ip)?;
+                self.call_native(frame, &f, base, nargs, curr_ip)?;
                 Ok((curr_ip, self.return_op(frame, Some(base), first_frame_id)))
             }
             Err(e) => {
@@ -594,7 +594,7 @@ impl Vm {
     fn call_native(
         &mut self,
         frame: &CallFrame,
-        native_fn: Rc<NativeFunction>,
+        native_fn: &Rc<NativeFunction>,
         base: u8,
         nargs: u8,
         curr_ip: usize,
