@@ -10,6 +10,10 @@ use clap::Parser;
 use cli::Args;
 use compiler::{bytecode::ParseError, compile};
 use eval::Vm;
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 mod cli;
 pub mod compiler;

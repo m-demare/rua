@@ -24,6 +24,7 @@ static_assertions = "1.1.0"
 clap = { version = "4.4.8", features = ["derive"] }
 ahash = { version = "0.8.7", default-features = false, features = ["compile-time-rng", "std"] }
 nohash-hasher = "0.2.0"
+mimalloc = "0.1.39"
 
 [profile.release]
 opt-level = 3
