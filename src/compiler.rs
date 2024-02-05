@@ -719,7 +719,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(())
     }
 
-    fn match_lhs_rhs(&mut self, dsts: &Vec<ExprDesc>, srcs: &mut Vec<ExprDesc>) {
+    fn match_lhs_rhs(&mut self, dsts: &[ExprDesc], srcs: &mut Vec<ExprDesc>) {
         while srcs.len() > dsts.len() {
             let src = srcs.pop().expect("Not empty (more srcs than dsts)");
             src.free_tmp_regs(self);

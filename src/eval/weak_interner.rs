@@ -1,6 +1,6 @@
 use std::{
     collections::hash_map::RawEntryMut,
-    hash::{self, BuildHasher, Hash, Hasher},
+    hash,
     rc::{Rc, Weak},
 };
 
@@ -25,13 +25,8 @@ impl<T: hash::Hash + ?Sized + PartialEq + std::fmt::Debug> WeakInterner<T> {
             self.clean_weaks();
             self.reserve();
         }
-        let mut state = self.map.hasher().build_hasher();
-        key.hash(&mut state);
-        let key_hash = state.finish();
-
-        let mut state = self.map.hasher().build_hasher();
-        WeakKey::new(key_hash, Rc::downgrade(&key)).hash(&mut state);
-        let weak_key_hash = state.finish();
+        let key_hash = self.map.hasher().hash_one(&key);
+        let weak_key_hash = self.map.hasher().hash_one(WeakKey::new(key_hash, Rc::downgrade(&key)));
 
         let entry = self
             .map
@@ -49,7 +44,7 @@ impl<T: hash::Hash + ?Sized + PartialEq + std::fmt::Debug> WeakInterner<T> {
     }
 
     fn clean_weaks(&mut self) {
-        self.map.retain(|k, _| k.upgrade().is_some());
+        self.map.retain(|k, ()| k.upgrade().is_some());
     }
 
     fn reserve(&mut self) {

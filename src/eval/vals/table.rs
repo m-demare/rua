@@ -454,6 +454,31 @@ impl IntoRuaVal for Rc<Table> {
     }
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::float_cmp
+)]
+#[inline]
+fn try_into_usize(float: f64) -> Option<usize> {
+    let n = float as usize;
+    if n as f64 == float {
+        Some(n)
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::cast_precision_loss)]
+pub(crate) const fn try_into_f64(n: usize) -> Option<f64> {
+    if n > MAX_SAFE_INTEGER {
+        None
+    } else {
+        Some(n as f64)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -608,30 +633,5 @@ mod tests {
 
     fn assert_all_present<I: Iterator<Item = u16>>(t: &Table, it: I) {
         it.map(f64::from).for_each(|i| assert!(t.get(&i.into()).is_some(), "{i} was not present"));
-    }
-}
-
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::float_cmp
-)]
-#[inline]
-fn try_into_usize(float: f64) -> Option<usize> {
-    let n = float as usize;
-    if n as f64 == float {
-        Some(n)
-    } else {
-        None
-    }
-}
-
-#[allow(clippy::cast_precision_loss)]
-pub(crate) const fn try_into_f64(n: usize) -> Option<f64> {
-    if n > MAX_SAFE_INTEGER {
-        None
-    } else {
-        Some(n as f64)
     }
 }
