@@ -10,7 +10,6 @@ use std::{
     convert::Infallible,
     fmt::{self, Debug, Display},
     hash::{Hash, Hasher},
-    hint::unreachable_unchecked,
     num::NonZeroU32,
     rc::Rc,
 };
@@ -468,8 +467,7 @@ impl TryInto<Rc<NativeFunction>> for RuaVal {
 
 impl From<Infallible> for EvalError {
     fn from(_: Infallible) -> Self {
-        // SAFETY: Infallible cannot be instantiated
-        unsafe { unreachable_unchecked() }
+        unreachable!("Infallible cannot be instantiated")
     }
 }
 
