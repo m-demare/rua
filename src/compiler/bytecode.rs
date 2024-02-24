@@ -485,6 +485,42 @@ impl Default for Chunk {
     }
 }
 
+impl Chunk {
+    pub(crate) fn format_instr(&self, instr: Instruction) -> String {
+        let clarification = match instr {
+            Instruction::Number { src, .. } => format!("; {}", self.numbers[src.0 as usize]),
+            Instruction::Closure { src, .. } => {
+                format!("; {}", self.functions[src.0 as usize].pretty_name())
+            }
+            Instruction::String { src: s, .. }
+            | Instruction::GetGlobal { src: s, .. }
+            | Instruction::SetGlobal { dst: s, .. } => {
+                format!("; \"{}\"", self.strings[s.0 as usize])
+            }
+            Instruction::AddVN(VNArgs { rhs: n, .. })
+            | Instruction::SubVN(VNArgs { rhs: n, .. })
+            | Instruction::MulVN(VNArgs { rhs: n, .. })
+            | Instruction::DivVN(VNArgs { rhs: n, .. })
+            | Instruction::ModVN(VNArgs { rhs: n, .. })
+            | Instruction::PowVN(VNArgs { rhs: n, .. })
+            | Instruction::SubNV(NVArgs { lhs: n, .. })
+            | Instruction::DivNV(NVArgs { lhs: n, .. })
+            | Instruction::ModNV(NVArgs { lhs: n, .. })
+            | Instruction::PowNV(NVArgs { lhs: n, .. }) => {
+                format!("; {}", self.numbers[n as usize])
+            }
+            Instruction::InsertN { key, .. } | Instruction::IndexN(BinArgs { rhs: key, .. }) => {
+                format!("; {}", self.numbers[key as usize])
+            }
+            Instruction::InsertS { key, .. } | Instruction::IndexS(BinArgs { rhs: key, .. }) => {
+                format!("; \"{}\"", self.strings[key as usize])
+            }
+            _ => String::new(),
+        };
+        format!("{instr:?} {clarification}")
+    }
+}
+
 impl Debug for Chunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut lines = self.lines.iter();
@@ -494,46 +530,15 @@ impl Debug for Chunk {
             line = lines.next();
         }
         writeln!(f, "\nopnr   line  opcode")?;
-        for (i, instr) in self.code.iter().enumerate() {
+        for (i, instr) in self.code.iter().copied().enumerate() {
             let line_str = if count_in_line == 0 {
                 let linenr = line.ok_or(std::fmt::Error)?.0;
                 format!("{linenr: >6}")
             } else {
                 "     |".to_string()
             };
-            let clarification = match instr {
-                Instruction::Number { src, .. } => format!("; {}", self.numbers[src.0 as usize]),
-                Instruction::Closure { src, .. } => {
-                    format!("; {}", self.functions[src.0 as usize].pretty_name())
-                }
-                Instruction::String { src: s, .. }
-                | Instruction::GetGlobal { src: s, .. }
-                | Instruction::SetGlobal { dst: s, .. } => {
-                    format!("; \"{}\"", self.strings[s.0 as usize])
-                }
-                Instruction::AddVN(VNArgs { rhs: n, .. })
-                | Instruction::SubVN(VNArgs { rhs: n, .. })
-                | Instruction::MulVN(VNArgs { rhs: n, .. })
-                | Instruction::DivVN(VNArgs { rhs: n, .. })
-                | Instruction::ModVN(VNArgs { rhs: n, .. })
-                | Instruction::PowVN(VNArgs { rhs: n, .. })
-                | Instruction::SubNV(NVArgs { lhs: n, .. })
-                | Instruction::DivNV(NVArgs { lhs: n, .. })
-                | Instruction::ModNV(NVArgs { lhs: n, .. })
-                | Instruction::PowNV(NVArgs { lhs: n, .. }) => {
-                    format!("; {}", self.numbers[*n as usize])
-                }
-                Instruction::InsertN { key, .. }
-                | Instruction::IndexN(BinArgs { rhs: key, .. }) => {
-                    format!("; {}", self.numbers[*key as usize])
-                }
-                Instruction::InsertS { key, .. }
-                | Instruction::IndexS(BinArgs { rhs: key, .. }) => {
-                    format!("; \"{}\"", self.strings[*key as usize])
-                }
-                _ => String::new(),
-            };
-            writeln!(f, "{i:4} {line_str}  {instr:?} {clarification}")?;
+
+            writeln!(f, "{i:4} {line_str}  {}", self.format_instr(instr))?;
             count_in_line += 1;
             if count_in_line >= line.ok_or(std::fmt::Error)?.1 {
                 line = lines.next();

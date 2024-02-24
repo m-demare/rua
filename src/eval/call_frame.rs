@@ -38,8 +38,9 @@ impl CallFrame {
 
     #[cfg(test)]
     pub fn print_instr_at(&self, ip: usize) {
-        let instr = &self.closure.function().chunk().code()[ip];
-        println!("{ip} {instr:?}");
+        let chunk = self.closure.function().chunk();
+        let instr = chunk.code()[ip];
+        println!("{ip} {}", chunk.format_instr(instr));
     }
 
     #[inline]
