@@ -115,9 +115,9 @@ fn get_parameters(
         None => {
             return (
                 Vec::new(),
-                quote!(if ctxt.args.len() > 0 {
+                quote!(if ctxt.args().len() > 0 {
                     return Err(EvalErrorTraced::new(
-                        EvalError::TooManyArguments(ctxt.args.len() as u8, name_str.into()),
+                        EvalError::TooManyArguments(ctxt.args().len() as u8, name_str.into()),
                         vec![(#fn_name.into(), 0)],
                     ));
                 }),
