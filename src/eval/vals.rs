@@ -1,4 +1,5 @@
 pub mod closure;
+pub mod coroutine;
 pub(crate) mod function;
 pub mod number;
 pub mod string;
@@ -18,7 +19,8 @@ use thiserror::Error;
 use crate::eval::Vm;
 
 use self::{
-    closure::Closure, function::NativeFunction, number::RuaNumber, string::RuaString, table::Table,
+    closure::Closure, coroutine::Coroutine, function::NativeFunction, number::RuaNumber,
+    string::RuaString, table::Table,
 };
 
 use super::GcData;
@@ -32,6 +34,7 @@ enum RuaValInner {
     String(RuaString),
     NativeFunction(Rc<NativeFunction>),
     Table(Rc<Table>),
+    Coroutine(Rc<Coroutine>),
 }
 
 impl std::hash::Hash for RuaValInner {
@@ -47,6 +50,7 @@ impl std::hash::Hash for RuaValInner {
             Self::Closure(v) => v.hash(&mut ahash_state),
             Self::NativeFunction(v) => v.hash(&mut ahash_state),
             Self::Table(v) => v.hash(&mut ahash_state),
+            Self::Coroutine(v) => v.hash(&mut ahash_state),
         }
         state.write_u64(ahash_state.finish());
     }
@@ -71,6 +75,7 @@ pub type UpvalueObj = Rc<RefCell<Upvalue>>;
 pub type RuaResultTraced = Result<RuaVal, EvalErrorTraced>;
 pub type RuaResult = Result<RuaVal, EvalError>;
 
+#[derive(Debug)]
 pub enum Callable {
     Closure(Rc<Closure>),
     Native(Rc<NativeFunction>),
@@ -84,6 +89,7 @@ pub enum RuaType {
     Function,
     String,
     Table,
+    Thread,
 }
 
 impl RuaVal {
@@ -175,31 +181,6 @@ impl RuaVal {
         Self(RuaValInner::Nil)
     }
 
-    /// # Errors
-    ///
-    /// Returns `TypeError` if value is not a `Closure`
-    pub fn into_closure(self) -> Result<Rc<Closure>, EvalError> {
-        self.try_into()
-    }
-
-    /// # Errors
-    ///
-    /// Returns `TypeError` if value is not a `NativeFunction`
-    pub fn into_native_fn(self) -> Result<Rc<NativeFunction>, EvalError> {
-        self.try_into()
-    }
-
-    /// # Errors
-    ///
-    /// Returns `TypeError` if value is not a `Closure` or `NativeFunction`
-    pub fn into_callable(self) -> Result<Callable, EvalError> {
-        match self.0 {
-            RuaValInner::Closure(c) => Ok(Callable::Closure(c)),
-            RuaValInner::NativeFunction(f) => Ok(Callable::Native(f)),
-            _ => Err(self.type_error(RuaType::Function)),
-        }
-    }
-
     /// # Safety
     /// An unregistered table will not be garbage collected
     pub fn from_table_unregistered(table: Rc<Table>, vm_id: NonZeroU32) -> Self {
@@ -230,6 +211,7 @@ impl RuaValInner {
             Self::NativeFunction(..) | Self::Closure(..) => RuaType::Function,
             Self::String(..) => RuaType::String,
             Self::Table(..) => RuaType::Table,
+            Self::Coroutine(..) => RuaType::Thread,
         }
     }
 }
@@ -245,6 +227,7 @@ impl Display for RuaValInner {
             }
             Self::String(s) => write!(f, "{s}"),
             Self::Table(t) => write!(f, "table: 0x{:x}", t.addr()),
+            Self::Coroutine(c) => write!(f, "thread: 0x{:x}", c.addr()),
         }
     }
 }
@@ -258,6 +241,7 @@ impl Display for RuaType {
             Self::Function => write!(f, "function"),
             Self::String => write!(f, "string"),
             Self::Table => write!(f, "table"),
+            Self::Thread => write!(f, "thread"),
         }
     }
 }
@@ -443,24 +427,47 @@ impl TryInto<Rc<Table>> for RuaVal {
     }
 }
 
-impl TryInto<Rc<Closure>> for RuaVal {
+impl TryFrom<RuaVal> for Rc<Closure> {
     type Error = EvalError;
 
-    fn try_into(self) -> Result<Rc<Closure>, Self::Error> {
-        match self.0 {
+    fn try_from(value: RuaVal) -> Result<Self, Self::Error> {
+        match value.0 {
             RuaValInner::Closure(c) => Ok(c),
-            _ => Err(self.type_error(RuaType::Function)),
+            _ => Err(value.type_error(RuaType::Function)),
         }
     }
 }
 
-impl TryInto<Rc<NativeFunction>> for RuaVal {
+impl TryFrom<RuaVal> for Rc<NativeFunction> {
     type Error = EvalError;
 
-    fn try_into(self) -> Result<Rc<NativeFunction>, Self::Error> {
-        match self.0 {
+    fn try_from(value: RuaVal) -> Result<Self, Self::Error> {
+        match value.0 {
             RuaValInner::NativeFunction(f) => Ok(f),
-            _ => Err(self.type_error(RuaType::Function)),
+            _ => Err(value.type_error(RuaType::Function)),
+        }
+    }
+}
+
+impl TryFrom<RuaVal> for Callable {
+    type Error = EvalError;
+
+    fn try_from(value: RuaVal) -> Result<Self, Self::Error> {
+        match value.0 {
+            RuaValInner::Closure(c) => Ok(Self::Closure(c)),
+            RuaValInner::NativeFunction(f) => Ok(Self::Native(f)),
+            _ => Err(value.type_error(RuaType::Function)),
+        }
+    }
+}
+
+impl TryFrom<RuaVal> for Rc<Coroutine> {
+    type Error = EvalError;
+
+    fn try_from(value: RuaVal) -> Result<Self, Self::Error> {
+        match value.0 {
+            RuaValInner::Coroutine(c) => Ok(c),
+            _ => Err(value.type_error(RuaType::Thread)),
         }
     }
 }

@@ -9,17 +9,9 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use crate::{
-    compiler::{
-        bytecode::{
-            BinArgs, FnHandle, NVArgs, NumberHandle, StringHandle, UnArgs, VNArgs, VVJmpArgs,
-        },
-        upvalues::UpvalueLocation,
-    },
-    eval::{
-        macros::trace_gc,
-        vals::{closure::Closure, IntoRuaVal},
-    },
+use crate::compiler::{
+    bytecode::{BinArgs, FnHandle, NVArgs, NumberHandle, StringHandle, UnArgs, VNArgs, VVJmpArgs},
+    upvalues::UpvalueLocation,
 };
 use rua_trie::Trie;
 
@@ -34,15 +26,20 @@ use crate::{
 
 use self::{
     call_frame::CallFrame,
+    macros::trace_gc,
+    return_result::ReturnResult,
     vals::{
-        function::NativeFunction, Callable, EvalErrorTraced, RuaResult, RuaResultTraced, Upvalue,
-        UpvalueObj,
+        closure::Closure,
+        coroutine::Coroutine,
+        function::{CoroutineAction, FunctionContext, NativeFunction},
+        Callable, EvalErrorTraced, IntoRuaVal, RuaResult, RuaResultTraced, Upvalue, UpvalueObj,
     },
     weak_interner::WeakInterner,
 };
 
 mod call_frame;
 mod macros;
+mod return_result;
 mod tests;
 mod weak_interner;
 
@@ -59,6 +56,7 @@ pub struct Vm {
     strings: WeakInterner<[u8]>,
     open_upvalues: Vec<UpvalueObj>,
     gc_data: GcData,
+    current_coroutine: Option<Rc<Coroutine>>,
     id: NonZeroU32,
 }
 
@@ -82,6 +80,7 @@ impl Vm {
             strings: WeakInterner::default(),
             open_upvalues: Vec::new(),
             gc_data: GcData::default(),
+            current_coroutine: None,
             id: NonZeroU32::new(COUNTER.fetch_add(1, Ordering::Relaxed))
                 .expect("Vm id cannot be zero"),
         };
@@ -110,37 +109,41 @@ impl Vm {
         self.stack.resize(og_len + closure.function().max_used_regs() as usize, RuaVal::nil());
         let frame = CallFrame::new(closure, og_len, og_len, u8::MAX, usize::MAX);
         let first_frame_id = frame.id();
-        match self.interpret_error_boundary(frame) {
-            Ok(v) => Ok(v),
-            Err(mut e) => {
-                let mut iter = self.frames.iter().rev();
-                let mut ip = if let Some(frame) = iter.next() {
-                    // Patch last stack trace,
-                    // necessary because each frame contains the IP for the previous frame
-                    let last_trace =
-                        e.stack_trace().last_mut().expect("must be at least 1 stack_trace");
-                    last_trace.0 = frame.func_name();
-                    last_trace.1 = frame.line_at(last_trace.1);
-                    if frame.id() == first_frame_id {
-                        self.stack.truncate(og_len);
-                        return Err(e);
-                    }
-                    frame.ret_ip()
-                } else {
-                    e.stack_trace().pop();
-                    self.stack.truncate(og_len);
-                    return Err(e);
-                };
+        self.interpret_error_boundary(frame)
+            .map_err(|e| self.build_stack_trace(e, first_frame_id, og_len))
+    }
 
-                for _ in iter.take_while(|frame| {
-                    e.push_stack_trace(frame.func_name(), frame.line_at(ip));
-                    ip = frame.ret_ip();
-                    frame.id() != first_frame_id
-                }) {}
+    fn build_stack_trace(
+        &mut self,
+        mut e: EvalErrorTraced,
+        first_frame_id: usize,
+        og_len: usize,
+    ) -> EvalErrorTraced {
+        let mut iter = self.frames.iter().rev();
+        let mut ip = if let Some(frame) = iter.next() {
+            // Patch last stack trace,
+            // necessary because each frame contains the IP for the previous frame
+            let last_trace = e.stack_trace().last_mut().expect("must be at least 1 stack_trace");
+            last_trace.0 = frame.func_name();
+            last_trace.1 = frame.line_at(last_trace.1);
+            if frame.id() == first_frame_id {
                 self.stack.truncate(og_len);
-                Err(e)
+                return e;
             }
-        }
+            frame.ret_ip()
+        } else {
+            e.stack_trace().pop();
+            self.stack.truncate(og_len);
+            return e;
+        };
+
+        for _ in iter.take_while(|frame| {
+            e.push_stack_trace(frame.func_name(), frame.line_at(ip));
+            ip = frame.ret_ip();
+            frame.id() != first_frame_id
+        }) {}
+        self.stack.truncate(og_len);
+        e
     }
 
     #[allow(clippy::too_many_lines)]
@@ -162,18 +165,14 @@ impl Vm {
             let instr = frame.instr_at(ip);
             ip += 1;
             match instr {
-                I::Return { src } => {
-                    ip = frame.ret_ip();
-                    if let Some(val) = self.return_op(&mut frame, Some(src), first_frame_id) {
-                        return Ok(val);
-                    }
-                }
-                I::ReturnNil => {
-                    ip = frame.ret_ip();
-                    if let Some(val) = self.return_op(&mut frame, None, first_frame_id) {
-                        return Ok(val);
-                    }
-                }
+                I::Return { src } => match self.return_op(&mut frame, Some(src), first_frame_id) {
+                    ReturnResult::BigReturn(val) => return Ok(val),
+                    ReturnResult::SmallReturn(i) => ip = i,
+                },
+                I::ReturnNil => match self.return_op(&mut frame, None, first_frame_id) {
+                    ReturnResult::BigReturn(val) => return Ok(val),
+                    ReturnResult::SmallReturn(i) => ip = i,
+                },
                 I::Number { dst, src } => {
                     let constant = frame.read_number(src);
                     self.set_stack_at(&frame, dst, constant.into());
@@ -336,13 +335,16 @@ impl Vm {
                     let key = frame.read_string(src);
                     self.set_stack_at(&frame, dst, self.global.get(&key.into()).into());
                 }
-                I::Call { base, nargs } => ip = self.call(base, nargs, &mut frame, ip)?,
+                I::Call { base, nargs } => {
+                    match self.call(base, nargs, &mut frame, ip, first_frame_id)? {
+                        ReturnResult::BigReturn(val) => return Ok(val),
+                        ReturnResult::SmallReturn(i) => ip = i,
+                    }
+                }
                 I::TailCall { base, nargs } => {
-                    let (new_ip, val) =
-                        self.tail_call(base, nargs, &mut frame, ip, first_frame_id)?;
-                    ip = new_ip;
-                    if let Some(val) = val {
-                        return Ok(val);
+                    match self.tail_call(base, nargs, &mut frame, ip, first_frame_id)? {
+                        ReturnResult::BigReturn(val) => return Ok(val),
+                        ReturnResult::SmallReturn(i) => ip = i,
                     }
                 }
                 I::Mv(UnArgs { dst, src }) => {
@@ -490,20 +492,20 @@ impl Vm {
         nargs: u8,
         frame: &mut CallFrame,
         curr_ip: usize,
-    ) -> Result<usize, EvalErrorTraced> {
+        first_frame_id: usize,
+    ) -> Result<ReturnResult, EvalErrorTraced> {
         let func = self.stack_at(frame, base).clone();
-        match func.into_callable() {
+        match Callable::try_from(func) {
             Ok(Callable::Closure(closure)) => {
                 trace(
                     self.call_closure::<false>(frame, closure, base, nargs, curr_ip),
                     frame,
                     curr_ip,
                 )?;
-                Ok(0)
+                Ok(ReturnResult::SmallReturn(0))
             }
             Ok(Callable::Native(f)) => {
-                self.call_native(frame, &f, base, nargs, curr_ip)?;
-                Ok(curr_ip)
+                self.call_native(frame, &f, base, nargs, curr_ip, first_frame_id)
             }
             Err(e) => Err(trace_err(e, frame, curr_ip)),
         }
@@ -516,17 +518,25 @@ impl Vm {
         frame: &mut CallFrame,
         curr_ip: usize,
         first_frame_id: usize,
-    ) -> Result<(usize, Option<RuaVal>), EvalErrorTraced> {
+    ) -> Result<ReturnResult, EvalErrorTraced> {
         let func = self.stack_at(frame, base).clone();
-        match func.into_callable() {
+        match Callable::try_from(func) {
             Ok(Callable::Closure(closure)) => {
                 // Tail call cannot overflow stack
                 let _ = self.call_closure::<true>(frame, closure, base, nargs, curr_ip);
-                Ok((0, None))
+                Ok(ReturnResult::SmallReturn(0))
             }
             Ok(Callable::Native(f)) => {
-                self.call_native(frame, &f, base, nargs, curr_ip)?;
-                Ok((curr_ip, self.return_op(frame, Some(base), first_frame_id)))
+                let res = self.call_native(frame, &f, base, nargs, curr_ip, first_frame_id)?;
+                match res {
+                    res @ ReturnResult::BigReturn(..) => Ok(res),
+                    ReturnResult::SmallReturn(new_ip) => {
+                        if new_ip != curr_ip {
+                            return Ok(ReturnResult::SmallReturn(new_ip));
+                        }
+                        Ok(self.return_op(frame, Some(base), first_frame_id).map_small(|_| new_ip))
+                    }
+                }
             }
             Err(e) => {
                 let stack_trace =
@@ -593,23 +603,40 @@ impl Vm {
     #[inline]
     fn call_native(
         &mut self,
-        frame: &CallFrame,
+        frame: &mut CallFrame,
         native_fn: &Rc<NativeFunction>,
         base: u8,
         nargs: u8,
         curr_ip: usize,
-    ) -> Result<(), EvalErrorTraced> {
-        let arg_start = frame.resolve_reg(base) + 1;
-        let retval = match native_fn.call(self, arg_start, nargs) {
-            Ok(v) => v,
+        first_frame_id: usize,
+    ) -> Result<ReturnResult, EvalErrorTraced> {
+        let base_abs = frame.resolve_reg(base);
+        let args_start = base_abs + 1;
+        let mut ctxt = FunctionContext::new(self, base, args_start, nargs, curr_ip, frame);
+        let new_ip = match native_fn.call(&mut ctxt) {
+            Ok(v) => {
+                let new_ip = ctxt.curr_ip();
+                if matches!(
+                    ctxt.coroutine_action(),
+                    CoroutineAction::Resume { .. } | CoroutineAction::Yield { .. }
+                ) && new_ip > 0
+                {
+                    if let I::TailCall { base, .. } = frame.instr_at(new_ip - 1) {
+                        return Ok(self.return_op(frame, Some(base), first_frame_id));
+                    }
+                }
+                if let Some(v) = v {
+                    self.set_stack_at_abs(base_abs, v)
+                }
+                new_ip
+            }
             Err(mut e) => {
                 e.push_stack_trace(frame.func_name(), frame.line_at(curr_ip));
                 e.push_stack_trace("".into(), frame.ret_ip());
                 return Err(e);
             }
         };
-        self.set_stack_at(frame, base, retval);
-        Ok(())
+        Ok(ReturnResult::SmallReturn(new_ip))
     }
 
     fn return_op(
@@ -617,7 +644,8 @@ impl Vm {
         frame: &mut CallFrame,
         ret_src: Option<u8>,
         first_frame_id: usize,
-    ) -> Option<RuaVal> {
+    ) -> ReturnResult {
+        let ret_ip = frame.ret_ip();
         self.close_upvalues(frame.stack_start(), self.stack.len());
         let retval = match ret_src {
             Some(src) => std::mem::take(&mut self.stack[frame.stack_start() + src as usize]),
@@ -626,15 +654,25 @@ impl Vm {
         let retval_dst = frame.retval_dst();
         self.stack.truncate(frame.prev_stack_size());
         if frame.id() == first_frame_id {
-            return Some(retval);
+            return ReturnResult::BigReturn(retval);
         }
         match self.frames.pop() {
             Some(f) => {
                 self.set_stack_at(&f, retval_dst, retval);
                 *frame = f;
-                None
+                ReturnResult::SmallReturn(ret_ip)
             }
-            None => Some(retval),
+            None => match self.current_coroutine.take() {
+                Some(c) => {
+                    c.kill(self, frame);
+                    self.set_stack_at(frame, retval_dst, retval);
+                    if let I::TailCall { base, .. } = frame.instr_at(ret_ip - 1) {
+                        return self.return_op(frame, Some(base), first_frame_id);
+                    }
+                    ReturnResult::SmallReturn(ret_ip)
+                }
+                None => ReturnResult::BigReturn(retval),
+            },
         }
     }
 

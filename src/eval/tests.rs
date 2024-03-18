@@ -1131,3 +1131,41 @@ return fact(50, DEFAULT)
 ",
     |_| Err(EvalErrorTraced::new(EvalError::StackOverflow, vec![("fact".into(), 5); 11]))
 );
+
+test_interpret!(
+    coroutine_single_call,
+    "
+local function foo()
+    return 5
+end
+local co = coroutine.create(foo)
+local val = coroutine.resume(co)
+return val
+",
+    |_| Ok(5.0.into())
+);
+
+test_interpret!(
+    coroutine_tail_call_resume,
+    "
+local function foo()
+    return 3
+end
+local co = coroutine.create(foo)
+return coroutine.resume(co)
+",
+    |_| Ok(3.0.into())
+);
+
+test_interpret!(
+    coroutine_cannot_resume_dead,
+    "
+local function foo()
+    return 3
+end
+local co = coroutine.create(foo)
+assert(coroutine.resume(co) == 3)
+return coroutine.resume(co)
+",
+    |_| Ok(false.into())
+);

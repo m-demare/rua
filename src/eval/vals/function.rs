@@ -6,8 +6,10 @@ use std::{
     rc::Rc,
 };
 
+use crate::eval::call_frame::CallFrame;
 use crate::{compiler::bytecode::Chunk, eval::Vm};
 
+use super::coroutine::Coroutine;
 use super::string::RuaString;
 use super::{RuaResultTraced, RuaVal};
 
@@ -30,10 +32,26 @@ pub struct NativeFunction {
     func: &'static dyn Fn(&mut FunctionContext) -> RuaResultTraced,
 }
 
-pub struct FunctionContext<'vm> {
+impl std::fmt::Debug for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "native function at {}", std::ptr::addr_of!(*self) as usize)
+    }
+}
+
+pub enum CoroutineAction {
+    None,
+    Resume { coroutine: Rc<Coroutine>, args_start: usize, nargs: u8 },
+    Yield { coroutine: Rc<Coroutine>, args_start: usize, nargs: u8 },
+}
+
+pub struct FunctionContext<'vm, 'cf> {
+    base: u8,
     args_start: usize,
     nargs: u8,
     pub vm: &'vm mut Vm,
+    coroutine_action: CoroutineAction,
+    curr_ip: usize,
+    pub curr_frame: &'cf mut CallFrame,
 }
 
 impl Function {
@@ -78,8 +96,22 @@ impl NativeFunction {
         Self { func }
     }
 
-    pub fn call(&self, vm: &mut Vm, args_start: usize, nargs: u8) -> RuaResultTraced {
-        (self.func)(&mut FunctionContext::new(vm, args_start, nargs))
+    pub fn call(
+        &self,
+        ctxt: &mut FunctionContext,
+    ) -> Result<Option<RuaVal>, super::EvalErrorTraced> {
+        let res = (self.func)(ctxt)?;
+        match ctxt.coroutine_action() {
+            CoroutineAction::None => Ok(Some(res)),
+            CoroutineAction::Resume { coroutine, args_start, nargs } => {
+                let coroutine = coroutine.clone();
+                let ip = coroutine.resume(ctxt.vm, ctxt.curr_frame, ctxt.base, ctxt.curr_ip);
+                ctxt.curr_ip = ip;
+                ctxt.vm.current_coroutine = Some(coroutine);
+                Ok(None)
+            }
+            CoroutineAction::Yield { coroutine, args_start, nargs } => todo!(),
+        }
     }
 }
 
@@ -98,9 +130,24 @@ impl Hash for NativeFunction {
     }
 }
 
-impl<'vm> FunctionContext<'vm> {
-    pub fn new(vm: &'vm mut Vm, args_start: usize, nargs: u8) -> Self {
-        Self { args_start, nargs, vm }
+impl<'vm, 'cf> FunctionContext<'vm, 'cf> {
+    pub fn new(
+        vm: &'vm mut Vm,
+        base: u8,
+        args_start: usize,
+        nargs: u8,
+        curr_ip: usize,
+        curr_frame: &'cf mut CallFrame,
+    ) -> Self {
+        Self {
+            base,
+            args_start,
+            nargs,
+            vm,
+            coroutine_action: CoroutineAction::None,
+            curr_ip,
+            curr_frame,
+        }
     }
 
     pub fn get_arg(&self, i: usize) -> Option<&RuaVal> {
@@ -123,6 +170,22 @@ impl<'vm> FunctionContext<'vm> {
     #[inline]
     pub const fn args_start(&self) -> usize {
         self.args_start
+    }
+
+    pub const fn coroutine_action(&self) -> &CoroutineAction {
+        &self.coroutine_action
+    }
+
+    pub fn set_coroutine_action(&mut self, coroutine_action: CoroutineAction) {
+        self.coroutine_action = coroutine_action;
+    }
+
+    pub fn curr_ip(&self) -> usize {
+        self.curr_ip
+    }
+
+    pub fn base(&self) -> u8 {
+        self.base
     }
 }
 

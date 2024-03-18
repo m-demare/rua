@@ -13,6 +13,7 @@ use super::vals::{
 };
 use rua_func_macros::rua_func;
 
+mod coroutine;
 mod io;
 mod math;
 mod table;
@@ -70,11 +71,18 @@ fn assert(assertion: RuaVal, err: Option<RuaVal>) -> RuaResult {
 // TODO revise when I add returning multiple values
 #[rua_func]
 fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
-    match func.into_callable() {
+    match Callable::try_from(func) {
         Ok(Callable::Closure(closure)) => ctxt.vm.interpret(closure),
-        Ok(Callable::Native(native_fn)) => {
-            native_fn.call(ctxt.vm, ctxt.args_start() + 1, ctxt.nargs() - 1)
-        }
+        Ok(Callable::Native(native_fn)) => native_fn
+            .call(&mut FunctionContext::new(
+                ctxt.vm,
+                ctxt.base(),
+                ctxt.args_start() + 1,
+                ctxt.nargs() - 1,
+                ctxt.curr_ip(),
+                ctxt.curr_frame,
+            ))
+            .map(|v| v.expect("TODO: pcall coroutine functions not supported yet")),
         Err(_) => return false.into(),
     }
     .map_or(false.into(), |v| v)
@@ -101,6 +109,7 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
         ("table", table::table(vm)),
         ("math", math::math(vm)),
         ("io", io::io(vm)),
+        ("coroutine", coroutine::coroutine(vm)),
     ]
     .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
 
