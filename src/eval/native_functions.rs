@@ -20,10 +20,10 @@ mod table;
 // Built in functions {{{
 
 #[rua_func]
-fn print(ctxt: &FunctionContext) {
+fn print(ctxt: &mut FunctionContext) {
     let s = ctxt.args().iter().map(|arg| format!("{arg}")).collect::<Vec<_>>().join(" ");
 
-    println!("{s}");
+    writeln!(ctxt.vm.stdout, "{s}").expect("Writing to stdout shouldn't fail");
 }
 
 #[rua_func]

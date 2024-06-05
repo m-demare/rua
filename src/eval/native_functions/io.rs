@@ -10,7 +10,7 @@ use super::super::vals::{
 use rua_func_macros::rua_func;
 
 #[rua_func]
-fn io_write(ctxt: &FunctionContext) {
+fn io_write(ctxt: &mut FunctionContext) {
     use std::fmt::Write;
 
     let s = ctxt.args().iter().fold(String::new(), |mut out, arg| {
@@ -18,7 +18,7 @@ fn io_write(ctxt: &FunctionContext) {
         out
     });
 
-    print!("{s}");
+    write!(ctxt.vm.stdout, "{s}").expect("Writing to stdout shouldn't fail");
 }
 
 pub(super) fn io(vm: &mut Vm) -> RuaVal {

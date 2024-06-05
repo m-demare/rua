@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+use std::io;
+
 use crate::compiler::compile;
 
 use super::{
@@ -13,7 +15,7 @@ fn test_interpret_aux<F: FnOnce(&mut Vm) -> Result<RuaVal, EvalErrorTraced>>(
     input: &str,
     output: F,
 ) {
-    let mut vm = Vm::with_args(&[(*b"test").into(), (*b"123").into()]);
+    let mut vm = Vm::with_args(&[(*b"test").into(), (*b"123").into()], Box::new(io::stdout()));
 
     let prog = compile(input.bytes(), &mut vm).expect("Failed to compile program");
 

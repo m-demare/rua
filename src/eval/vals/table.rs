@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_insert() -> Result<(), EvalError> {
-        let mut vm = Vm::new();
+        let mut vm = Vm::default();
         let table = Table::new();
         table.insert(1.0.into(), b"test".into_rua(&mut vm))?;
         table.insert(3.0.into(), b"test2".into_rua(&mut vm))?;
@@ -527,7 +527,7 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_remove() {
-        let mut vm = Vm::new();
+        let mut vm = Vm::default();
         let vec: Vec<(RuaVal, RuaVal)> = vec![
             (0.0.into(), 50.0.into()),
             (1.0.into(), 51.0.into()),

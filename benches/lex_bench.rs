@@ -7,7 +7,7 @@ use rua::{eval::Vm, lex::Tokenizer};
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
-            let mut vm = Vm::new();
+            let mut vm = Vm::default();
             let tokens = Tokenizer::new(black_box(input.bytes()), black_box(&mut vm));
             for t in tokens {
                 black_box(t);

@@ -5,7 +5,7 @@ use rua::{compiler::compile, eval::Vm};
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
-            let mut vm = Vm::new();
+            let mut vm = Vm::default();
             compile(black_box(input.bytes()), black_box(&mut vm))
         })
     });

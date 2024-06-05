@@ -3,6 +3,7 @@ pub mod vals;
 
 use std::{
     cell::RefCell,
+    io,
     num::NonZeroU32,
     ops::BitAnd,
     rc::{Rc, Weak},
@@ -60,6 +61,7 @@ pub struct Vm {
     open_upvalues: Vec<UpvalueObj>,
     gc_data: GcData,
     id: NonZeroU32,
+    stdout: Box<dyn io::Write>,
 }
 
 const REMAINDER: fn(f64, f64) -> f64 = f64::rem_euclid;
@@ -67,7 +69,7 @@ const REMAINDER: fn(f64, f64) -> f64 = f64::rem_euclid;
 impl Vm {
     #[allow(clippy::missing_panics_doc)]
     #[must_use]
-    pub fn with_args(args: &[Rc<[u8]>]) -> Self {
+    pub fn with_args(args: &[Rc<[u8]>], stdout: Box<dyn io::Write>) -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(1);
 
         // No need to call register_table on global, it shouldn't
@@ -84,6 +86,7 @@ impl Vm {
             gc_data: GcData::default(),
             id: NonZeroU32::new(COUNTER.fetch_add(1, Ordering::Relaxed))
                 .expect("Vm id cannot be zero"),
+            stdout,
         };
         vm.global = default_global(&mut vm);
 
@@ -95,8 +98,8 @@ impl Vm {
     }
 
     #[must_use]
-    pub fn new() -> Self {
-        Self::with_args(&[])
+    pub fn new(stdout: Box<dyn io::Write>) -> Self {
+        Self::with_args(&[], stdout)
     }
 
     /// # Errors
@@ -1061,6 +1064,6 @@ fn push_cleaning_weaks<T>(vec: &mut Vec<Weak<T>>, val: Weak<T>) {
 
 impl Default for Vm {
     fn default() -> Self {
-        Self::new()
+        Self::new(Box::new(io::stdout()))
     }
 }

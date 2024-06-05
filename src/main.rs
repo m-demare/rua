@@ -4,7 +4,7 @@
 #![allow(clippy::option_if_let_else)]
 #![feature(hash_raw_entry)]
 
-use std::{path::PathBuf, rc::Rc};
+use std::{io, path::PathBuf, rc::Rc};
 
 use clap::Parser;
 use cli::Args;
@@ -45,7 +45,7 @@ fn main() {
 fn evaluate(path: &PathBuf, args: &Args, varargs: &[Rc<[u8]>]) -> Result<(), ParseError> {
     let contents = std::fs::read(path).expect("Error: input file does not exist");
 
-    let mut vm = Vm::with_args(varargs);
+    let mut vm = Vm::with_args(varargs, Box::new(io::stdout()));
 
     let prog = compile(contents.iter().copied(), &mut vm)?;
 

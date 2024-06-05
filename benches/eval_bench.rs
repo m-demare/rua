@@ -7,7 +7,7 @@ use rua::{compiler::compile, eval::Vm};
 fn bench(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
-            let mut vm = Vm::new();
+            let mut vm = Vm::default();
             let prog = compile(input.bytes(), &mut vm).unwrap();
             black_box(vm.interpret(prog.into()))
         })
@@ -18,7 +18,7 @@ fn bench_file(c: &mut Criterion, input: &str, name: &str) {
     c.bench_function(name, |b| {
         b.iter(|| {
             let input = std::fs::read(input).expect("Error: input file does not exist");
-            let mut vm = Vm::new();
+            let mut vm = Vm::default();
             let prog = compile(input.iter().copied(), &mut vm).unwrap();
             black_box(vm.interpret(prog.into()))
         })

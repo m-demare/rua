@@ -11,7 +11,7 @@ use crate::{
 
 pub fn run() -> io::Result<()> {
     println!("Welcome to Rua");
-    let mut vm = Vm::new();
+    let mut vm = Vm::default();
     loop {
         let mut input = String::new();
         let stdin = io::stdin();

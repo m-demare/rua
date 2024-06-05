@@ -8,7 +8,7 @@ use crate::eval::Vm;
 
 macro_rules! test_lex {
     ($input: expr, $expected_output: expr) => {
-        let mut vm = Vm::new();
+        let mut vm = Vm::default();
         #[allow(unused_macros)]
         macro_rules! id {
             ($s: expr) => {
