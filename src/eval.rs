@@ -422,7 +422,7 @@ impl Vm {
     }
 
     fn table_insert(
-        &mut self,
+        &self,
         frame: &CallFrame,
         table: u8,
         val: u8,

@@ -12,6 +12,7 @@ use compiler::{bytecode::ParseError, compile};
 use eval::Vm;
 use mimalloc::MiMalloc;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -20,6 +21,7 @@ pub mod compiler;
 pub mod eval;
 pub mod lex;
 mod repl;
+pub mod wasm;
 
 fn main() {
     let mut args = Args::parse();

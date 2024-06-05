@@ -1,3 +1,5 @@
+#![allow(clippy::mutable_key_type)]
+
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -21,7 +23,7 @@ pub struct Table {
     cached_len: Cell<usize>,
 }
 
-const MAX_SAFE_INTEGER: usize = 2usize.pow(53) - 1; // 2^53 – 1
+const MAX_SAFE_INTEGER: u64 = 2u64.pow(53) - 1; // 2^53 – 1
 
 const MAX_ARR_BITS: usize = std::mem::size_of::<usize>() * 8;
 
@@ -189,11 +191,14 @@ impl Table {
         let (mut lower, mut upper) = (0, 1);
         while self.has_value(upper) {
             lower = upper;
-            if upper > MAX_SAFE_INTEGER / 2 {
-                // Malicious input, resort to linear search
-                for i in 1.. {
-                    if !self.has_value(i) {
-                        return i - 1;
+            match u64::try_from(upper) {
+                Ok(upper) if upper <= MAX_SAFE_INTEGER / 2 => {}
+                _ => {
+                    // Malicious input, resort to linear search
+                    for i in 1.. {
+                        if !self.has_value(i) {
+                            return i - 1;
+                        }
                     }
                 }
             }
@@ -297,7 +302,7 @@ impl Table {
     // * at least half the slots between 1 and n are in use (to avoid wasting space with sparse arrays)
     // * there is at least one used slot between n/2 + 1 and n (to avoid a size n when n/2 would do)
     #[must_use]
-    fn compute_optimal_array(nums: &[u32; 64], total_int_keys: usize) -> (usize, usize) {
+    fn compute_optimal_array(nums: &[u32; MAX_ARR_BITS], total_int_keys: usize) -> (usize, usize) {
         let mut opt_arr_size: usize = 0;
         let mut elems_in_opt_arr: usize = 0;
         let mut acc: usize = 0;
@@ -471,11 +476,15 @@ fn try_into_usize(float: f64) -> Option<usize> {
 }
 
 #[allow(clippy::cast_precision_loss)]
-pub(crate) const fn try_into_f64(n: usize) -> Option<f64> {
-    if n > MAX_SAFE_INTEGER {
-        None
+pub(crate) fn try_into_f64(n: usize) -> Option<f64> {
+    if let Ok(n) = u64::try_from(n) {
+        if n > MAX_SAFE_INTEGER {
+            None
+        } else {
+            Some(n as f64)
+        }
     } else {
-        Some(n as f64)
+        None
     }
 }
 

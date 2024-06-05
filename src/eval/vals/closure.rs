@@ -50,6 +50,7 @@ impl Closure {
         &self.function
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     pub(in crate::eval) fn push_upvalue(&mut self, upval: UpvalueObj) {
         self.upvalues.borrow_mut().push(upval);
     }
