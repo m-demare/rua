@@ -3,10 +3,14 @@
 Warning: this is still both experimental and unstable.
 Any API provided is subject to change
 
+You can try a live demo of the interpreter running as WASM [here](https://dema.dev/experiments/wasm/rua-explorer/)
+(according to a couple of benchmarks, it's about twice as slow as native compilation)
+
 ### Goals
 - Be mostly Lua 5.1 compatible
-- Be 100% safe Rust. If unsafety is added at any point, it should be behind an
-optional feature flag
+- No unnecessary unsafety. I'm still considering if some features can be implemented
+in safe rust, without absolutely trashing the performance of the entire interpreter
+(I'm looking at you, coroutines with upvalues)
 - Achieve performance on par with the official PUC-Rio Lua implementation
 - Offer a nice API for interacting between Rust and Lua
 
@@ -28,6 +32,7 @@ usage by combining reference counting and a real tracing GC
 - A table implementation similar to Lua's, that automatically optimizes itself
 depending on its usage (whether it's used as an array or as a dictionary)
 - Proper tail calls
+- Running on the browser as WASM
 - Some proc macros to make the implementation of native functions incredibly simple
 - Closures and lexical scoping
 - Exceptions and stacktraces
