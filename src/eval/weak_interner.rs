@@ -83,7 +83,7 @@ impl<T: ?Sized> hash::Hash for WeakKey<T> {
 }
 
 impl<T: ?Sized> WeakKey<T> {
-    fn new(hash: u64, key: Weak<T>) -> Self {
+    const fn new(hash: u64, key: Weak<T>) -> Self {
         Self { hash, key }
     }
 

@@ -466,7 +466,7 @@ impl IntoRuaVal for Rc<Table> {
     clippy::float_cmp
 )]
 #[inline]
-fn try_into_usize(float: f64) -> Option<usize> {
+pub(crate) fn try_into_usize(float: f64) -> Option<usize> {
     let n = float as usize;
     if n as f64 == float {
         Some(n)

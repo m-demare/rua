@@ -22,6 +22,7 @@ use crate::{
         vals::{closure::Closure, IntoRuaVal},
     },
 };
+use rand::{rngs::StdRng, SeedableRng};
 use rua_trie::Trie;
 
 use crate::{
@@ -62,6 +63,7 @@ pub struct Vm {
     gc_data: GcData,
     id: NonZeroU32,
     stdout: Box<dyn io::Write>,
+    rng: StdRng,
 }
 
 const REMAINDER: fn(f64, f64) -> f64 = f64::rem_euclid;
@@ -87,6 +89,7 @@ impl Vm {
             id: NonZeroU32::new(COUNTER.fetch_add(1, Ordering::Relaxed))
                 .expect("Vm id cannot be zero"),
             stdout,
+            rng: StdRng::from_entropy(),
         };
         vm.global = default_global(&mut vm);
 

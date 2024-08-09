@@ -122,7 +122,29 @@ test_interpret!(nativefn_math_sqrt, "return math.sqrt(math.pi)", |_| Ok(
 ));
 test_interpret!(nativefn_math_cos, "return math.cos(math.pi)", |_| Ok((-1.0).into()));
 test_interpret!(nativefn_math_sin, "return math.sin(0)", |_| Ok(0.0.into()));
-test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(std::f64::consts::E.into()));
+test_interpret!(nativefn_math_exp, "return math.exp(1)", |_| Ok(1f64.exp().into()));
+
+test_interpret!(
+    nativefn_math_rand,
+    "
+local function arr_eq(a, b)
+    if #a ~= #b then return false end
+    for i=1, #a do
+        if a[i] ~= b[i] then return false end
+    end
+    return true
+end
+local n, seed = 15, 123
+local a, b = {}, {}
+math.randomseed(seed)
+for i=1, n do table.insert(a, math.random()) end
+math.randomseed(seed)
+for i=1, n do table.insert(b, math.random()) end
+assert(a[1]~=a[2])
+return arr_eq(a, b)
+",
+    |_| Ok(true.into())
+);
 
 test_interpret!(if_eq_true, "a = 5; if 5==a then return 1 end", |_| Ok(1.0.into()));
 test_interpret!(if_eq_false, "a = 4; if 5==a then return 1 end", |_| Ok(RuaVal::nil()));
