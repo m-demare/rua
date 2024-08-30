@@ -66,6 +66,12 @@ test_interpret!(string_length, "return #'foo' + 1", |_| Ok(4.0.into()));
 test_interpret!(string_arithmetic1, "return '5' + 1", |_| Ok(6.0.into()));
 test_interpret!(string_arithmetic2, "return '3' ^ '2'", |_| Ok(9.0.into()));
 
+test_interpret!(num_as_string1, "return #51", |_| Ok(2.0.into()));
+test_interpret!(num_as_string2, "return 3 .. 2", |vm| Ok(vm.new_string((*b"32").into()).into()));
+test_interpret!(num_as_string3, "return 3 .. 2.1", |vm| Ok(vm
+    .new_string((*b"32.1").into())
+    .into()));
+
 test_interpret!(
     global_vars,
     "

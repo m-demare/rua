@@ -123,9 +123,20 @@ impl RuaVal {
     /// # Errors
     ///
     /// Returns `TypeError` if value is not a `String`
+    pub fn as_str_strict(&self) -> Result<Rc<[u8]>, EvalError> {
+        match &self.0 {
+            RuaValInner::String(s) => Ok(s.inner()),
+            _ => Err(self.type_error(RuaType::String)),
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `String` or a `Number`
     pub fn as_str(&self) -> Result<Rc<[u8]>, EvalError> {
         match &self.0 {
             RuaValInner::String(s) => Ok(s.inner()),
+            RuaValInner::Number(n) => Ok(format!("{}", f64::from(*n)).into_bytes().into()),
             _ => Err(self.type_error(RuaType::String)),
         }
     }
@@ -156,7 +167,7 @@ impl RuaVal {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> Result<usize, EvalError> {
         match &self.0 {
-            RuaValInner::String(s) => Ok(s.len()),
+            RuaValInner::String(_) | RuaValInner::Number(_) => Ok(self.as_str()?.len()),
             RuaValInner::Table(t) => Ok(t.length()),
             _ => Err(self.type_error(RuaType::Table)),
         }
