@@ -91,9 +91,21 @@ impl RuaVal {
     ///
     /// Returns `TypeError` if value is not a `Number`
     #[inline]
-    pub const fn as_number(&self) -> Result<f64, EvalError> {
+    pub const fn as_number_strict(&self) -> Result<f64, EvalError> {
         match &self.0 {
             RuaValInner::Number(n) => Ok(n.val()),
+            _ => Err(self.type_error(RuaType::Number)),
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Returns `TypeError` if value is not a `Number` or a number-like `String`
+    #[inline]
+    pub fn as_number(&self) -> Result<f64, EvalError> {
+        match &self.0 {
+            RuaValInner::Number(n) => Ok(n.val()),
+            RuaValInner::String(s) => s.as_number(),
             _ => Err(self.type_error(RuaType::Number)),
         }
     }

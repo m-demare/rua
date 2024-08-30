@@ -2,6 +2,10 @@
 
 use std::{fmt::Display, hash, ops::Deref, rc::Rc};
 
+use crate::lex::utils::read_number;
+
+use super::RuaType;
+
 struct StringInner {
     data: Rc<[u8]>,
     hash: u64,
@@ -40,6 +44,12 @@ impl RuaString {
 
     pub(crate) fn inner(&self) -> Rc<[u8]> {
         self.0.data.clone()
+    }
+
+    pub(crate) fn as_number(&self) -> Result<f64, super::EvalError> {
+        read_number(&mut self.0.data.iter().copied().peekable()).map_err(|_| {
+            super::EvalError::TypeError { expected: RuaType::Number, got: RuaType::String }
+        })
     }
 }
 

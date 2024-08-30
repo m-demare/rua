@@ -232,7 +232,7 @@ impl Vm {
                         self.skip_if_vv(
                             &frame,
                             args,
-                            |a, b| Ok(a.as_number()? < b.as_number()?),
+                            |a, b| Ok(a.as_number_strict()? < b.as_number_strict()?),
                             ip,
                         ),
                         &frame,
@@ -244,7 +244,7 @@ impl Vm {
                         self.skip_if_vv(
                             &frame,
                             args,
-                            |a, b| Ok(a.as_number()? <= b.as_number()?),
+                            |a, b| Ok(a.as_number_strict()? <= b.as_number_strict()?),
                             ip,
                         ),
                         &frame,
@@ -267,14 +267,20 @@ impl Vm {
                 }
                 I::LtVN { lhs, rhs } => {
                     ip = trace(
-                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a.as_number()? < b), ip),
+                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a.as_number_strict()? < b), ip),
                         &frame,
                         ip,
                     )?;
                 }
                 I::LeVN { lhs, rhs } => {
                     ip = trace(
-                        self.skip_if_vn(&frame, lhs, rhs, |a, b| Ok(a.as_number()? <= b), ip),
+                        self.skip_if_vn(
+                            &frame,
+                            lhs,
+                            rhs,
+                            |a, b| Ok(a.as_number_strict()? <= b),
+                            ip,
+                        ),
                         &frame,
                         ip,
                     )?;
@@ -295,14 +301,20 @@ impl Vm {
                 }
                 I::LtNV { lhs, rhs } => {
                     ip = trace(
-                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(a < b.as_number()?), ip),
+                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(a < b.as_number_strict()?), ip),
                         &frame,
                         ip,
                     )?;
                 }
                 I::LeNV { lhs, rhs } => {
                     ip = trace(
-                        self.skip_if_nv(&frame, lhs, rhs, |a, b| Ok(a <= b.as_number()?), ip),
+                        self.skip_if_nv(
+                            &frame,
+                            lhs,
+                            rhs,
+                            |a, b| Ok(a <= b.as_number_strict()?),
+                            ip,
+                        ),
                         &frame,
                         ip,
                     )?;
@@ -453,9 +465,9 @@ impl Vm {
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
 
-        let step_val = step_val.as_number().expect(ERR_MSG);
-        let to_val = to_val.as_number().expect(ERR_MSG);
-        let from_val = from_val.as_number().expect(ERR_MSG);
+        let step_val = step_val.as_number_strict().expect(ERR_MSG);
+        let to_val = to_val.as_number_strict().expect(ERR_MSG);
+        let from_val = from_val.as_number_strict().expect(ERR_MSG);
 
         let from_val = from_val + step_val;
         if Self::continue_loop(from_val, to_val, step_val) {
@@ -478,9 +490,9 @@ impl Vm {
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
 
-        let step_val = step_val.as_number()?;
-        let to_val = to_val.as_number()?;
-        let from_val = from_val.as_number()?;
+        let step_val = step_val.as_number_strict()?;
+        let to_val = to_val.as_number_strict()?;
+        let from_val = from_val.as_number_strict()?;
 
         if Self::continue_loop(from_val, to_val, step_val) {
             self.set_stack_at(frame, from + 3, from_val.into());

@@ -151,7 +151,7 @@ where
     Ok(res * sign)
 }
 
-pub(super) fn read_number<T>(chars: &mut Peekable<T>) -> Result<f64, Box<str>>
+pub fn read_number<T>(chars: &mut Peekable<T>) -> Result<f64, Box<str>>
 where
     T: Iterator<Item = u8> + Clone,
 {

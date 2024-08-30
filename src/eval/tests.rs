@@ -63,6 +63,9 @@ test_interpret!(string_concat, "return 'hello' .. ' ' .. 'world'", |vm| Ok(vm
 test_interpret!(string_equality, "return 'foo' .. 'bar' ~= 'foobar'", |_| Ok(false.into()));
 test_interpret!(string_length, "return #'foo' + 1", |_| Ok(4.0.into()));
 
+test_interpret!(string_arithmetic1, "return '5' + 1", |_| Ok(6.0.into()));
+test_interpret!(string_arithmetic2, "return '3' ^ '2'", |_| Ok(9.0.into()));
+
 test_interpret!(
     global_vars,
     "

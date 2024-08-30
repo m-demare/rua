@@ -53,7 +53,7 @@ impl Table {
     ///
     /// Returns `InvalidTableIndex` if the key is `nil` or `NaN`
     pub fn insert(&self, key: RuaVal, val: RuaVal) -> Result<(), EvalError> {
-        let new_key_idx = key.as_number().ok().and_then(try_into_usize);
+        let new_key_idx = key.as_number_strict().ok().and_then(try_into_usize);
         if let Some(n) = new_key_idx {
             let mut array = self.array.borrow_mut();
             if let Some(slot) = array.get_mut(n) {
@@ -99,7 +99,7 @@ impl Table {
     }
 
     pub fn get(&self, key: &RuaVal) -> Option<RuaVal> {
-        let n = key.as_number().ok().and_then(try_into_usize);
+        let n = key.as_number_strict().ok().and_then(try_into_usize);
         if let Some(n) = n {
             self.get_int(key, n)
         } else {
@@ -148,7 +148,7 @@ impl Table {
     }
 
     pub fn remove(&self, key: &RuaVal) -> Option<RuaVal> {
-        let new_key_idx = key.as_number().ok().and_then(try_into_usize);
+        let new_key_idx = key.as_number_strict().ok().and_then(try_into_usize);
         if let Some(n) = new_key_idx {
             let mut array = self.array.borrow_mut();
             if let Some(v) = array.get_mut(n) {
@@ -289,7 +289,7 @@ impl Table {
     ) -> usize {
         let mut sum = 0;
         for k in map.keys() {
-            let n = k.as_number().ok().and_then(try_into_usize);
+            let n = k.as_number_strict().ok().and_then(try_into_usize);
             if let Some(n) = n {
                 Self::count_num(nums, n);
                 sum += 1;
@@ -362,7 +362,7 @@ impl Table {
             arr.resize(arr.capacity(), RuaVal::nil());
 
             map.retain(|k, v| {
-                let arr_key = k.as_number().ok().and_then(try_into_usize);
+                let arr_key = k.as_number_strict().ok().and_then(try_into_usize);
                 if let Some(arr_key) = arr_key {
                     if let Some(slot) = arr.get_mut(arr_key) {
                         *slot = std::mem::take(v);
@@ -382,7 +382,7 @@ fn validate_key(key: &RuaVal) -> Result<(), EvalError> {
     if key.is_nil() {
         return Err(EvalError::InvalidTableIndex(true));
     }
-    if let Ok(f) = key.as_number() {
+    if let Ok(f) = key.as_number_strict() {
         if f.is_nan() {
             return Err(EvalError::InvalidTableIndex(false));
         }
