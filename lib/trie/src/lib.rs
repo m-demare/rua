@@ -13,12 +13,12 @@ pub struct TrieWalker<'trie, T> {
     curr_node: Option<&'trie TrieNode<T>>,
 }
 
-impl<'trie, T> Trie<T> {
+impl<T> Trie<T> {
     pub fn new() -> Self {
         Self { root: (TrieNode::new(None)) }
     }
 
-    pub fn add_or_get(&'trie mut self, s: &[u8], val: T) -> &T {
+    pub fn add_or_get(&mut self, s: &[u8], val: T) -> &T {
         let mut node = &mut self.root;
 
         for ch in s {
