@@ -273,29 +273,29 @@ impl Table {
     }
 
     fn count_nums_arr(nums: &mut [u32; MAX_ARR_BITS], arr: &[RuaVal]) -> usize {
-        let mut sum = 0;
-        for (k, v) in arr.iter().enumerate() {
-            if !v.is_nil() {
-                Self::count_num(nums, k);
-                sum += 1;
-            }
-        }
-        sum
+        arr.iter()
+            .enumerate()
+            .filter(|(k, v)| {
+                !v.is_nil() && {
+                    Self::count_num(nums, *k);
+                    true
+                }
+            })
+            .count()
     }
 
     fn count_nums_map(
         nums: &mut [u32; MAX_ARR_BITS],
         map: &HashMap<RuaVal, RuaVal, BuildNoHashHasher<RuaVal>>,
     ) -> usize {
-        let mut sum = 0;
-        for k in map.keys() {
-            let n = k.as_number_strict().ok().and_then(try_into_usize);
-            if let Some(n) = n {
-                Self::count_num(nums, n);
-                sum += 1;
-            }
-        }
-        sum
+        map.keys()
+            .filter(|k| {
+                k.as_number_strict().ok().and_then(try_into_usize).is_some_and(|n| {
+                    Self::count_num(nums, n);
+                    true
+                })
+            })
+            .count()
     }
 
     // largest n such that:
