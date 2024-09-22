@@ -761,12 +761,7 @@ impl Vm {
         ip: usize,
     ) -> Result<usize, EvalError> {
         let (a, b) = (self.stack_at(frame, args.lhs), self.stack_at(frame, args.rhs));
-        if pred(a, b)? {
-            Ok(ip + 1)
-        } else {
-            Ok(ip)
-        }
-        // TODO optimize JMPs to avoid another instr dispatch cycle
+        Ok(Self::skip_if_imm(frame, pred(a, b)?, ip))
     }
 
     #[inline]
@@ -779,11 +774,7 @@ impl Vm {
         ip: usize,
     ) -> Result<usize, EvalError> {
         let (a, b) = (self.stack_at(frame, lhs), frame.read_number(rhs));
-        if pred(a, b)? {
-            Ok(ip + 1)
-        } else {
-            Ok(ip)
-        }
+        Ok(Self::skip_if_imm(frame, pred(a, b)?, ip))
     }
 
     #[inline]
@@ -796,27 +787,40 @@ impl Vm {
         ip: usize,
     ) -> Result<usize, EvalError> {
         let (a, b) = (frame.read_number(lhs), self.stack_at(frame, rhs));
-        if pred(a, b)? {
-            Ok(ip + 1)
+        Ok(Self::skip_if_imm(frame, pred(a, b)?, ip))
+    }
+
+    #[inline]
+    fn skip_if_imm(frame: &CallFrame, imm: bool, ip: usize) -> usize {
+        if imm {
+            // Skip next instruction (Jmp)
+            ip + 1
         } else {
-            Ok(ip)
+            // Take Jmp
+            let instr = frame.instr_at(ip);
+            match instr {
+                I::Jmp(offset) => compute_jmp(ip, offset) + 1,
+                _ => unreachable!("Instruction after condition must be a Jmp"),
+            }
         }
     }
 
     #[inline]
     fn stack_at(&self, frame: &CallFrame, idx: u8) -> &RuaVal {
-        &self.stack[frame.resolve_reg(idx)]
+        self.stack_at_abs(frame.resolve_reg(idx))
     }
 
+    #[inline]
     fn stack_at_abs(&self, idx: usize) -> &RuaVal {
         &self.stack[idx]
     }
 
     #[inline]
     fn set_stack_at(&mut self, frame: &CallFrame, idx: u8, val: RuaVal) {
-        self.stack[frame.resolve_reg(idx)] = val;
+        self.set_stack_at_abs(frame.resolve_reg(idx), val);
     }
 
+    #[inline]
     fn set_stack_at_abs(&mut self, idx: usize, val: RuaVal) {
         self.stack[idx] = val;
     }
