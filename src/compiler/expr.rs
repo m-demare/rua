@@ -126,10 +126,11 @@ impl ExprDesc {
         compiler: &mut Compiler<'_, T>,
         dst: u8,
     ) -> Result<(), ParseError> {
+        let line = compiler.last_tok_line;
         match &self.kind {
             ExprKind::Local { reg } => {
                 if *reg != dst {
-                    compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0);
+                    compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), line);
                 }
             }
             ExprKind::Tmp { reg, instr_idx } => {
@@ -137,26 +138,26 @@ impl ExprDesc {
                     if let Some(instr_idx) = instr_idx {
                         compiler.current_chunk_mut().chg_dst_of(*instr_idx, dst);
                     } else {
-                        compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), 0);
+                        compiler.instruction(I::Mv(UnArgs { dst, src: *reg }), line);
                     }
                 }
             }
             ExprKind::Global(s) => {
                 let src = compiler.new_string_constant(s.clone())?;
-                compiler.instruction(I::GetGlobal { dst, src }, 0);
+                compiler.instruction(I::GetGlobal { dst, src }, line);
             }
             ExprKind::Upvalue(up) => {
                 let src = compiler
                     .context
                     .resolve_upvalue(up, &mut compiler.context_stack)?
                     .expect("Got invalid upvalue");
-                compiler.instruction(I::GetUpvalue { dst, src }, 0);
+                compiler.instruction(I::GetUpvalue { dst, src }, line);
             }
             ExprKind::Number(n) => {
-                compiler.emit_number(dst, *n, 0)?;
+                compiler.emit_number(dst, *n, line)?;
             }
             ExprKind::String(s) => {
-                compiler.emit_string(dst, s.clone(), 0)?;
+                compiler.emit_string(dst, s.clone(), line)?;
             }
             ExprKind::Function(_) => {
                 let old_kind =
@@ -169,13 +170,13 @@ impl ExprDesc {
                 }
             }
             ExprKind::True => {
-                compiler.instruction(I::True { dst }, 0);
+                compiler.instruction(I::True { dst }, line);
             }
             ExprKind::False => {
-                compiler.instruction(I::False { dst }, 0);
+                compiler.instruction(I::False { dst }, line);
             }
             ExprKind::Nil => {
-                compiler.instruction(I::Nil { dst }, 0);
+                compiler.instruction(I::Nil { dst }, line);
             }
             ExprKind::Jmp { instr_idx } => {
                 compiler.negate_cond(*instr_idx - 1);
@@ -197,10 +198,10 @@ impl ExprDesc {
                 let fj = if let ExprKind::Jmp { .. } = self.kind {
                     None
                 } else {
-                    Some(compiler.instruction(I::Jmp(i16::MAX), 0))
+                    Some(compiler.instruction(I::Jmp(i16::MAX), line))
                 };
-                pos_f = Some(compiler.instruction(I::LFalseSkip { dst }, 0));
-                pos_t = Some(compiler.instruction(I::True { dst }, 0));
+                pos_f = Some(compiler.instruction(I::LFalseSkip { dst }, line));
+                pos_t = Some(compiler.instruction(I::True { dst }, line));
                 if let Some(list) = fj {
                     compiler.patch_jmp_here(list, 0)?;
                 }

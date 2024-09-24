@@ -531,11 +531,16 @@ impl Debug for Chunk {
         }
         writeln!(f, "\nopnr   line  opcode")?;
         for (i, instr) in self.code.iter().copied().enumerate() {
+            let same_line = "     |";
             let line_str = if count_in_line == 0 {
                 let linenr = line.ok_or(std::fmt::Error)?.0;
-                format!("{linenr: >6}")
+                if linenr == 0 && i > 0 {
+                    same_line.to_string()
+                } else {
+                    format!("{linenr: >6}")
+                }
             } else {
-                "     |".to_string()
+                same_line.to_string()
             };
 
             writeln!(f, "{i:4} {line_str}  {}", self.format_instr(instr))?;

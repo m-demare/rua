@@ -37,6 +37,7 @@ pub struct Compiler<'vm, T: Iterator<Item = u8> + Clone> {
     peeked_token: Option<Token>,
     context: CompilerCtxt,
     context_stack: Vec<CompilerCtxt>,
+    last_tok_line: usize,
 }
 
 #[allow(unused_parens)]
@@ -44,7 +45,13 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     fn new(mut tokens: Tokenizer<'vm, T>) -> Self {
         let name = tokens.vm().new_string((*b"<main>").into());
         let peeked_token = tokens.next();
-        Self { tokens, context: CompilerCtxt::main(name), context_stack: Vec::new(), peeked_token }
+        Self {
+            tokens,
+            context: CompilerCtxt::main(name),
+            context_stack: Vec::new(),
+            peeked_token,
+            last_tok_line: 0,
+        }
     }
 
     fn compile_fn(&mut self) -> Result<(Function, Upvalues), ParseError> {
@@ -746,6 +753,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
     }
 
     fn next_token(&mut self) -> Option<Token> {
+        self.last_tok_line = self.peeked_token.as_ref().map_or(0, |t| t.line);
         std::mem::replace(&mut self.peeked_token, self.tokens.next())
     }
 
