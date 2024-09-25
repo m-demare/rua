@@ -27,19 +27,20 @@ static_assertions = "1.1.0"
 clap = { version = "4.4.8", features = ["derive"] }
 ahash = { version = "0.8.7", default-features = false, features = ["compile-time-rng", "std"] }
 nohash-hasher = "0.2.0"
-wasm-bindgen = "0.2.92"
 rand = "0.8.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mimalloc = "0.1.39"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.92"
 getrandom = { version = "0.2.15", features = ["js"] }
 
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+panic = "abort"
 
 [profile.profiling]
 inherits = "release"
