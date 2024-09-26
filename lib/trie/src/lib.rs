@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::perf)]
+#![deny(unused_must_use)]
+#![deny(clippy::mod_module_files)]
+
 pub struct Trie<T> {
     root: TrieNode<T>,
 }
@@ -14,7 +18,7 @@ pub struct TrieWalker<'trie, T> {
 }
 
 impl<T> Trie<T> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { root: (TrieNode::new(None)) }
     }
 
@@ -45,7 +49,7 @@ impl<T> Default for Trie<T> {
 }
 
 impl<'trie, T> TrieWalker<'trie, T> {
-    pub const fn new(trie: &'trie Trie<T>) -> TrieWalker<'trie, T> {
+    pub const fn new(trie: &'trie Trie<T>) -> Self {
         Self { curr_node: Some(&trie.root) }
     }
 
@@ -55,13 +59,14 @@ impl<'trie, T> TrieWalker<'trie, T> {
         }
     }
 
+    #[must_use]
     pub fn get_res(self) -> Option<&'trie T> {
         self.curr_node?.val.as_ref()
     }
 }
 
 impl<'trie, T> TrieNode<T> {
-    pub(self) fn new(val: Option<T>) -> Self {
+    pub(self) const fn new(val: Option<T>) -> Self {
         Self { next: Vec::new(), val }
     }
 

@@ -1,5 +1,8 @@
+#![warn(clippy::pedantic, clippy::nursery, clippy::perf)]
+#![deny(unused_must_use)]
+#![deny(clippy::mod_module_files)]
+#![allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
 #![feature(box_patterns)]
-#![allow(clippy::manual_unwrap_or_default)]
 
 use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
@@ -36,9 +39,9 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    let name = func.sig.ident.clone();
-    let name_str = func.sig.ident.to_string();
-    let vis = func.vis.clone();
+    #[allow(clippy::redundant_clone)]
+    let (name, name_str, vis) =
+        (func.sig.ident.clone(), func.sig.ident.to_string(), func.vis.clone());
     let constness = func.sig.constness;
 
     let output_wrap = wrap_output(&func);
@@ -135,7 +138,7 @@ fn get_parameters(
                         None => None,
                         Some(a) => Some(a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?),
                     }
-                ))
+                ));
             }
             FnArg::Typed(PatType { ty: box Type::Path(TypePath { .. }), .. }) => {
                 params.push(quote!(
@@ -143,7 +146,7 @@ fn get_parameters(
                         None => return Err(EvalErrorTraced::new(EvalError::ExpectedArgument(#i as u8, name_str.into()), vec![(#fn_name.into(), 0)])),
                         Some(a) => a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
                     }
-                ))
+                ));
             }
             _ => panic!("Unsuported rua parameter: {param:?}"),
         }

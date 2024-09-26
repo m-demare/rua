@@ -1,3 +1,8 @@
+#![warn(clippy::pedantic, clippy::nursery, clippy::perf)]
+#![deny(unused_must_use)]
+#![deny(clippy::mod_module_files)]
+#![allow(clippy::default_trait_access)]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::fold::Fold;
@@ -57,10 +62,10 @@ pub fn invariant(args: TokenStream, input: TokenStream) -> TokenStream {
             if !caught_returns && !to_validate_at_end.is_empty() {
                 catch_returns(f);
             }
-            for id in to_validate_at_end {
+            for id in &to_validate_at_end {
                 validate_at_end(f, id, &args);
             }
-            for id in to_validate_at_beggining.into_iter().rev() {
+            for id in to_validate_at_beggining.iter().rev() {
                 validate_at_beggining(f, id, &args);
             }
         }
@@ -86,17 +91,17 @@ impl Parse for Args {
             }
             _ => "Struct invariant broken".to_owned(),
         };
-        Ok(Args { assertions: args, msg })
+        Ok(Self { assertions: args, msg })
     }
 }
 
-fn validate_at_beggining(f: &mut syn::ImplItemFn, ident: proc_macro2::Ident, args: &Args) {
+fn validate_at_beggining(f: &mut syn::ImplItemFn, ident: &proc_macro2::Ident, args: &Args) {
     let mut validations = compile_validations(args, ident);
     validations.append(&mut f.block.stmts);
     f.block.stmts = validations;
 }
 
-fn validate_at_end(f: &mut syn::ImplItemFn, ident: proc_macro2::Ident, args: &Args) {
+fn validate_at_end(f: &mut syn::ImplItemFn, ident: &proc_macro2::Ident, args: &Args) {
     let ret_stmt = f.block.stmts.pop().unwrap();
 
     let mut validations = compile_validations(args, ident);
@@ -106,7 +111,7 @@ fn validate_at_end(f: &mut syn::ImplItemFn, ident: proc_macro2::Ident, args: &Ar
     f.block.stmts.push(ret_stmt);
 }
 
-fn compile_validations(args: &Args, ident: proc_macro2::Ident) -> Vec<Stmt> {
+fn compile_validations(args: &Args, ident: &proc_macro2::Ident) -> Vec<Stmt> {
     args.assertions
         .iter()
         .map(|assertion| {
@@ -123,7 +128,7 @@ fn compile_validations(args: &Args, ident: proc_macro2::Ident) -> Vec<Stmt> {
 fn validate_retval(f: &mut syn::ImplItemFn, args: &Args) {
     let retval = catch_returns(f);
 
-    validate_at_end(f, retval, args);
+    validate_at_end(f, &retval, args);
 }
 
 fn catch_returns(f: &mut syn::ImplItemFn) -> proc_macro2::Ident {
@@ -238,7 +243,7 @@ struct SwapSelfFor {
 }
 
 impl SwapSelfFor {
-    fn new(ident: proc_macro2::Ident) -> Self {
+    const fn new(ident: proc_macro2::Ident) -> Self {
         Self { ident }
     }
 }
@@ -248,7 +253,7 @@ struct ReturnsToBreak<'a> {
 }
 
 impl<'a> ReturnsToBreak<'a> {
-    fn new(block_label: &'a syn::Lifetime) -> Self {
+    const fn new(block_label: &'a syn::Lifetime) -> Self {
         Self { block_label }
     }
 }
