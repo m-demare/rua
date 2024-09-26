@@ -26,7 +26,7 @@ This includes things like:
 - A rather complete single-pass compiler. Most of the Lua syntax is already supported
   (main exception being iterator-based for-loops)
 - Some compile-time optimizations, like constant folding and specialized instructions
-- A fast, register-based VM, with performance on par with Lua 5.1 (see [benchmarks](./benchmarks.md))
+- A fast, register-based VM, with performance comparable with Lua 5.1 (see [benchmarks](./benchmarks.md))
 - A memory safe garbage collector, that achieves a decent performance and memory
 usage by combining reference counting and a real tracing GC
 - A table implementation similar to Lua's, that automatically optimizes itself
