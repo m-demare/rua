@@ -133,6 +133,7 @@ impl Closure {
 }
 
 impl IntoRuaVal for Closure {
+    #[inline]
     fn into_rua(self, vm: &mut Vm) -> RuaVal {
         Rc::new(self).into_rua(vm)
     }

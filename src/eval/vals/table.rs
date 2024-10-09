@@ -505,11 +505,11 @@ mod tests {
         table.insert(3.0.into(), b"test2".into_rua(&mut vm))?;
         assert!(table.length() == 1 || table.length() == 3);
 
-        let table1: RuaVal = Table::new().into_rua(&mut vm);
+        let table1 = Table::new().into_rua(&mut vm);
         table.insert(table1.clone(), 5.0.into())?;
-        let table2: RuaVal = Table::new().into_rua(&mut vm);
+        let table2 = Table::new().into_rua(&mut vm);
         table.insert(table2.clone(), 7.0.into())?;
-        let table3: RuaVal = Table::new().into_rua(&mut vm);
+        let table3 = Table::new().into_rua(&mut vm);
         table.insert(table3.clone(), 9.0.into())?;
         table.push(true.into());
 
@@ -528,7 +528,7 @@ mod tests {
     #[allow(clippy::float_cmp)]
     fn test_remove() {
         let mut vm = Vm::default();
-        let vec: Vec<(RuaVal, RuaVal)> = vec![
+        let vec = vec![
             (0.0.into(), 50.0.into()),
             (1.0.into(), 51.0.into()),
             (2.0.into(), 52.0.into()),

@@ -8,6 +8,7 @@ use super::{RuaVal, RuaValInner};
 pub struct RuaNumber(f64);
 
 impl Hash for RuaNumber {
+    #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         // TODO this is not really safe to do,
         // should check out how other interpreters deal with it
