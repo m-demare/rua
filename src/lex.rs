@@ -23,7 +23,7 @@ where
     line: usize,
 }
 
-impl<'vm, T> Iterator for Tokenizer<'vm, T>
+impl<T> Iterator for Tokenizer<'_, T>
 where
     T: Iterator<Item = u8> + Clone,
 {

@@ -44,7 +44,7 @@ fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResult {
     Ok(
         match read_number_radix(
             s.to_string().bytes().peekable().by_ref(),
-            r.try_into().or(Err(EvalError::Exception("Invalid radix".into())))?,
+            r.try_into().map_err(|_| EvalError::Exception("Invalid radix".into()))?,
         ) {
             Ok(n) => n.into(),
             Err(..) => RuaVal::nil(),
