@@ -1022,6 +1022,35 @@ test_interpret!(
 );
 
 test_interpret!(
+    for_loop_numeric_strings,
+    "
+    local sum=0
+    for i = '1', '5', '2' do
+        sum = sum + i
+    end
+
+    return sum
+",
+    |_| Ok(9.0.into())
+);
+
+test_interpret!(
+    for_loop_other_type,
+    "
+    local sum=0
+    for i = {}, 5 do
+        sum = sum + i
+    end
+
+    return sum
+",
+    |_| Err(EvalErrorTraced::new(
+        EvalError::TypeError { expected: RuaType::Number, got: RuaType::Table },
+        vec![("<main>".into(), 3)]
+    ))
+);
+
+test_interpret!(
     val_in_stack_isnt_gced,
     "
     local a = {1, 2}

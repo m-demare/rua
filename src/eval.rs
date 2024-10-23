@@ -490,12 +490,15 @@ impl Vm {
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
 
-        let step_val = step_val.as_number_strict()?;
-        let to_val = to_val.as_number_strict()?;
-        let from_val = from_val.as_number_strict()?;
+        let step_val = step_val.as_number()?;
+        let to_val = to_val.as_number()?;
+        let from_val = from_val.as_number()?;
 
         if Self::continue_loop(from_val, to_val, step_val) {
             self.set_stack_at(frame, from + 3, from_val.into());
+            self.set_stack_at(frame, from + 2, step_val.into());
+            self.set_stack_at(frame, from + 1, to_val.into());
+            self.set_stack_at(frame, from, from_val.into());
             Ok(ip)
         } else {
             Ok(ip + offset as usize)
