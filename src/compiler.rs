@@ -788,6 +788,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 src.free_tmp_regs(self);
                 src.free_reg(self);
                 src.to_reg(self, reg)?;
+                self.context.locals.assign_to(reg);
             }
             ExprKind::Global(ref id) => {
                 let src = src.to_any_reg(self)?;
@@ -799,7 +800,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 let src = src.to_any_reg(self)?;
                 let dst = self
                     .context
-                    .resolve_upvalue(id, &mut self.context_stack)?
+                    .resolve_upvalue(id, &mut self.context_stack, true)?
                     .expect("Got invalid upvalue");
                 self.instruction(I::SetUpvalue { dst, src }, line);
                 self.free_reg(src);
@@ -994,20 +995,32 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         self.begin_scope();
 
-        let _it_var = self.declare_local(id)?;
+        let it_var = self.declare_local(id)?;
 
         self.do_block(false)?;
+
+        let was_iterator_reassigned = self.context.locals.was_reassigned(it_var);
 
         self.end_scope();
 
         let for_loop = self.pc();
-        self.instruction(
-            I::ForLoop {
-                from: from.into(),
-                offset: (for_loop - forprep).try_into().or(Err(ParseError::JmpTooFar(line)))?,
-            },
-            line,
-        );
+        if was_iterator_reassigned {
+            self.instruction(
+                I::ForLoop {
+                    from: from.into(),
+                    offset: (for_loop - forprep).try_into().or(Err(ParseError::JmpTooFar(line)))?,
+                },
+                line,
+            );
+        } else {
+            self.instruction(
+                I::ForLoopConst {
+                    from: from.into(),
+                    offset: (for_loop - forprep).try_into().or(Err(ParseError::JmpTooFar(line)))?,
+                },
+                line,
+            );
+        }
 
         self.current_chunk_mut().replace_instruction(
             forprep,
@@ -1255,12 +1268,8 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                     if peek_token_is!(self, TT::ASSIGN) {
                         desc.kind = match desc.kind {
                             ExprKind::Local { reg, .. } => {
-                                let name = self
-                                    .context
-                                    .locals
-                                    .name_of_reg(reg)
-                                    .expect("Got non existing local");
-                                ExprKind::String(name)
+                                let name = self.context.locals.name_of_reg(reg);
+                                ExprKind::String(name.clone())
                             }
                             ExprKind::Global(s) | ExprKind::Upvalue(s) | ExprKind::String(s) => {
                                 ExprKind::String(s)
@@ -1384,14 +1393,18 @@ impl CompilerCtxt {
         &mut self,
         id: &RuaString,
         context_stack: &mut [Self],
+        is_assignment: bool,
     ) -> Result<Option<UpvalueHandle>, ParseError> {
         if let Some((parent, tail)) = context_stack.split_last_mut() {
             if let Some(local) = parent.resolve_local(id) {
-                parent.capture(local);
+                if is_assignment {
+                    parent.locals.assign_to(local.into());
+                }
+                parent.locals.capture(local);
                 Some(self.add_upvalue(UpvalueLocation::ParentStack(local))).transpose()
             } else {
                 parent
-                    .resolve_upvalue(id, tail)?
+                    .resolve_upvalue(id, tail, is_assignment)?
                     .map(|upvalue| self.add_upvalue(UpvalueLocation::ParentUpval(upvalue)))
                     .transpose()
             }
@@ -1402,10 +1415,6 @@ impl CompilerCtxt {
 
     fn add_upvalue(&mut self, upvalue: UpvalueLocation) -> Result<UpvalueHandle, ParseError> {
         self.upvalues.find_or_add(upvalue)
-    }
-
-    fn capture(&mut self, local: LocalHandle) {
-        self.locals.capture(local);
     }
 }
 

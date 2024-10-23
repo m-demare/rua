@@ -376,6 +376,9 @@ impl Vm {
                 I::ForLoop { from, offset } => {
                     ip = self.for_loop(&frame, from, offset, ip);
                 }
+                I::ForLoopConst { from, offset } => {
+                    ip = self.for_loop_const(&frame, from, offset, ip);
+                }
                 I::NewTable { dst, capacity } => {
                     let table = self.new_table(capacity);
                     self.set_stack_at(&frame, dst, table);
@@ -461,6 +464,9 @@ impl Vm {
     fn for_loop(&mut self, frame: &CallFrame, from: u8, offset: u16, ip: usize) -> usize {
         const ERR_MSG: &str = "Loop vals must be numbers (checked at for_prep)";
 
+        // To avoid all other bounds checks
+        assert!(frame.resolve_reg(from + 3) < self.stack.len());
+
         let step_val = self.stack_at(frame, from + 2);
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);
@@ -472,7 +478,40 @@ impl Vm {
         let from_val = from_val + step_val;
         if Self::continue_loop(from_val, to_val, step_val) {
             self.set_stack_at(frame, from + 3, from_val.into());
-            self.set_stack_at(frame, from, from_val.into());
+            let old_from_val =
+                std::mem::replace(&mut self.stack[frame.resolve_reg(from)], from_val.into());
+
+            // old_val is guaranteed to be a number, so there's no need to drop it
+            std::mem::forget(old_from_val);
+            ip - offset as usize
+        } else {
+            ip
+        }
+    }
+
+    // For loop in which iterator variable is never reassigned
+    // It's faster because it avoids having to drop the old value
+    fn for_loop_const(&mut self, frame: &CallFrame, from: u8, offset: u16, ip: usize) -> usize {
+        const ERR_MSG: &str = "Loop vals must be numbers (checked at for_prep)";
+
+        // To avoid all other bounds checks
+        assert!(frame.resolve_reg(from + 3) < self.stack.len());
+
+        let curr_val = self.stack_at(frame, from + 3);
+        let step_val = self.stack_at(frame, from + 2);
+        let to_val = self.stack_at(frame, from + 1);
+
+        let step_val = step_val.as_number_strict().expect(ERR_MSG);
+        let to_val = to_val.as_number_strict().expect(ERR_MSG);
+        let curr_val = curr_val.as_number_strict().expect(ERR_MSG);
+
+        let curr_val = curr_val + step_val;
+        if Self::continue_loop(curr_val, to_val, step_val) {
+            let old_curr_val =
+                std::mem::replace(&mut self.stack[frame.resolve_reg(from + 3)], curr_val.into());
+
+            // old_val is guaranteed to be a number, so there's no need to drop it
+            std::mem::forget(old_curr_val);
             ip - offset as usize
         } else {
             ip
@@ -486,6 +525,9 @@ impl Vm {
         offset: u16,
         ip: usize,
     ) -> Result<usize, EvalError> {
+        // To avoid all other bounds checks
+        assert!(frame.resolve_reg(from + 3) < self.stack.len());
+
         let step_val = self.stack_at(frame, from + 2);
         let to_val = self.stack_at(frame, from + 1);
         let from_val = self.stack_at(frame, from);

@@ -8,7 +8,7 @@ use super::{
 
 #[derive(Debug)]
 pub(super) enum ExprKind {
-    Local { reg: u8 }, // instr_idx = None means expr is non relocable
+    Local { reg: u8 },
     Global(RuaString),
     Upvalue(RuaString),
     Tmp { reg: u8, instr_idx: Option<usize> }, // instr_idx = None means expr is non relocable
@@ -149,7 +149,7 @@ impl ExprDesc {
             ExprKind::Upvalue(up) => {
                 let src = compiler
                     .context
-                    .resolve_upvalue(up, &mut compiler.context_stack)?
+                    .resolve_upvalue(up, &mut compiler.context_stack, false)?
                     .expect("Got invalid upvalue");
                 compiler.instruction(I::GetUpvalue { dst, src }, line);
             }

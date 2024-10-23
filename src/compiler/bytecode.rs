@@ -76,6 +76,7 @@ pub enum Instruction {
     Jmp(i16), // TODO i24?
     ForPrep { from: u8, offset: u16 },
     ForLoop { from: u8, offset: u16 },
+    ForLoopConst { from: u8, offset: u16 },
 
     NewTable { dst: u8, capacity: u16 },
     InsertV { table: u8, key: u8, val: u8 },
@@ -467,7 +468,9 @@ impl Instruction {
             }
             Self::ReturnNil | Self::Jmp(_) | Self::Upvalue(_) => true,
             Self::CloseUpvalues { from, to } => validate(from) && validate(to),
-            Self::ForPrep { from, .. } | Self::ForLoop { from, .. } => validate(from),
+            Self::ForPrep { from, .. }
+            | Self::ForLoop { from, .. }
+            | Self::ForLoopConst { from, .. } => validate(from),
             Self::AddVN(i)
             | Self::SubVN(i)
             | Self::MulVN(i)

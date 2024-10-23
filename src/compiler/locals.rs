@@ -10,6 +10,7 @@ pub(super) struct Local {
     name: RuaString,
     depth: usize,
     is_captured: bool,
+    was_reassigned: bool,
 }
 
 pub(super) struct Locals {
@@ -86,13 +87,16 @@ impl Locals {
         self.locals[local.0 as usize].is_captured = true;
     }
 
-    pub(super) fn name_of_reg(&self, reg: u8) -> Option<RuaString> {
-        self.locals
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(i, _)| *i == reg.into())
-            .map(|(_, local)| local.name.clone())
+    pub(super) fn assign_to(&mut self, local: u8) {
+        self.locals[local as usize].was_reassigned = true;
+    }
+
+    pub(super) fn was_reassigned(&mut self, local: LocalHandle) -> bool {
+        self.locals[local.0 as usize].was_reassigned
+    }
+
+    pub(super) fn name_of_reg(&self, reg: u8) -> &RuaString {
+        &self.locals[reg as usize].name
     }
 }
 
@@ -104,7 +108,7 @@ impl LocalHandle {
 
 impl Local {
     const fn new(name: RuaString, depth: usize) -> Self {
-        Self { name, depth, is_captured: false }
+        Self { name, depth, is_captured: false, was_reassigned: false }
     }
 
     pub(super) const fn is_captured(&self) -> bool {
