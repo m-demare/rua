@@ -19,7 +19,7 @@ fn sqrt(n: f64) -> f64 {
 }
 
 #[rua_func]
-fn abs(n: f64) -> f64 {
+const fn abs(n: f64) -> f64 {
     n.abs()
 }
 
@@ -143,12 +143,12 @@ fn log10(n: f64) -> f64 {
 }
 
 #[rua_func]
-fn deg(n: f64) -> f64 {
+const fn deg(n: f64) -> f64 {
     n.to_degrees()
 }
 
 #[rua_func]
-fn rad(n: f64) -> f64 {
+const fn rad(n: f64) -> f64 {
     n.to_radians()
 }
 

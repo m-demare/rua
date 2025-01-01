@@ -42,13 +42,12 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
     #[allow(clippy::redundant_clone)]
     let (name, name_str, vis) =
         (func.sig.ident.clone(), func.sig.ident.to_string(), func.vis.clone());
-    let constness = func.sig.constness;
 
     let output_wrap = wrap_output(&func);
     let (parameters, validate_cant_args) = get_parameters(&func, &macro_args);
 
     let output = quote!(
-        #vis #constness fn #name(ctxt: &mut FunctionContext) -> RuaResultTraced {
+        #vis fn #name(ctxt: &mut FunctionContext) -> RuaResultTraced {
             let name_str = #name_str;
             #validate_cant_args
             #[inline]
