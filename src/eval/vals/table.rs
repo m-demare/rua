@@ -490,6 +490,8 @@ pub(crate) fn try_into_f64(n: usize) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::float_cmp, clippy::cast_precision_loss)]
+
     use crate::{
         eval::vals::{EvalError, IntoRuaVal, RuaVal, RuaValInner},
         eval::Vm,
@@ -525,7 +527,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::float_cmp)]
     fn test_remove() {
         let mut vm = Vm::default();
         let vec = vec![
@@ -575,7 +576,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
     fn test_array() {
         let table = Table::new();
         insert_all(&table, (1..200).filter(|i| i % 10 != 0));
@@ -598,7 +598,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
     fn test_sparse_array() {
         let table = Table::new();
         insert_all(&table, (1..200).filter(|i| i % 10 != 0).map(|i| (i + 50) * 4));
@@ -617,7 +616,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
     fn test_sparse_array_to_array_conversion() {
         let table = Table::new();
         insert_all(&table, 170..201);

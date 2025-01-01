@@ -39,7 +39,6 @@ pub fn rua_func(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    #[allow(clippy::redundant_clone)]
     let (name, name_str, vis) =
         (func.sig.ident.clone(), func.sig.ident.to_string(), func.vis.clone());
 

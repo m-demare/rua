@@ -1,3 +1,5 @@
+#![allow(clippy::similar_names)]
+
 use std::rc::Rc;
 
 use super::{
@@ -17,7 +19,6 @@ pub(super) trait BinFolder {
     ) -> Result<ExprDesc, ParseError>;
 }
 
-#[allow(clippy::similar_names)]
 pub struct CommutativeFolder<
     Folder: FnOnce(f64, f64) -> f64,
     I1: FnOnce(BinArgs) -> Instruction,
@@ -28,7 +29,6 @@ pub struct CommutativeFolder<
     vn_instr: I2,
 }
 
-#[allow(clippy::similar_names)]
 pub struct NonCommutativeFolder<
     Folder: FnOnce(f64, f64) -> f64,
     I1: FnOnce(BinArgs) -> Instruction,
@@ -55,7 +55,6 @@ impl<
         I2: FnOnce(VNArgs) -> Instruction,
     > CommutativeFolder<Folder, I1, I2>
 {
-    #[allow(clippy::similar_names)]
     pub(super) const fn new(folder: Folder, vv_instr: I1, vn_instr: I2) -> Self {
         Self { folder, vv_instr, vn_instr }
     }
@@ -134,7 +133,6 @@ impl<
         I3: FnOnce(NVArgs) -> Instruction,
     > NonCommutativeFolder<Folder, I1, I2, I3>
 {
-    #[allow(clippy::similar_names)]
     pub(super) const fn new(folder: Folder, vv_instr: I1, vn_instr: I2, nv_instr: I3) -> Self {
         Self { folder, vv_instr, vn_instr, nv_instr }
     }
@@ -258,7 +256,6 @@ impl<Folder: FnOnce(Rc<[u8]>, Rc<[u8]>) -> Rc<[u8]>, I1: FnOnce(BinArgs) -> Inst
     }
 }
 
-#[allow(clippy::similar_names)]
 pub struct ComparisonFolder<
     Folder: FnOnce(f64, f64) -> bool,
     I1: FnOnce(VVJmpArgs) -> Instruction,
@@ -278,7 +275,6 @@ impl<
         I3: FnOnce(NumberHandle, u8) -> Instruction,
     > ComparisonFolder<Folder, I1, I2, I3>
 {
-    #[allow(clippy::similar_names)]
     pub const fn new(folder: Folder, vv_instr: I1, vn_instr: I2, nv_instr: I3) -> Self {
         Self { folder, vv_instr, vn_instr, nv_instr }
     }

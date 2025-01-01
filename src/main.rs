@@ -7,7 +7,7 @@
 use std::{io, path::PathBuf, rc::Rc};
 
 use clap::Parser;
-use cli::Args;
+use cli::CliArgs;
 use compiler::{bytecode::ParseError, compile};
 use eval::Vm;
 use mimalloc::MiMalloc;
@@ -24,7 +24,7 @@ mod repl;
 pub mod wasm;
 
 fn main() {
-    let mut args = Args::parse();
+    let mut args = CliArgs::parse();
 
     let varargs: Vec<_> = std::mem::take(&mut args.args).into_iter().map(Into::into).collect();
     match &args.path {
@@ -42,7 +42,7 @@ fn main() {
     }
 }
 
-fn evaluate(path: &PathBuf, args: &Args, varargs: &[Rc<[u8]>]) -> Result<(), ParseError> {
+fn evaluate(path: &PathBuf, args: &CliArgs, varargs: &[Rc<[u8]>]) -> Result<(), ParseError> {
     let contents = std::fs::read(path).expect("Error: input file does not exist");
 
     let mut vm = Vm::with_args(varargs, Box::new(io::stdout()));

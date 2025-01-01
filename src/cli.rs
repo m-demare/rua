@@ -5,8 +5,7 @@ use clap::Parser;
 /// Rua language interpreter
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
-#[allow(clippy::struct_field_names)]
-pub struct Args {
+pub struct CliArgs {
     #[arg()]
     pub(super) path: Option<PathBuf>,
 
