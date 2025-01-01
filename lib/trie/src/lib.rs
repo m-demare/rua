@@ -23,21 +23,13 @@ impl<T> Trie<T> {
     }
 
     pub fn add_or_get(&mut self, s: &[u8], val: T) -> &T {
-        let mut node = &mut self.root;
-
-        for ch in s {
-            node = node.find_next_or_add(*ch);
-        }
+        let node = s.iter().fold(&mut self.root, |node, ch| node.find_next_or_add(*ch));
 
         node.val.get_or_insert(val)
     }
 
-    #[cfg(test)]
     pub fn find(&self, s: &[u8]) -> Option<&T> {
-        let mut node = &self.root;
-        for ch in s {
-            node = &node.next.iter().find(|(c, _)| ch == c)?.1
-        }
+        let node = s.iter().try_fold(&self.root, |node, ch| node.find_next(*ch))?;
         node.val.as_ref()
     }
 }
@@ -55,7 +47,7 @@ impl<'trie, T> TrieWalker<'trie, T> {
 
     pub fn walk(&mut self, ch: u8) {
         if let Some(n) = &self.curr_node {
-            self.curr_node = n.next.iter().find(|(c, _)| &ch == c).map(|(_, node)| node.as_ref());
+            self.curr_node = n.find_next(ch);
         }
     }
 
@@ -77,6 +69,10 @@ impl<'trie, T> TrieNode<T> {
             self.next.push((ch, Box::new(Self::new(None))));
             &mut self.next.last_mut().expect("Just pushed").1
         }
+    }
+
+    fn find_next(&'trie self, ch: u8) -> Option<&'trie Self> {
+        self.next.iter().find(|(c, _)| ch == *c).map(|(_, n)| n.as_ref())
     }
 }
 
