@@ -96,18 +96,18 @@ fn atan2(n: f64, m: f64) -> f64 {
 }
 
 #[rua_func]
-fn floor(n: f64) -> f64 {
+const fn floor(n: f64) -> f64 {
     n.floor()
 }
 
 #[rua_func]
-fn ceil(n: f64) -> f64 {
+const fn ceil(n: f64) -> f64 {
     n.ceil()
 }
 
 // Non-standard
 #[rua_func]
-fn round(n: f64) -> f64 {
+const fn round(n: f64) -> f64 {
     n.round()
 }
 

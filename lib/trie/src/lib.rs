@@ -7,7 +7,7 @@ pub struct Trie<T> {
 }
 
 pub struct TrieNode<T> {
-    next: Vec<(u8, Box<TrieNode<T>>)>,
+    next: Vec<(u8, Box<Self>)>,
     // A HashMap is slower, there won't be that many keys
     // (see https://github.com/m-demare/rust_microbenches)
     val: Option<T>,

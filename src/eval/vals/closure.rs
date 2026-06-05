@@ -90,6 +90,7 @@ impl Closure {
     }
 
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub(in crate::eval) fn mark(&self) -> bool {
         let already_marked = self.marked.replace(true);
         if already_marked {
@@ -117,7 +118,9 @@ impl Closure {
         self.upvalues.borrow_mut().clear();
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub(in super::super) fn unmark(&self) -> bool {
+        trace_gc!("Unmarking closure 0x{:x}. Is marked? {}", self.addr(), self.marked.get());
         self.marked.replace(false)
     }
 

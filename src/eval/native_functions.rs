@@ -1,5 +1,5 @@
 #![allow(clippy::needless_pass_by_value)]
-use std::{convert::identity, rc::Rc};
+use std::rc::Rc;
 
 use crate::{
     eval::{vals::Callable, Vm},
@@ -34,7 +34,7 @@ fn tostring(arg: RuaVal) -> String {
 #[rua_func]
 #[allow(clippy::float_cmp, clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 fn tonumber(s: RuaVal, radix: Option<f64>) -> RuaResult {
-    let radix = radix.map_or(10.0, identity);
+    let radix = radix.unwrap_or(10.0);
     let r = radix.round() as u32;
     if f64::from(r) != radix {
         return Err(EvalError::Exception(
@@ -77,7 +77,7 @@ fn pcall(ctxt: &mut FunctionContext, func: RuaVal) -> RuaVal {
         }
         Err(_) => return false.into(),
     }
-    .map_or(false.into(), |v| v)
+    .unwrap_or_else(|_| false.into())
 }
 
 #[rua_func]

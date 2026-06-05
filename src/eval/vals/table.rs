@@ -209,7 +209,7 @@ impl Table {
 
     fn bin_search_len(&self, mut lower: usize, mut upper: usize) -> usize {
         while upper > lower + 1 {
-            let mid = (lower + upper) / 2;
+            let mid = usize::midpoint(lower, upper);
             if self.has_value(mid) {
                 lower = mid;
             } else {
@@ -226,6 +226,7 @@ impl Table {
     }
 
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub(in super::super) fn mark(&self) -> bool {
         let already_marked = self.marked.replace(true);
         trace_gc!("Marking table 0x{:x}. Was marked {}", self.addr(), already_marked);
@@ -253,6 +254,7 @@ impl Table {
         self.clear();
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub(in super::super) fn unmark(&self) -> bool {
         trace_gc!("Unmarking table 0x{:x}. Is marked? {}", self.addr(), self.marked.get());
         self.marked.replace(false)
@@ -554,7 +556,7 @@ mod tests {
             }
             Some(n) => panic!("Should have popped 54 or 56, not {n}"),
             None => panic!("There were items to pop"),
-        };
+        }
 
         assert_eq!(table.remove(&b"foo".into_rua(&mut vm)), None);
         assert_eq!(table.remove(&b"hello".into_rua(&mut vm)), Some(b"world".into_rua(&mut vm)));

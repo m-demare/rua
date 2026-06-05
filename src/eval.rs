@@ -870,7 +870,7 @@ impl Vm {
         self.stack[idx] = val;
     }
 
-    pub(crate) fn identifiers(&mut self) -> &mut Trie<TokenType> {
+    pub(crate) const fn identifiers(&mut self) -> &mut Trie<TokenType> {
         &mut self.identifiers
     }
 
@@ -947,7 +947,7 @@ impl Vm {
         push_cleaning_weaks(&mut self.gc_data.closures, Rc::downgrade(closure));
     }
 
-    fn should_gc(&self) -> bool {
+    const fn should_gc(&self) -> bool {
         self.gc_data.tables.len() + self.gc_data.closures.len() >= self.gc_data.next_gc
     }
 

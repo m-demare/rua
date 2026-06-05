@@ -189,7 +189,7 @@ impl RuaVal {
             RuaValInner::Closure(c) => c.blacken(gc_data),
             RuaValInner::Table(t) => t.blacken(gc_data),
             _ => (),
-        };
+        }
     }
 
     #[must_use]

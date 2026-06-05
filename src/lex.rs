@@ -212,7 +212,7 @@ where
         Token { ttype: TokenType::ILLEGAL("Unclosed string literal".into()), line: self.line }
     }
 
-    pub(crate) fn vm(&mut self) -> &mut Vm {
+    pub(crate) const fn vm(&mut self) -> &mut Vm {
         self.vm
     }
 }

@@ -74,7 +74,7 @@ impl Function {
 }
 
 impl NativeFunction {
-    pub fn new(func: &'static dyn Fn(&mut FunctionContext) -> RuaResultTraced) -> Self {
+    pub const fn new(func: &'static dyn Fn(&mut FunctionContext) -> RuaResultTraced) -> Self {
         Self { func }
     }
 
@@ -99,7 +99,7 @@ impl Hash for NativeFunction {
 }
 
 impl<'vm> FunctionContext<'vm> {
-    pub fn new(vm: &'vm mut Vm, args_start: usize, nargs: u8) -> Self {
+    pub const fn new(vm: &'vm mut Vm, args_start: usize, nargs: u8) -> Self {
         Self { args_start, nargs, vm }
     }
 

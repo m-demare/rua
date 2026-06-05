@@ -2,7 +2,6 @@
 #![deny(unused_must_use)]
 #![deny(clippy::mod_module_files)]
 #![allow(clippy::option_if_let_else)]
-#![feature(hash_raw_entry)]
 
 use std::{io, path::PathBuf, rc::Rc};
 
@@ -34,7 +33,7 @@ fn main() {
                 Err(parse_err) => {
                     println!("ParseError: {parse_err}");
                 }
-            };
+            }
         }
         None => {
             let _ = repl::run();
@@ -62,7 +61,7 @@ fn evaluate(path: &PathBuf, args: &CliArgs, varargs: &[Rc<[u8]>]) -> Result<(), 
         Err(eval_err) => {
             println!("Exception: {eval_err}");
         }
-    };
+    }
 
     Ok(())
 }

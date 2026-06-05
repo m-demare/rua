@@ -199,7 +199,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         Ok(desc)
     }
 
-    fn current_chunk_mut(&mut self) -> &mut Chunk {
+    const fn current_chunk_mut(&mut self) -> &mut Chunk {
         &mut self.context.chunk
     }
 
@@ -263,7 +263,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.free_reg(r2);
     }
 
-    fn free_n_reg(&mut self, n: u8) {
+    const fn free_n_reg(&mut self, n: u8) {
         self.context.rh -= n;
     }
 
@@ -821,7 +821,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 self.free_reg(val);
             }
             _ => return Err(ParseError::InvalidAssignLHS(line)),
-        };
+        }
         Ok(())
     }
 
@@ -842,7 +842,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
 
         self.match_lhs_rhs(&dsts, &mut srcs);
 
-        for (dst, src) in dsts.iter().zip(srcs.into_iter()).rev() {
+        for (dst, src) in dsts.iter().zip(srcs).rev() {
             self.assign(dst, src, line)?;
         }
 
@@ -1115,7 +1115,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
                 }
                 self.patch_jmp(list, l2, 0)?;
             }
-        };
+        }
         Ok(())
     }
 
@@ -1124,7 +1124,7 @@ impl<'vm, T: Iterator<Item = u8> + Clone> Compiler<'vm, T> {
         self.patch_list_aux(list, pc, u8::MAX, Some(pc))
     }
 
-    fn pc(&self) -> usize {
+    const fn pc(&self) -> usize {
         self.current_chunk().code().len()
     }
 

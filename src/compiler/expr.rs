@@ -52,7 +52,7 @@ impl ExprDesc {
                 }
             }
             _ => {}
-        };
+        }
         self.to_next_reg(compiler)
     }
 
@@ -191,7 +191,7 @@ impl ExprDesc {
             ExprKind::IndexN { table, key, line } => {
                 compiler.instruction(I::IndexN(BinArgs { dst, lhs: *table, rhs: *key }), *line);
             }
-        };
+        }
         if self.has_jmps() {
             let (mut pos_f, mut pos_t) = (None, None);
             if compiler.list_needs_val(self.t_jmp) || compiler.list_needs_val(self.f_jmp) {

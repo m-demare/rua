@@ -105,7 +105,7 @@ impl<
                         lhs.to_any_reg(compiler)?;
                     } else {
                         rhs.to_any_reg(compiler)?;
-                    };
+                    }
                     return self.get_res(compiler, lhs, rhs, line);
                 }
             }
