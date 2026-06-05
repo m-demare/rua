@@ -1,21 +1,22 @@
 use std::{
-    collections::hash_map::RawEntryMut,
     hash,
     rc::{Rc, Weak},
 };
 
-use ahash::{HashMap, HashMapExt};
+use hashbrown::hash_map::{ HashMap, RawEntryMut };
+
+use ahash::RandomState;
 
 // HashSet doesn't have the raw_entry_mut API
 #[allow(clippy::zero_sized_map_values)]
 #[derive(Debug)]
 pub struct WeakInterner<T: hash::Hash + ?Sized + PartialEq> {
-    map: HashMap<WeakKey<T>, ()>,
+    map: HashMap<WeakKey<T>, (), RandomState>,
 }
 
 impl<T: hash::Hash + ?Sized + PartialEq> Default for WeakInterner<T> {
     fn default() -> Self {
-        Self { map: HashMap::with_capacity(1 << 8) }
+        Self { map: HashMap::with_capacity_and_hasher(1 << 8, RandomState::default()) }
     }
 }
 
