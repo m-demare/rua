@@ -27,14 +27,12 @@ fn main() {
 
     let varargs: Vec<_> = std::mem::take(&mut args.args).into_iter().map(Into::into).collect();
     match &args.path {
-        Some(path) => {
-            match evaluate(path, &args, &varargs) {
-                Ok(()) => {}
-                Err(parse_err) => {
-                    println!("ParseError: {parse_err}");
-                }
+        Some(path) => match evaluate(path, &args, &varargs) {
+            Ok(()) => {}
+            Err(parse_err) => {
+                println!("ParseError: {parse_err}");
             }
-        }
+        },
         None => {
             let _ = repl::run();
         }

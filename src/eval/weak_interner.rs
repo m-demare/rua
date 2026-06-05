@@ -3,7 +3,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use hashbrown::hash_map::{ HashMap, RawEntryMut };
+use hashbrown::hash_map::{HashMap, RawEntryMut};
 
 use ahash::RandomState;
 
