@@ -1,6 +1,6 @@
 macro_rules! trace_gc {
     ($($arg: tt)*) => {
-        #[cfg(test)]
+        #[cfg(any(test, clippy))]
         println!($($arg)*);
     };
 }

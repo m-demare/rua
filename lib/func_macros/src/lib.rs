@@ -2,7 +2,7 @@
 #![deny(unused_must_use)]
 #![deny(clippy::mod_module_files)]
 #![allow(clippy::manual_unwrap_or_default, clippy::option_if_let_else)]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 
 use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
@@ -104,9 +104,9 @@ fn get_parameters(
     let mut params = match inputs.peek() {
         Some(FnArg::Typed(PatType {
             ty:
-                box Type::Reference(TypeReference {
-                    elem: box Type::Path(TypePath { path, .. }), ..
-                }),
+            deref!(Type::Reference(TypeReference {
+                elem: deref!(Type::Path(TypePath { path, .. })), ..
+            })),
             ..
         })) if path.segments.last().unwrap().ident == "FunctionContext" => {
             inputs.next();
@@ -128,7 +128,7 @@ fn get_parameters(
     };
     for (i, param) in inputs.enumerate() {
         match param {
-            FnArg::Typed(PatType { ty: box Type::Path(TypePath { path, .. }), .. })
+            FnArg::Typed(PatType { ty: deref!(Type::Path(TypePath { path, .. })), .. })
                 if path.segments.first().unwrap().ident == "Option" =>
             {
                 params.push(quote!(
@@ -138,7 +138,7 @@ fn get_parameters(
                     }
                 ));
             }
-            FnArg::Typed(PatType { ty: box Type::Path(TypePath { .. }), .. }) => {
+            FnArg::Typed(PatType { ty: deref!(Type::Path(TypePath { .. })), .. }) => {
                 params.push(quote!(
                     match ctxt.get_arg(#i).cloned() {
                         None => return Err(EvalErrorTraced::new(EvalError::ExpectedArgument(#i as u8, name_str.into()), vec![(#fn_name.into(), 0)])),
