@@ -104,9 +104,10 @@ fn get_parameters(
     let mut params = match inputs.peek() {
         Some(FnArg::Typed(PatType {
             ty:
-            deref!(Type::Reference(TypeReference {
-                elem: deref!(Type::Path(TypePath { path, .. })), ..
-            })),
+                deref!(Type::Reference(TypeReference {
+                    elem: deref!(Type::Path(TypePath { path, .. })),
+                    ..
+                })),
             ..
         })) if path.segments.last().unwrap().ident == "FunctionContext" => {
             inputs.next();
