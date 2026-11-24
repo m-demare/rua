@@ -135,7 +135,7 @@ fn get_parameters(
                 params.push(quote!(
                     match ctxt.get_arg(#i).cloned() {
                         None => None,
-                        Some(a) => Some(a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?),
+                        Some(a) => Some(a.try_into().map_err(|e| EvalErrorTraced::new(EvalError::from(e), vec![(#fn_name.into(), 0)]))?),
                     }
                 ));
             }
@@ -143,7 +143,7 @@ fn get_parameters(
                 params.push(quote!(
                     match ctxt.get_arg(#i).cloned() {
                         None => return Err(EvalErrorTraced::new(EvalError::ExpectedArgument(#i as u8, name_str.into()), vec![(#fn_name.into(), 0)])),
-                        Some(a) => a.try_into().map_err(|e| EvalErrorTraced::new(Into::<EvalError>::into(e), vec![(#fn_name.into(), 0)]))?,
+                        Some(a) => a.try_into().map_err(|e| EvalErrorTraced::new(EvalError::from(e), vec![(#fn_name.into(), 0)]))?,
                     }
                 ));
             }

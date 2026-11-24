@@ -24,7 +24,7 @@ pub(super) fn table(vm: &mut Vm) -> RuaVal {
         ("insert", NativeFunction::new(&insert).into()),
         ("remove", NativeFunction::new(&remove).into()),
     ]
-    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
+    .map(|(k, v)| (Rc::<str>::from(k).into_rua(vm), v));
 
     Table::from_iter(table).into_rua(vm)
 }

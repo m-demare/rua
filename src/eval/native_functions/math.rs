@@ -208,7 +208,7 @@ pub(super) fn math(vm: &mut Vm) -> RuaVal {
         ("pi", std::f64::consts::PI.into()),
         ("huge", f64::INFINITY.into()),
     ]
-    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
+    .map(|(k, v)| (Rc::<str>::from(k).into_rua(vm), v));
 
     Table::from_iter(math).into_rua(vm)
 }

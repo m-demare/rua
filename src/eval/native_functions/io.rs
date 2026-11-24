@@ -23,7 +23,7 @@ fn io_write(ctxt: &mut FunctionContext) {
 
 pub(super) fn io(vm: &mut Vm) -> RuaVal {
     let io = [("write", NativeFunction::new(&io_write).into())]
-        .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
+        .map(|(k, v)| (Rc::<str>::from(k).into_rua(vm), v));
 
     Table::from_iter(io).into_rua(vm)
 }

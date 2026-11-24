@@ -102,13 +102,13 @@ pub fn default_global(vm: &mut Vm) -> Rc<Table> {
         ("math", math::math(vm)),
         ("io", io::io(vm)),
     ]
-    .map(|(k, v)| (Into::<Rc<str>>::into(k).into_rua(vm), v));
+    .map(|(k, v)| (Rc::<str>::from(k).into_rua(vm), v));
 
     let global = Rc::new(Table::from_iter(global));
     // SAFETY: global doesn't need to be garbage collected, since it'll be valid
     // as long as the Vm is valid, and it's dropped when the Vm is dropped
     let _ = global.insert(
-        Into::<Rc<str>>::into("_G").into_rua(vm),
+        Rc::<str>::from("_G").into_rua(vm),
         RuaVal::from_table_unregistered(global.clone(), vm.id()),
     );
 
